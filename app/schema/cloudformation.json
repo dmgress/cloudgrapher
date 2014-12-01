@@ -1,0 +1,130 @@
+var schema = {
+    "$schema": "http://json-schema.org/schema#",
+    "title": "AWS CloudFormation schema",
+    "description": "A JSON Schema for Amazon CloudFormation scripts",
+    "type": "object",
+    "required": ["Resources"],
+    "additionalProperties": false,
+    "defaultProperties": ["AWSTemplateFormatVersion", "Description", "Resources"],
+    "properties": {
+        "AWSTemplateFormatVersion" : { "$ref" : "#/definitions/CloudFormationTemplateVersion" },
+        "Description" : {
+            "type": "string",
+            "format": "textarea"
+        },
+        "Parameters" : { 
+            "type": "object",
+            "additionalProperties": false,
+            "patternProperties": {
+                "^[A-Za-z0-9]+$": { "$ref": "#/definitions/CloudFormationParameter" }
+            }
+        },
+        "Mappings" : {
+            "type": "object",
+        },
+        "Conditions" : {
+            "type": "object",
+            "additionalProperties": false,
+            "patternProperties": {
+                "^[A-Za-z0-9]+$": { 
+                    "$ref": "#/definitions/CloudFormationCondition"
+                }
+            }
+        },
+        "Resources" : { 
+            "type": "object",
+            "additionalProperties": false,
+            "patternProperties": {
+                "^[A-Za-z0-9]+$": { "$ref": "#/definitions/CloudFormationResource" }
+            }
+        },
+        "Outputs" : {
+            "type": "object",
+            "maxProperties": 60,
+            "patternProperties": {
+                "^[A-Za-z0-9]+$": {
+                    "type" : "object",
+                    "additionProperties": false,
+                    "required": ["Value"],
+                    "properties": {
+                        "Value" : {
+                            "type": ["string", "object"],
+                        },
+                        "Description": {"type" : "string", "format": "textarea" }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "CloudFormationTemplateVersion":{ 
+            "title": "Template format version",
+            "description": "Date string in form YYYY-MM-DD",
+            "type": "string",
+            "format": "date",
+            "pattern": "^\\d{4}(\\-\\d\\d){2}$"
+        },
+        "CloudFormationParameter": {
+            "type" : "object",
+            "required": ["Type"],
+            "defaultProperties": ["Type","Description"],
+            "properties": {
+                "Type" : { "type": "string" },
+                "Default": { "type": "string" },
+                "NoEcho" : { "type" : "enum" [ "true", "false" ] },
+                "AllowedValues" : {
+                    "type": "array",
+                    "minItems": 1,
+                    "items" : { "type": "string" }
+                },
+                "AllowedPattern": { 
+                    "title": "Allowed parameter pattern",
+                    "description": "Regular expression to match the parameter value",
+                    "type" : "string" 
+                },
+                "MaxLength": { "type": "integer" },
+                "MinLength": { "type": "integer" },
+                "MaxValue": { "type": "integer" },
+                "MinValue": { "type": "integer" },
+                "Description": { "type": "string"},
+                "ConstraintDescription": { "type": "string"}
+            }
+        },
+        "CloudFormationResource": {
+            "type": "object",
+            "required": ["Type", "Properties"],
+            "properties": {
+                "Type": { "type": "string" },
+                "Properties": {
+                    "type" : "object"
+                }
+            }
+        },
+        "CloudFormationCondition": {
+            "type": "object",
+            "maxProperties": 1,
+            "defaultProperties": ["Fn::If"],
+            "properties" : {
+                "Fn::And" : { "$ref": "#/definitions/CloudFormationAnd" },
+                "Fn::Equals": {"$ref": "#/definitions/CloudFormationEquals" },
+                "Fn::If": {"$ref": "#/definitions/CloudFormationIf" },
+                "Fn::Not": {"$ref": "#/definitions/CloudFormationNot" },
+                "Fn::Or": {"$ref": "#/definitions/CloudFormationOr" }
+            }
+        },
+        "CloudFormationAnd": { 
+            "format": "table",
+            "type": "array",
+            "maxItems": 10
+        },
+        "CloudFormationEquals": {
+            "type": "array",
+            "items": {"type": "string"},
+            "minItems": 2,
+            "maxItems": 2
+        },
+        "CloudFormationIf": { "type": "object"},
+        "CloudFormationNot": { "type": "object"},
+        "CloudFormationOr": { "type": "object"}
+    }
+}

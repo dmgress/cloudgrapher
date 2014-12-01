@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="">
+  <head>
+    <meta charset="utf-8">
+    <meta name="description" content="">
+    <meta name="viewport" content="width=device-width, initial-scale=1, minimal-ui">
+    <title>cfedit</title>
+    <!-- Place favicon.ico and apple-touch-icon.png in the root directory -->
+
+    <!-- build:css styles/vendor.css -->
+    <!-- bower:css -->
+    <link rel="stylesheet" href="../bower_components/vis/dist/vis.min.css" />
+    <link rel="stylesheet" href="../bower_components/foundation/css/foundation.css" />
+    <!-- endbower -->
+    <!-- endbuild -->
+
+    <!-- build:css styles/main.css -->
+    <link rel="stylesheet" href="styles/main.css">
+    <!-- endbuild -->
+    <link rel="stylesheet" href="../bower_components/jsoneditor/jsoneditor.min.css">
+
+  </head>
+  <body>
+    <!--[if lt IE 10]>
+      <p class="browsehappy">You are using an <strong>outdated</strong> browser. Please <a href="http://browsehappy.com/">upgrade your browser</a> to improve your experience.</p>
+    <![endif]-->
+    <header>
+        <h1>CloudFormation editor</h1>
+    </header>
+    <main>
+    <div id="cfeditor" class="cfeditor">
+        <div id="jsoneditor" class="editor pane" style="height: 800px"></div>
+        <div class="canvas pane">
+    	    <canvas id="cfcanvas">
+                <p class="browsehappy">
+                You are using an <strong>outdated</strong> browser. Please <a href="http://browsehappy.com/">upgrade your browser</a> to improve your experience.
+                </p>
+            </canvas>
+        </div>
+    </div>
+    </main>
+    <footer>
+        Hi, this is the footer but it has no content!
+    </footer>
+    <!-- build:js scripts/vendor.js -->
+    <!-- bower:js -->
+    <script src="../bower_components/modernizr/modernizr.js"></script>
+    <script src="../bower_components/jquery/dist/jquery.js"></script>
+    <script src="../bower_components/jsoneditor/jsoneditor.min.js"></script>
+    <script src="../bower_components/json-editor/dist/jsoneditor.js"></script>
+    <script src="../bower_components/vis/dist/vis.min.js"></script>
+    <script src="../bower_components/FileSaver/FileSaver.js"></script>
+    <script src="../bower_components/canvas-toBlob.js/canvas-toBlob.js"></script>
+    <script src="../bower_components/js-beautify/js/lib/beautify.js"></script>
+    <script src="../bower_components/js-beautify/js/lib/beautify-css.js"></script>
+    <script src="../bower_components/js-beautify/js/lib/beautify-html.js"></script>
+    <script src="../bower_components/fastclick/lib/fastclick.js"></script>
+    <script src="../bower_components/jquery.cookie/jquery.cookie.js"></script>
+    <script src="../bower_components/jquery-placeholder/jquery.placeholder.js"></script>
+    <script src="../bower_components/foundation/js/foundation.js"></script>
+    <!-- endbower -->
+    <!-- endbuild -->
+    <script src="../bower_components/jsoneditor/asset/ace/ace.js"></script>
+    <script src="../bower_components/jsoneditor/asset/jsonlint/jsonlint.js"></script>
+    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.0.29.min.js"></script>
+
+        <!-- build:js scripts/main.js -->
+        <script src="scripts/main.js"></script>
+        <!-- endbuild -->
+</body>
+</html>
