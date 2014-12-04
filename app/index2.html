@@ -13,101 +13,109 @@
         <script src="../bower_components/foundation/js/vendor/modernizr.js"></script>
         </head>
     <body>
-<!--[if lt IE 10]>
-      <p class="browsehappy">You are using an <strong>outdated</strong> browser. Please <a href="http://browsehappy.com/">upgrade your browser</a> to improve your experience.</p>
-    <![endif]-->
-    <header>
-        <h1>CloudFormation editor</h1>
-        <div class="button-bar">
-        <ul class="button-group">
-            <li><a href="#" class="button">Open template</a></li>
-            <li><a id="save_template" href="#" class="button">Save template</a></li>
-        </ul>
-        <ul class="button-group right">
-            <li><a id="save_graph" href="#" class="button">Save graph as PNG</a></li>
-        </ul>
-    </div>
-    </header>
-    <main>
-        <div id="cfeditor" class="cfeditor">
-            <div id="jsoneditor" class="form editor pane" style="height: 800px"></div>
-            <div id="graph-container" class="canvas pane"></div>
-        </div>
-    </main>
-    <footer>
-        Hi, this is the footer but it has no content!
-    </footer>
-    <script src="schema/cloudformation.json"></script>
-    <script src="../bower_components/js-beautify/js/lib/beautify.js"></script>
-    <script src="../bower_components/canvas-toBlob.js/canvas-toBlob.js"></script>
-    <script src="../bower_components/FileSaver/FileSaver.js"></script>
-    <script src="../bower_components/vis/dist/vis.js"></script>
-    <script src="../bower_components/json-editor/dist/jsoneditor.js"></script>
-    <script src="../bower_components/foundation/js/vendor/jquery.js"></script>
-      <script src="../bower_components/foundation/js/foundation.min.js"></script>
-    <script language="javascript">
-JSONEditor.defaults.options.theme = 'foundation5';
-JSONEditor.defaults.options.iconlib = 'fontawesome4';
-var cfeditor = document.getElementById('cfeditor');
-var graph = undefined;
-var graphcontainer = document.getElementById('graph-container');
-var graphOptions = {}
+        <header>
+        <!--[if lt IE 10]>
+            <p class="browsehappy">You are using an <strong>outdated</strong> browser. Please <a href="http://browsehappy.com/">upgrade your browser</a> to improve your experience.</p>
+        <![endif]-->
+            <h1>CloudFormation editor</h1>
+            <div class="button-bar">
+                <ul class="button-group">
+                    <li><a href="#" class="button">Open template</a></li>
+                    <li><a id="save_template" href="#" class="button">Save template</a></li>
+                </ul>
+                <ul class="button-group right">
+                    <li><a id="save_graph" href="#" class="button">Save graph as PNG</a></li>
+                </ul>
+            </div>
+        </header>
+        <main>
+            <div id="cfeditor" class="row">
+                <div class="column small-12 medium-6" >
+                    <div id="jsoneditor"></div>
+                </div>
+                <div class="column small-12 medium-6">
+                    <h3 class="graphheader">Graph representation</h3>
+                    <span class="show-for-medium-up" style="height: 58px">&nbsp;</span>
+                    <div id="graph-container" class="panel callout"><h4><em>None</em></h4></div>
+                </div>
+            </div>
+        </main>
+        <footer>
+            <hr />
+            <span>Hi, this is the footer but it has no content!</span>
+        </footer>
+        <script src="schema/cloudformation.json"></script>
+        <script src="../bower_components/js-beautify/js/lib/beautify.js"></script>
+        <script src="../bower_components/canvas-toBlob.js/canvas-toBlob.js"></script>
+        <script src="../bower_components/FileSaver/FileSaver.js"></script>
+        <script src="../bower_components/vis/dist/vis.js"></script>
+        <script src="../bower_components/json-editor/dist/jsoneditor.js"></script>
+        <script src="../bower_components/foundation/js/vendor/jquery.js"></script>
+        <script src="../bower_components/foundation/js/foundation.min.js"></script>
+        <script language="javascript">
+            JSONEditor.defaults.options.theme = 'foundation5';
+            JSONEditor.defaults.options.iconlib = 'fontawesome4';
+            var cfeditor = document.getElementById('cfeditor');
+            var graph = undefined;
+            var graphcontainer = document.getElementById('graph-container');
+            var graphOptions = {}
 
-var editor = new JSONEditor(document.getElementById('jsoneditor'), {
-       schema: schema
-       });
-       editor.getEditor('root').canHaveAdditionalProperties = function() { return false};
-cfeditor.addEventListener('dragover', function(evt) {
-    evt.stopPropagation();
-    evt.preventDefault();
-    evt.dataTransfer.dropEffect = 'copy';
-}, false);
-cfeditor.addEventListener('drop', function(evt) {
-    evt.stopPropagation();
-    evt.preventDefault();
+            var editor = new JSONEditor(document.getElementById('jsoneditor'), {
+                   schema: schema
+                   });
+            editor.getEditor('root').canHaveAdditionalProperties = function() { return false};
+            cfeditor.addEventListener('dragover', function(evt) {
+                evt.stopPropagation();
+                evt.preventDefault();
+                evt.dataTransfer.dropEffect = 'copy';
+            }, false);
+            cfeditor.addEventListener('drop', function(evt) {
+                evt.stopPropagation();
+                evt.preventDefault();
 
-    var files = evt.dataTransfer.files;
-    var reader = new FileReader();
-    reader.onload = function () {
-        cfscript = JSON.parse(reader.result);
-        if (cfscript) {
-            editor.setValue(cfscript);
-            var data = { nodes:[], edges:[] };
-            for (var r in cfscript['Resources']) {
-                data.nodes.push({
-                    id: r,
-                    label: r
-                });
-            }
-            if(graph == undefined){
-                graph = new vis.Network(graphcontainer, data, graphOptions);
-            }
-            else {
-                graph.setData(data);
-            }
-        }
-    };
-    reader.readAsText(files[0]);
-}, false);
-    var saveImage = function() {
-        var canvas = graphcontainer.getElementsByTagName('canvas');
-        if (canvas && canvas.length == 1) {
-            canvas[0].toBlob(function(blob){
-                    saveAs(blob, 'cloudformation_resources.png');
-                    });
-        }
-        else {
-            console.log('Expected to find one canvas but got ' + canvas);
-        }
-    };
-    var saveTemplate = function() {
-        var prettyDoc = js_beautify(JSON.stringify(editor.getValue(), function(k,v){return v == null ? "" : v;}));
-        var blob = new Blob([prettyDoc], {type: "text/plain;charset=utf-8"});
-        saveAs(blob, "cloudformation_template.json");
-        console.log(prettyDoc);
-    };
-    $('#save_template').click(function(){ saveTemplate(); return false;});
-    $('#save_graph').click(function(){ saveImage(); return false;});
-    </script>
+                var files = evt.dataTransfer.files;
+                var reader = new FileReader();
+                reader.onload = function () {
+                    cfscript = JSON.parse(reader.result);
+                    if (cfscript) {
+                        editor.setValue(cfscript);
+                        var data = { nodes:[], edges:[] };
+                        for (var r in cfscript['Resources']) {
+                            data.nodes.push({
+                                id: r,
+                                label: r
+                            });
+                        }
+                        if(graph == undefined){
+                            graph = new vis.Network(graphcontainer, data, graphOptions);
+                            graphcontainer.className = graphcontainer.className.replace(/(?:^|\s)callout(?!\S)/g , '');
+                        }
+                        else {
+                            graph.setData(data);
+                        }
+                    }
+                };
+                reader.readAsText(files[0]);
+            }, false);
+                var saveImage = function() {
+                    var canvas = graphcontainer.getElementsByTagName('canvas');
+                    if (canvas && canvas.length == 1) {
+                        canvas[0].toBlob(function(blob){
+                                saveAs(blob, 'cloudformation_resources.png');
+                                });
+                    }
+                    else {
+                        console.log('Expected to find one canvas but got ' + canvas);
+                    }
+                };
+                var saveTemplate = function() {
+                    var prettyDoc = js_beautify(JSON.stringify(editor.getValue(), function(k,v){return v == null ? "" : v;}));
+                    var blob = new Blob([prettyDoc], {type: "text/plain;charset=utf-8"});
+                    saveAs(blob, "cloudformation_template.json");
+                    console.log(prettyDoc);
+                };
+                $('#save_template').click(function(){ saveTemplate(); return false;});
+                $('#save_graph').click(function(){ saveImage(); return false;});
+        </script>
     </body>
 </html>
