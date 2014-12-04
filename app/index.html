@@ -1,71 +1,61 @@
 <!doctype html>
-<html lang="">
-  <head>
-    <meta charset="utf-8">
-    <meta name="description" content="">
-    <meta name="viewport" content="width=device-width, initial-scale=1, minimal-ui">
-    <title>cfedit</title>
-    <!-- Place favicon.ico and apple-touch-icon.png in the root directory -->
-
-    <!-- build:css styles/vendor.css -->
-    <!-- bower:css -->
-    <link rel="stylesheet" href="../bower_components/vis/dist/vis.min.css" />
-    <link rel="stylesheet" href="../bower_components/foundation/css/foundation.css" />
-    <!-- endbower -->
-    <!-- endbuild -->
-
-    <!-- build:css styles/main.css -->
-    <link rel="stylesheet" href="styles/main.css">
-    <!-- endbuild -->
-    <link rel="stylesheet" href="../bower_components/jsoneditor/jsoneditor.min.css">
-
-  </head>
-  <body>
-    <!--[if lt IE 10]>
-      <p class="browsehappy">You are using an <strong>outdated</strong> browser. Please <a href="http://browsehappy.com/">upgrade your browser</a> to improve your experience.</p>
-    <![endif]-->
-    <header>
-        <h1>CloudFormation editor</h1>
-    </header>
-    <main>
-    <div id="cfeditor" class="cfeditor">
-        <div id="jsoneditor" class="editor pane" style="height: 800px"></div>
-        <div class="canvas pane">
-    	    <canvas id="cfcanvas">
-                <p class="browsehappy">
-                You are using an <strong>outdated</strong> browser. Please <a href="http://browsehappy.com/">upgrade your browser</a> to improve your experience.
-                </p>
-            </canvas>
-        </div>
-    </div>
-    </main>
-    <footer>
-        Hi, this is the footer but it has no content!
-    </footer>
-    <!-- build:js scripts/vendor.js -->
-    <!-- bower:js -->
-    <script src="../bower_components/modernizr/modernizr.js"></script>
-    <script src="../bower_components/jquery/dist/jquery.js"></script>
-    <script src="../bower_components/jsoneditor/jsoneditor.min.js"></script>
-    <script src="../bower_components/json-editor/dist/jsoneditor.js"></script>
-    <script src="../bower_components/vis/dist/vis.min.js"></script>
-    <script src="../bower_components/FileSaver/FileSaver.js"></script>
-    <script src="../bower_components/canvas-toBlob.js/canvas-toBlob.js"></script>
-    <script src="../bower_components/js-beautify/js/lib/beautify.js"></script>
-    <script src="../bower_components/js-beautify/js/lib/beautify-css.js"></script>
-    <script src="../bower_components/js-beautify/js/lib/beautify-html.js"></script>
-    <script src="../bower_components/fastclick/lib/fastclick.js"></script>
-    <script src="../bower_components/jquery.cookie/jquery.cookie.js"></script>
-    <script src="../bower_components/jquery-placeholder/jquery.placeholder.js"></script>
-    <script src="../bower_components/foundation/js/foundation.js"></script>
-    <!-- endbower -->
-    <!-- endbuild -->
-    <script src="../bower_components/jsoneditor/asset/ace/ace.js"></script>
-    <script src="../bower_components/jsoneditor/asset/jsonlint/jsonlint.js"></script>
-    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.0.29.min.js"></script>
-
-        <!-- build:js scripts/main.js -->
+<html lang="en" class="no-js">
+    <head>
+        <meta charset="utf-8">
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1, minimal-ui">
+        <link href="//maxcdn.bootstrapcdn.com/font-awesome/4.2.0/css/font-awesome.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="../bower_components/foundation/css/normalize.css">
+  <link rel="stylesheet" href="../bower_components/foundation/css/foundation.css">
+  <link rel="stylesheet" href="styles/main.css">
+    <link rel="stylesheet" href="../bower_components/vis/dist/vis.css">
+        <title>cfedit</title>
+        <script src="../bower_components/foundation/js/vendor/modernizr.js"></script>
+        </head>
+    <body>
+        <header>
+        <!--[if lt IE 10]>
+            <p class="browsehappy">You are using an <strong>outdated</strong> browser. Please <a href="http://browsehappy.com/">upgrade your browser</a> to improve your experience.</p>
+        <![endif]-->
+            <h1>CloudFormation editor</h1>
+            <div class="button-bar">
+                <ul class="button-group">
+                    <li><a href="#" class="button">Open template</a></li>
+                    <li><a id="save_template" href="#" class="button">Save template</a></li>
+                </ul>
+                <ul class="button-group right">
+                    <li><a id="save_graph" href="#" class="button">Save graph as PNG</a></li>
+                </ul>
+            </div>
+                <div id="templateStatus" data-alert class="alert-box success" tabindex="0" aria-live="assertive" role="dialogalert">
+                    <strong id="statusTitle">Your content goes here</strong>
+                    </div>
+            <hr />
+        </header>
+        <main>
+            <div id="cfeditor" class="row">
+                <div class="column small-12 medium-6" >
+                    <div id="jsoneditor"></div>
+                </div>
+                <div class="column small-12 medium-6">
+                    <h3 class="graphheader">Graph representation</h3>
+                    <span class="show-for-medium-up" style="height: 58px">&nbsp;</span>
+                    <div id="graph-container" class="panel callout"><h4><em>None</em></h4></div>
+                </div>
+            </div>
+        </main>
+        <footer>
+            <hr />
+            <span>Hi, this is the footer but it has no content!</span>
+        </footer>
+        <script src="schema/cloudformation.json"></script>
+        <script src="../bower_components/js-beautify/js/lib/beautify.js"></script>
+        <script src="../bower_components/canvas-toBlob.js/canvas-toBlob.js"></script>
+        <script src="../bower_components/FileSaver/FileSaver.js"></script>
+        <script src="../bower_components/vis/dist/vis.js"></script>
+        <script src="../bower_components/json-editor/dist/jsoneditor.js"></script>
+        <script src="../bower_components/foundation/js/vendor/jquery.js"></script>
+        <script src="../bower_components/foundation/js/foundation.min.js"></script>
         <script src="scripts/main.js"></script>
-        <!-- endbuild -->
-</body>
+    </body>
 </html>
