@@ -1,8 +1,9 @@
 /* jshint devel:true */
-
+var cfeditor = {};
+(function(){
 JSONEditor.defaults.options.theme = 'foundation5';
 JSONEditor.defaults.options.iconlib = 'fontawesome4';
-var cfeditor = document.getElementById('cfeditor');
+var mainRow = document.getElementById('cfeditor');
 var errors = [];
 var graph = undefined;
 var graphcontainer = document.getElementById('graph-container');
@@ -11,6 +12,7 @@ var graphOptions = {}
 var editor = new JSONEditor(document.getElementById('jsoneditor'), {
     schema: schema
 });
+cfeditor.template = editor;
 var check_valid = function() {
     errors = editor.validate();
     var templateStatus = document.getElementById('templateStatus');
@@ -37,12 +39,12 @@ var check_valid = function() {
 };
 editor.on('change', check_valid);
 editor.getEditor('root').canHaveAdditionalProperties = function() { return false};
-cfeditor.addEventListener('dragover', function(evt) {
+mainRow.addEventListener('dragover', function(evt) {
     evt.stopPropagation();
     evt.preventDefault();
     evt.dataTransfer.dropEffect = 'copy';
 }, false);
-cfeditor.addEventListener('drop', function(evt) {
+mainRow.addEventListener('drop', function(evt) {
     evt.stopPropagation();
     evt.preventDefault();
 
@@ -92,3 +94,4 @@ var saveTemplate = function() {
 $('#save_template').click(function(){ saveTemplate(); return false;});
 $('#save_graph').click(function(){ saveImage(); return false;});
 check_valid();
+})();

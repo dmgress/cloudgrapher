@@ -21,6 +21,7 @@ hr {
 footer {
   text-align: center;
 }
+#json-editor,
 #graph-container {
   height: 800px;
 }
