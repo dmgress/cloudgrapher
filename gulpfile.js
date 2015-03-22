@@ -105,6 +105,16 @@ gulp.task('watch', ['connect'], function () {
   gulp.watch('bower.json', ['wiredep']);
 });
 
+gulp.task('test', function () {
+  var jasmine = require("gulp-jasmine");
+  gulp.src('specs/**.js')
+    .pipe(jasmine());
+});
+
+gulp.task('test-watch', function () {
+    gulp.watch(['specs/**.js', 'app/scripts/**.js'], ['test'])
+});
+
 gulp.task('build', ['jshint', 'html', 'images', 'fonts', 'extras'], function () {
   return gulp.src('dist/**/*').pipe($.size({title: 'build', gzip: true}));
 });
