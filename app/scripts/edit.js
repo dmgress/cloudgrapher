@@ -1,12 +1,15 @@
 /* jshint devel:true */
-var editor = undefined;
-var graph = undefined;
+/* global ace, vis, collectData, js_beautify, saveAs */
+
+var editor;
+var graph_lib = require('./collectdata');
+var graph;
 (function(){'use strict';
   editor = ace.edit('jsoneditor');
-  editor.setTheme("ace/theme/tomorrow_night_eighties");
-  editor.getSession().setMode("ace/mode/json");
-  editor.setOption("maxLines", 80);
-  editor.setOption("minLines", 80);
+  editor.setTheme('ace/theme/tomorrow_night_eighties');
+  editor.getSession().setMode('ace/mode/json');
+  editor.setOption('maxLines', 80);
+  editor.setOption('minLines', 80);
 
   var graphcontainer = document.getElementById('graph-container');
   var graphOptions = {
@@ -17,8 +20,9 @@ var graph = undefined;
   };
 
   var updateGraph = function(json){
+    var data = graph_lib.collectData(json);
     if(!graph){
-      graph = new vis.Network(graphcontainer, collectData(json), graphOptions);
+      graph = new vis.Network(graphcontainer, data, graphOptions);
       graphcontainer.className = graphcontainer.className.replace(/(?:^|\s)callout(?!\S)/g , '');
     }
     else {
@@ -26,7 +30,7 @@ var graph = undefined;
     }
   };
   var errors = [];
-  var check_valid = function() {
+  var checkValid = function() {
     var templateStatus = document.getElementById('templateStatus');
     var statusTitle = document.getElementById('statusTitle');
     var errorlist = templateStatus.getElementsByTagName('ul');
@@ -35,7 +39,7 @@ var graph = undefined;
     }
     if (errors.length > 0) {
       templateStatus.className = 'alert-box alert';
-      statusTitle.innerHTML="Error(s): ";
+      statusTitle.innerHTML='Error(s): ';
       errorlist = document.createElement('ul');
       errors.forEach(function(err){
         var li = document.createElement('li');
@@ -46,7 +50,7 @@ var graph = undefined;
     }
     else {
       templateStatus.className = 'alert-box success';
-      statusTitle.innerHTML="Valid";
+      statusTitle.innerHTML='Valid';
     }
   };
   var mainRow = document.getElementById('cfeditor');
@@ -73,7 +77,7 @@ var graph = undefined;
   }, false);
   var saveImage = function() {
     var canvas = graphcontainer.getElementsByTagName('canvas');
-    if (canvas && canvas.length == 1) {
+    if (canvas && canvas.length === 1) {
       canvas[0].toBlob(function(blob){
         saveAs(blob, 'cloudformation_resources.png');
       });
@@ -83,12 +87,12 @@ var graph = undefined;
     }
   };
   var saveTemplate = function() {
-    var prettyDoc = js_beautify(editor.getValue());
-    var blob = new Blob([prettyDoc], {type: "text/plain;charset=utf-8"});
-    saveAs(blob, "cloudformation_template.json");
+    var prettyDoc = JSON.stringify(JSON.parse(editor.getValue()), null, 2);
+    var blob = new Blob([prettyDoc], {type: 'text/plain;charset=utf-8'});
+    saveAs(blob, 'cloudformation_template.json');
     console.log(prettyDoc);
   };
   $('#save_template').click(function(){ saveTemplate(); return false;});
   $('#save_graph').click(function(){ saveImage(); return false;});
-  check_valid();
+  checkValid();
 })();

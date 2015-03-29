@@ -2,6 +2,10 @@
 'use strict';
 // generated on 2014-11-30 using generator-gulp-webapp 0.2.0
 var gulp = require('gulp');
+var browserify = require('browserify');
+var transform = require('vinyl-transform');
+var uglify = require('gulp-uglify');
+var sourcemaps = require('gulp-sourcemaps');
 var $ = require('gulp-load-plugins')();
 
 gulp.task('styles', function () {
@@ -17,12 +21,27 @@ gulp.task('jshint', function () {
     .pipe($.jshint.reporter('fail'));
 });
 
-gulp.task('html', ['styles'], function () {
+gulp.task('javascript', function () {
+  // transform regular node stream to gulp (buffered vinyl) stream
+  var browserified = transform(function(filename) {
+    var b = browserify({entries: filename, debug: true});
+    return b.bundle();
+  });
+
+  return gulp.src('app/scripts/edit.js')
+    .pipe(browserified)
+    .pipe(sourcemaps.init({loadMaps: true}))
+        // Add transformation tasks to the pipeline here.
+       .pipe(uglify())
+    .pipe(sourcemaps.write('./'))
+    .pipe(gulp.dest('dist/js/'));
+});
+
+gulp.task('html', ['styles', 'javascript'], function () {
   var assets = $.useref.assets({searchPath: '{.tmp,app}'});
 
   return gulp.src('app/*.html')
     .pipe(assets)
-    .pipe($.if('*.js', $.uglify()))
     .pipe($.if('*.css', $.csso()))
     .pipe(assets.restore())
     .pipe($.useref())
@@ -65,6 +84,7 @@ gulp.task('connect', function () {
     .use(require('connect-livereload')({port: 35729}))
     .use(serveStatic('.tmp'))
     .use(serveStatic('app'))
+    .use(serveStatic('dist'))
     // paths to bower_components should be relative to the current file
     // e.g. in app/index.html you should use ../bower_components
     .use('/bower_components', serveStatic('bower_components'))
