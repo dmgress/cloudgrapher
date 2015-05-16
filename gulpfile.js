@@ -1,6 +1,6 @@
 /* jshint node:true */
 'use strict';
-// generated on 2014-11-30 using generator-gulp-webapp 0.2.0
+
 var gulp = require('gulp');
 var browserify = require('browserify');
 var transform = require('vinyl-transform');
@@ -34,7 +34,7 @@ gulp.task('javascript', function () {
         // Add transformation tasks to the pipeline here.
        .pipe(uglify())
     .pipe(sourcemaps.write('./'))
-    .pipe(gulp.dest('dist/js/'));
+    .pipe(gulp.dest('.tmp/js/'));
 });
 
 gulp.task('html', ['styles', 'javascript'], function () {
@@ -117,11 +117,12 @@ gulp.task('watch', ['connect'], function () {
   gulp.watch([
     'app/*.html',
     '.tmp/styles/**/*.css',
-    'app/scripts/**/*.js',
+    '.tmp/js/**/*.js',
     'app/images/**/*'
   ]).on('change', $.livereload.changed);
 
   gulp.watch('app/styles/**/*.css', ['styles']);
+  gulp.watch('app/scripts/**/*.js', ['javascript']);
   gulp.watch('bower.json', ['wiredep']);
 });
 
@@ -132,7 +133,10 @@ gulp.task('test', function () {
 });
 
 gulp.task('test-watch', function () {
-    gulp.watch(['specs/**.js', 'app/scripts/**.js'], ['test'])
+    gulp.watch([
+      'specs/**.js',
+      'app/scripts/**.js'
+    ], ['test']);
 });
 
 gulp.task('build', ['jshint', 'html', 'images', 'fonts', 'extras'], function () {
