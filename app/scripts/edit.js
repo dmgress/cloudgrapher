@@ -1,10 +1,10 @@
 /* jshint devel:true */
 /* global ace, vis, collectData, js_beautify, saveAs */
 
-var editor;
-var graph_lib = require('./collectdata');
-var graph;
 (function(){'use strict';
+  var editor;
+  var graph_lib = require('./collectdata');
+  var graph;
   editor = ace.edit('jsoneditor');
   editor.setTheme('ace/theme/tomorrow_night_eighties');
   editor.getSession().setMode('ace/mode/json');
