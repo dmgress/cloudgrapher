@@ -87,25 +87,31 @@
       graph.zoomExtent({easingFunction: 'linear'});
     });
   };
+  var getTemplateDescription = function() {
+    var description = 'template';
+    try {
+      description = JSON.parse(editor.getValue(editor.getValue()))['Description'];
+    } catch (e) {}
+    return description;
   };
   var saveImage = function() {
-    var canvas = graphcontainer.getElementsByTagName('canvas');
+    var canvas = graph_pane.find('canvas');
     if (canvas && canvas.length === 1) {
       canvas[0].toBlob(function(blob){
-        saveAs(blob, 'cloudformation_resources.png');
+        saveAs(blob, getTemplateDescription() + '.png');
       });
     }
     else {
-      console.log('Expected to find one canvas but got ' + canvas);
+      console.error('Expected to find one canvas but got ' + canvas);
     }
   };
   var saveTemplate = function() {
     var prettyDoc = JSON.stringify(JSON.parse(editor.getValue()), null, 2);
     var blob = new Blob([prettyDoc], {type: 'text/plain;charset=utf-8'});
-    saveAs(blob, 'cloudformation_template.json');
-    console.log(prettyDoc);
+    saveAs(blob, getTemplateDescription() + '.json');
   };
-  $('#save_template').click(function(){ saveTemplate(); return false;});
+  $('#save_template').click(function(event){ event.preventDefault(); saveTemplate(); return false;});
+  $('#save_graph').click(function(event){ event.preventDefault(); saveImage(); return false;});
   $('#show_graph').click(function(event){ event.preventDefault(); showGraph(); return false;});
   $('#close_graph').click(function(event){ event.preventDefault(); graph_pane.fadeOut(500); return false;});
 })();
