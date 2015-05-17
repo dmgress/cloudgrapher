@@ -12,16 +12,15 @@ var graph;
   editor.setOption('minLines', 40);
   editor.getSession().on('changeAnnotation', function(o) {
     var annotations = editor.getSession().getAnnotations();
-    $('#templateStatus').removeClass('failure', annotations.length !== 0);
+    $('#statusbar').toggleClass('failure', annotations.length !== 0);
     if (annotations.length == 0) {
-      $('#templateStatus').text('Valid');
+      var message = editor.getSession().getLength() < 2 && editor.getSession().getLine(0).length === 0 ? 'No content' : 'Valid';
+      $('div.status-message').text(message);
     }
     else {
       var firstAnnotation = annotations[0];
-      $('#templateStatus').text('First error ' + firstAnnotation.text + ' at '+ firstAnnotation.row + ':'+ firstAnnotation.column);
+      $('div.status-message').text(firstAnnotation.text + ' at '+ firstAnnotation.row + ':'+ firstAnnotation.column);
     }
-    console.log('[session] changed annotations trigger:' + JSON.stringify(o));
-    console.log('[session] changed annotations:' + JSON.stringify(editor.getSession().getAnnotations()));
   });
   var StatusBar = ace.require("ace/ext/statusbar").StatusBar;
   // create a simple selection status indicator
@@ -52,30 +51,6 @@ var graph;
     }
     else {
       graph.setData(data);
-    }
-  };
-  var errors = [];
-  var checkValid = function() {
-    var templateStatus = document.getElementById('templateStatus');
-    var statusTitle = document.getElementById('statusTitle');
-    var errorlist = templateStatus.getElementsByTagName('ul');
-    if (errorlist.length > 0) {
-      templateStatus.removeChild(errorlist[0]);
-    }
-    if (errors.length > 0) {
-      templateStatus.className = 'alert-box alert';
-      statusTitle.innerHTML='Error(s): ';
-      errorlist = document.createElement('ul');
-      errors.forEach(function(err){
-        var li = document.createElement('li');
-        li.appendChild(document.createTextNode(err.path + ' [' + err.property + '] ' + err.message));
-        errorlist.appendChild(li);
-      });
-      templateStatus.appendChild(errorlist);
-    }
-    else {
-      templateStatus.className = 'alert-box success';
-      statusTitle.innerHTML='Valid';
     }
   };
   var mainRow = document.getElementById('cfeditor');
@@ -125,5 +100,4 @@ var graph;
   $('#save_template').click(function(){ saveTemplate(); return false;});
   $('#save_graph').click(function(){ saveImage(); return false;});
   $('#show_graph').click(function(){ saveImage(); return false;});
-  checkValid();
 })();

@@ -107,10 +107,7 @@ a:hover {
   padding: 0 10px;
   background-color: greenyellow;
 }
-.failure {
-  background-color: red;
-}
-#statusbar {
+.status-bar {
   position: absolute;
   border-style: solid;
   border-width: 1px;
@@ -122,6 +119,13 @@ a:hover {
   padding: 0.2rem 0.35rem;
   background-color: rgba(0, 0, 0, 0);
   color: whitesmoke;
+}
+.failure {
+  border-color: red;
+  color: red;
+}
+.status-icon, .status-message {
+  display: inline-block;
 }
 #ace_settingsmenu, #kbshortcutmenu {
   font-family: monospace;
