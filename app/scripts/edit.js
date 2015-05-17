@@ -67,15 +67,9 @@
     catch (e) {
       data = {};
     }
-    var graphOptions = {
-      'edges': {
-        'style' : 'arrow',
-        'color.highlight': 'red'
-      }
-    };
     if (!graph_pane) {
       graph_pane = $('div.graph_overlay');
-      graph = new vis.Network($('#graph_area').get(0), { options: graphOptions});
+      graph = new vis.Network($('#graph_area').get(0), { options: graph_lib.graphOptions});
       graph_pane.resize(function() {
         graph.redraw();
         graph.zoomExtent();

@@ -1,6 +1,4 @@
 var lib = require('../app/scripts/collectdata');
-//global.findEdges = require('../app/scripts/graph.js').findEdges;
-//global.findEdges = require('../app/scripts/graph.js').findEdges;
 
 describe('collectData', function() {
 
@@ -15,6 +13,23 @@ describe('collectData', function() {
     var data = lib.collectData(doc);
     expect(data.nodes.length).toBeGreaterThan(0);
     expect(data.edges.length).toBe(0);
+  });
+  describe('Collecting groups', function () {
+    var doc = { 'Resources': { 'something': {'Type': 'AWS::IAM::Policy'}}};
+    var data = lib.collectData(doc);
+    xit('Will collect an aws-iam-policy group', function() {
+      var node = data.nodes[0];
+      expect(node.group).toBe('aws-iam-policy');
+    });
+    it('Will collect the aws-iam-policy group for the first node', function() {
+      var node = data.nodes[0];
+      expect(node.group).toBe('aws-iam-policy');
+    });
+    it('will set the aws-iam-policy image for the first node', function() {
+      var node = data.nodes[0];
+      expect(node.shape).toBe('image');
+      expect(node.image).toBe('images/aws-iam-policy.png');
+    });
   });
   describe('IAM policies', function() {
     it('Should have an edge to another resource', function() {
