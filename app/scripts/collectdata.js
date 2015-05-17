@@ -1,5 +1,6 @@
 /* jshint devel:true */
-var findedges_lib = require('./findedges')
+/* global exports, require */
+var findEdges = require('./findedges').findEdges;
 exports.graphOptions = {
   'nodes': {
     'brokenImage': 'images/unknown.png'
@@ -14,6 +15,9 @@ exports.collectData = function(json) {
   var data = { nodes:[], edges:[] };
   var knownResources = [];
   var possibleEdges = [];
+  var addEdge = function (toId, title){
+      possibleEdges.push( {'from': resourceKey, 'to': toId, 'title': title } );
+    };
   for (var resourceKey in json.Resources) {
     var resource = json.Resources[resourceKey];
     var props = resource.Properties;
@@ -26,9 +30,7 @@ exports.collectData = function(json) {
       'shape': 'image',
       'image': 'images/' + group + '.png'
     });
-    findedges_lib.findEdges(props, function (toId, title){
-      possibleEdges.push( {'from': resourceKey, 'to': toId, 'title': title } );
-    });
+    findEdges(props, addEdge);
   }
   data.edges = possibleEdges.filter(function(edge) {
     return edge && knownResources.indexOf(edge.to) >= 0;

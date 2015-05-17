@@ -1,20 +1,20 @@
 /* jshint devel:true */
-/* global ace, vis, collectData, js_beautify, saveAs */
+/* global ace, vis, saveAs, require */
 
 (function(){'use strict';
   var editor;
-  var graph_lib = require('./collectdata');
+  var collector = require('./collectdata');
   var graph;
-  var graph_pane;
+  var graphPane;
   editor = ace.edit('jsoneditor');
   editor.setTheme('ace/theme/tomorrow_night_eighties');
   editor.getSession().setMode('ace/mode/json');
   editor.setOption('maxLines', 60);
   editor.setOption('minLines', 40);
-  editor.getSession().on('changeAnnotation', function(o) {
+  editor.getSession().on('changeAnnotation', function() {
     var annotations = editor.getSession().getAnnotations();
     $('#statusbar').toggleClass('failure', annotations.length !== 0);
-    if (annotations.length == 0) {
+    if (annotations.length === 0) {
       var message = editor.getSession().getLength() < 2 && editor.getSession().getLine(0).length === 0 ? 'No content' : 'Valid';
       $('div.status-message').text(message);
     }
@@ -23,17 +23,17 @@
       $('div.status-message').text(firstAnnotation.text + ' at '+ firstAnnotation.row + ':'+ firstAnnotation.column);
     }
   });
-  var StatusBar = ace.require("ace/ext/statusbar").StatusBar;
+  var StatusBar = ace.require('ace/ext/statusbar').StatusBar;
   // create a simple selection status indicator
-  var statusBar = new StatusBar(editor, document.getElementById("statusbar"));
+  new StatusBar(editor, document.getElementById('statusbar'));
   editor.commands.addCommand({
-    name: "showKeyboardShortcuts",
-    bindKey: {win: "Ctrl-Alt-h", mac: "Command-Alt-h"},
+    name: 'showKeyboardShortcuts',
+    bindKey: {win: 'Ctrl-Alt-h', mac: 'Command-Alt-h'},
     exec: function(editor) {
-      ace.config.loadModule("ace/ext/keybinding_menu", function(module) {
+      ace.config.loadModule('ace/ext/keybinding_menu', function(module) {
         module.init(editor);
         editor.showKeyboardShortcuts();
-      })
+      });
     }
   });
 
@@ -62,20 +62,20 @@
   var showGraph = function() {
     var data;
     try {
-      data = graph_lib.collectData(JSON.parse(editor.getValue()));
+      data = collector.collectData(JSON.parse(editor.getValue()));
     }
     catch (e) {
       data = {};
     }
-    if (!graph_pane) {
-      graph_pane = $('div.graph_overlay');
-      graph = new vis.Network($('#graph_area').get(0), { options: graph_lib.graphOptions});
-      graph_pane.resize(function() {
+    if (!graphPane) {
+      graphPane = $('div.graph_overlay');
+      graph = new vis.Network($('#graph_area').get(0), { options: collector.graphOptions});
+      graphPane.resize(function() {
         graph.redraw();
         graph.zoomExtent();
       });
     }
-    graph_pane.fadeIn(300, function(){
+    graphPane.fadeIn(300, function(){
       graph.setData(data);
       graph.redraw();
       graph.zoomExtent({easingFunction: 'linear'});
@@ -84,12 +84,12 @@
   var getTemplateDescription = function() {
     var description = 'template';
     try {
-      description = JSON.parse(editor.getValue(editor.getValue()))['Description'];
+      description = JSON.parse(editor.getValue(editor.getValue())).Description;
     } catch (e) {}
     return description;
   };
   var saveImage = function() {
-    var canvas = graph_pane.find('canvas');
+    var canvas = graphPane.find('canvas');
     if (canvas && canvas.length === 1) {
       canvas[0].toBlob(function(blob){
         saveAs(blob, getTemplateDescription() + '.png');
@@ -107,5 +107,5 @@
   $('#save_template').click(function(event){ event.preventDefault(); saveTemplate(); return false;});
   $('#save_graph').click(function(event){ event.preventDefault(); saveImage(); return false;});
   $('#show_graph').click(function(event){ event.preventDefault(); showGraph(); return false;});
-  $('#close_graph').click(function(event){ event.preventDefault(); graph_pane.fadeOut(500); return false;});
+  $('#close_graph').click(function(event){ event.preventDefault(); graphPane.fadeOut(500); return false;});
 })();

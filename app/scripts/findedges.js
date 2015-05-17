@@ -1,7 +1,7 @@
 /* jshint devel:true */
+/* global exports */
 exports.findEdges = function findIn (start, makeEdge, title) {
   'use strict';
-  var self = this;
   if (start instanceof Array) {
     start.forEach(function(elem){
       findIn(elem, makeEdge, title || '');
