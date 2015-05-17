@@ -32,7 +32,7 @@
     exec: function(editor) {
       ace.config.loadModule("ace/ext/keybinding_menu", function(module) {
         module.init(editor);
-        editor.showKeyboardShortcuts()
+        editor.showKeyboardShortcuts();
       })
     }
   });
