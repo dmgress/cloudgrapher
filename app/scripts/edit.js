@@ -5,6 +5,7 @@
   var editor;
   var graph_lib = require('./collectdata');
   var graph;
+  var graph_pane;
   editor = ace.edit('jsoneditor');
   editor.setTheme('ace/theme/tomorrow_night_eighties');
   editor.getSession().setMode('ace/mode/json');
@@ -35,24 +36,7 @@
       })
     }
   });
-  var graphcontainer = document.getElementById('graph-container');
-  var graphOptions = {
-    'edges': {
-      'style' : 'arrow',
-      'color.highlight': 'red'
-    }
-  };
 
-  var updateGraph = function(json){
-    var data = graph_lib.collectData(json);
-    if(!graph){
-      graph = new vis.Network(graphcontainer, data, graphOptions);
-      graphcontainer.className = graphcontainer.className.replace(/(?:^|\s)callout(?!\S)/g , '');
-    }
-    else {
-      graph.setData(data);
-    }
-  };
   var mainRow = document.getElementById('cfeditor');
   mainRow.addEventListener('dragover', function(evt) {
     evt.stopPropagation();
@@ -76,9 +60,33 @@
     reader.readAsText(files[0]);
   }, false);
   var showGraph = function() {
-    var cfscript = editor.getValue();
-    updateGraph(JSON.parse(cfscript));
-
+    var data;
+    try {
+      data = graph_lib.collectData(JSON.parse(editor.getValue()));
+    }
+    catch (e) {
+      data = {};
+    }
+    var graphOptions = {
+      'edges': {
+        'style' : 'arrow',
+        'color.highlight': 'red'
+      }
+    };
+    if (!graph_pane) {
+      graph_pane = $('div.graph_overlay');
+      graph = new vis.Network($('#graph_area').get(0), { options: graphOptions});
+      graph_pane.resize(function() {
+        graph.redraw();
+        graph.zoomExtent();
+      });
+    }
+    graph_pane.fadeIn(300, function(){
+      graph.setData(data);
+      graph.redraw();
+      graph.zoomExtent({easingFunction: 'linear'});
+    });
+  };
   };
   var saveImage = function() {
     var canvas = graphcontainer.getElementsByTagName('canvas');
@@ -98,6 +106,6 @@
     console.log(prettyDoc);
   };
   $('#save_template').click(function(){ saveTemplate(); return false;});
-  $('#save_graph').click(function(){ saveImage(); return false;});
-  $('#show_graph').click(function(){ saveImage(); return false;});
+  $('#show_graph').click(function(event){ event.preventDefault(); showGraph(); return false;});
+  $('#close_graph').click(function(event){ event.preventDefault(); graph_pane.fadeOut(500); return false;});
 })();

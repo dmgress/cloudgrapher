@@ -131,3 +131,23 @@ a:hover {
   font-family: monospace;
   font-size: small;
 }
+.graph_overlay {
+  z-index: 8001;
+  height: 100%;
+  min-height: 100%;
+  width: 100%;
+  min-width: 100%;
+  position: fixed;
+  top: 0;
+  left: 0;
+  background-color: rgba(0,0,0,0.75);
+  display: none;
+}
+#graph_area {
+  margin: 5%;
+  padding: 10px;
+  height: 800px;
+  background-color: white;
+  border: solid silver;
+  border-width: 1px;
+}
