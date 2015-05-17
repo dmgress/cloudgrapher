@@ -1,61 +1,61 @@
 <!doctype html>
 <html lang="en" class="no-js">
     <head>
+        <title>cfedit</title>
         <meta charset="utf-8">
         <meta name="description" content="">
         <meta name="viewport" content="width=device-width, initial-scale=1, minimal-ui">
         <link href="//maxcdn.bootstrapcdn.com/font-awesome/4.2.0/css/font-awesome.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="../bower_components/foundation/css/normalize.css">
-  <link rel="stylesheet" href="../bower_components/foundation/css/foundation.css">
-  <link rel="stylesheet" href="styles/main.css">
-    <link rel="stylesheet" href="../bower_components/vis/dist/vis.css">
-        <title>cfedit</title>
-        <script src="../bower_components/foundation/js/vendor/modernizr.js"></script>
-        </head>
+        <link rel="stylesheet" href="styles/main.css">
+        <link rel="stylesheet" href="../bower_components/vis/dist/vis.css">
+    </head>
     <body>
-        <header>
+    <header>
         <!--[if lt IE 10]>
-            <p class="browsehappy">You are using an <strong>outdated</strong> browser. Please <a href="http://browsehappy.com/">upgrade your browser</a> to improve your experience.</p>
+        <p class="browsehappy">You are using an <strong>outdated</strong> browser. Please <a href="http://browsehappy.com/">upgrade your browser</a> to improve your experience.</p>
         <![endif]-->
-            <h1>CloudFormation editor</h1>
-            <div class="button-bar">
+        <div class="row">
+            <div class="nav-bar right">
                 <ul class="button-group">
                     <li><a href="#" class="button">Open template</a></li>
                     <li><a id="save_template" href="#" class="button">Save template</a></li>
-                </ul>
-                <ul class="button-group right">
-                    <li><a id="save_graph" href="#" class="button">Save graph as PNG</a></li>
+                    <li><a id="show_graph" href="#" class="button">Show graph</a></li>
                 </ul>
             </div>
-                <div id="templateStatus" data-alert class="alert-box success" tabindex="0" aria-live="assertive" role="dialogalert">
-                    <strong id="statusTitle">Your content goes here</strong>
-                    </div>
+            <h1>CloudFormation editor</h1>
             <hr />
-        </header>
-        <main>
-            <div id="cfeditor" class="row">
-                <div class="column small-12 medium-6" >
-                    <div id="jsoneditor" style="600px"></div>
-                </div>
-                <div class="column small-12 medium-6">
-                    <h3 class="graphheader">Graph representation</h3>
-                    <span class="show-for-medium-up" style="height: 58px">&nbsp;</span>
-                    <div id="graph-container" class="panel callout"><h4><em>None</em></h4></div>
-                </div>
+        </div>
+    </header>
+    <main>
+        <div id="cfeditor" class="row">
+            <pre id="jsoneditor"></pre>
+            <div id="statusbar" class="status-bar">
+                <div class="status-icon"></div>
+                <div class="status-message">No content</div>
             </div>
-        </main>
-        <footer>
+        </div>
+      <div class="graph_overlay">
+            <div class="nav-bar right">
+                <ul class="button-group">
+                    <li><a id="save_graph" href="#" class="button">Save graph</a></li>
+                    <li><a id="close_graph" href="#" class="button">Close graph</a></li>
+                </ul>
+            </div>
+        <div id="graph_area" class="graph_area"></div></div>
+    </main>
+    <footer>
+        <div class="row">
             <hr />
             <span>Hi, this is the footer but it has no content!</span>
-        </footer>
-        <script src="schema/cloudformation.json"></script>
-        <script src="../bower_components/js-beautify/js/lib/beautify.js"></script>
-        <script src="../bower_components/canvas-toBlob.js/canvas-toBlob.js"></script>
-        <script src="../bower_components/FileSaver/FileSaver.js"></script>
-        <script src="../bower_components/vis/dist/vis.js"></script>
-        <script src="../bower_components/json-editor/dist/jsoneditor.js"></script>
-        <script src="../bower_components/foundation/js/vendor/jquery.js"></script>
-        <script src="../bower_components/foundation/js/foundation.min.js"></script>
-        <script src="scripts/main.js"></script>
-    </body>
+        </div>
+    </footer>
+    <script src="schema/cloudformation.json"></script>
+    <script src="../bower_components/canvas-toBlob.js/canvas-toBlob.js"></script>
+    <script src="../bower_components/FileSaver/FileSaver.js"></script>
+    <script src="../bower_components/vis/dist/vis.js"></script>
+    <script src="../bower_components/foundation/js/vendor/jquery.js"></script>
+    <script src="../bower_components/ace-builds/src/ace.js"></script>
+    <script src="../bower_components/ace-builds/src/ext-statusbar.js"></script>
+    <script src="js/edit.js"></script>
+</body>
 </html>
