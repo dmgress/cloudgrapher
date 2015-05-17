@@ -8,9 +8,34 @@ var graph;
   editor = ace.edit('jsoneditor');
   editor.setTheme('ace/theme/tomorrow_night_eighties');
   editor.getSession().setMode('ace/mode/json');
-  editor.setOption('maxLines', 80);
-  editor.setOption('minLines', 80);
-
+  editor.setOption('maxLines', 60);
+  editor.setOption('minLines', 40);
+  editor.getSession().on('changeAnnotation', function(o) {
+    var annotations = editor.getSession().getAnnotations();
+    $('#templateStatus').removeClass('failure', annotations.length !== 0);
+    if (annotations.length == 0) {
+      $('#templateStatus').text('Valid');
+    }
+    else {
+      var firstAnnotation = annotations[0];
+      $('#templateStatus').text('First error ' + firstAnnotation.text + ' at '+ firstAnnotation.row + ':'+ firstAnnotation.column);
+    }
+    console.log('[session] changed annotations trigger:' + JSON.stringify(o));
+    console.log('[session] changed annotations:' + JSON.stringify(editor.getSession().getAnnotations()));
+  });
+  var StatusBar = ace.require("ace/ext/statusbar").StatusBar;
+  // create a simple selection status indicator
+  var statusBar = new StatusBar(editor, document.getElementById("statusbar"));
+  editor.commands.addCommand({
+    name: "showKeyboardShortcuts",
+    bindKey: {win: "Ctrl-Alt-h", mac: "Command-Alt-h"},
+    exec: function(editor) {
+      ace.config.loadModule("ace/ext/keybinding_menu", function(module) {
+        module.init(editor);
+        editor.showKeyboardShortcuts()
+      })
+    }
+  });
   var graphcontainer = document.getElementById('graph-container');
   var graphOptions = {
     'edges': {
@@ -69,12 +94,17 @@ var graph;
       var cfscript = reader.result;
       if (cfscript) {
         editor.setValue(cfscript);
-        updateGraph(JSON.parse(cfscript));
+        editor.navigateTo(0,0);
       }
       editor.resize();
     };
     reader.readAsText(files[0]);
   }, false);
+  var showGraph = function() {
+    var cfscript = editor.getValue();
+    updateGraph(JSON.parse(cfscript));
+
+  };
   var saveImage = function() {
     var canvas = graphcontainer.getElementsByTagName('canvas');
     if (canvas && canvas.length === 1) {
@@ -94,5 +124,6 @@ var graph;
   };
   $('#save_template').click(function(){ saveTemplate(); return false;});
   $('#save_graph').click(function(){ saveImage(); return false;});
+  $('#show_graph').click(function(){ saveImage(); return false;});
   checkValid();
 })();

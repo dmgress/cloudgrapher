@@ -15,13 +15,115 @@ h3.graphheader {
   padding-top: 10px;
 }
 hr {
-  margin: 0 20px;
-  padding: 10px;
+  margin: 5px 10px 0px;
+  border: solid #DDDDDD;
+  border-width: 1px 0 0;
+  clear: both;
+  height: 0;
+  -moz-box-sizing: content-box;
+  box-sizing: content-box;
+}
+*:before, *:after {
+  -webkit-box-sizing: border-box;
+  -moz-box-sizing: border-box;
+  box-sizing: border-box;
+}
+body {
+  background: #fff;
+  color: #222;
+  padding: 0;
+  margin: 0;
+  font-family: "Helvetica Neue", Helvetica, Roboto, Arial, sans-serif;
+  font-weight: normal;
+  font-style: normal;
+  line-height: 1.5;
+  position: relative;
+  cursor: auto;
+}
+html, body {
+  font-size: 100%;
 }
 footer {
   text-align: center;
 }
+div, dl, dt, dd, ul, ol, li, h1, h2, h3, h4, h5, h6, pre, form, p, blockquote, th, td {
+  margin: 0;
+  padding: 0;
+}
+.button-group {
+  list-style: none;
+  margin: 0 2px;
+  left: 0;
+}
+.button-group > li {
+  margin: 0 -2px;
+  display: inline-block;
+}
+button, .button {
+  border-style: solid;
+  border-width: 1px 0 1px 1px;
+  cursor: pointer;
+  font-family: "Helvetica Neue", Helvetica, Roboto, Arial, sans-serif;
+  font-weight: normal;
+  line-height: normal;
+  margin: 0 0 1.25rem;
+  position: relative;
+  text-decoration: none;
+  text-align: center;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  border-radius: 0;
+  display: inline-block;
+  padding-top: 1rem;
+  padding-right: 2rem;
+  padding-bottom: 1.0625rem;
+  padding-left: 2rem;
+  font-size: 1rem;
+  background-color: #008CBA;
+  border-color: #FFFFF;
+  color: #FFFFFF;
+  transition: background-color 300ms ease-out;
+}
+.button:hover {
+  background-color: #007095;
+}
+a:hover {
+  cursor: pointer;
+}
+.right {
+  float: right;
+}
 #json-editor,
 #graph-container {
-  height: 800px;
+  height: 600px;
+}
+.ace_editor {
+  margin: 0 10px;
+}
+.row {
+  margin: 5px 10px;
+}
+.alert-box {
+  padding: 0 10px;
+  background-color: greenyellow;
+}
+.failure {
+  background-color: red;
+}
+#statusbar {
+  position: absolute;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #FFFFFF;
+  right: 2em;
+  bottom: 2.5em;
+  height: 1.5em;
+  z-index: 10;
+  padding: 0.2rem 0.35rem;
+  background-color: rgba(0, 0, 0, 0);
+  color: whitesmoke;
+}
+#ace_settingsmenu, #kbshortcutmenu {
+  font-family: monospace;
+  font-size: small;
 }
