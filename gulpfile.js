@@ -4,16 +4,27 @@
 var gulp = require('gulp');
 var browserify = require('browserify');
 var transform = require('vinyl-transform');
-var uglify = require('gulp-uglify');
-var sourcemaps = require('gulp-sourcemaps');
 var $ = require('gulp-load-plugins')();
+
+var AUTOPREFIXER_BROWSERS = [
+  'ie >= 10',
+  'ie_mob >= 10',
+  'ff >= 30',
+  'chrome >= 34',
+  'safari >= 7',
+  'opera >= 23',
+  'ios >= 7',
+  'android >= 4.4',
+  'bb >= 10'
+];
 
 gulp.task('styles', function () {
   return gulp.src(['app/styles/main.css'])
-    .pipe($.autoprefixer({browsers: ['last 1 version']}))
+    .pipe($.autoprefixer(AUTOPREFIXER_BROWSERS))
     .pipe(gulp.dest('.tmp/styles'));
 });
 
+// Lint JavaScript
 gulp.task('jshint', function () {
   return gulp.src('app/scripts/**/*.js')
     .pipe($.jshint())
@@ -30,32 +41,34 @@ gulp.task('javascript', function () {
 
   return gulp.src('app/scripts/edit.js')
     .pipe(browserified)
-    .pipe(sourcemaps.init({loadMaps: true}))
+    .pipe($.sourcemaps.init({loadMaps: true}))
         // Add transformation tasks to the pipeline here.
-       .pipe(uglify())
-    .pipe(sourcemaps.write('./'))
-    .pipe(gulp.dest('.tmp/js/'));
+       .pipe($.uglify())
+    .pipe($.sourcemaps.write('./'))
+    .pipe(gulp.dest('.tmp/js'));
 });
 
 gulp.task('html', ['styles', 'javascript'], function () {
-  var assets = $.useref.assets({searchPath: '{.tmp,app}'});
+  var assets = $.useref.assets({searchPath: ['.tmp','app','.']});
+  //var assets = $.useref.assets();
 
   return gulp.src('app/*.html')
     .pipe(assets)
     .pipe($.if('*.css', $.csso()))
     .pipe(assets.restore())
     .pipe($.useref())
-    .pipe($.if('*.html', $.minifyHtml({conditionals: true, loose: true})))
+    //.pipe($.if('*.html', $.minifyHtml({conditionals: true, loose: true})))
     .pipe(gulp.dest('dist'));
 });
 
+//Optimize images
 gulp.task('images', function () {
   return gulp.src('app/images/**/*')
     .pipe($.cache($.imagemin({
       progressive: true,
       interlaced: true
     })))
-    .pipe(gulp.dest('dist/images'));
+    .pipe(gulp.dest('dist/images')).pipe($.size({title: 'images'}));
 });
 
 gulp.task('fonts', function () {
@@ -69,6 +82,8 @@ gulp.task('extras', function () {
   return gulp.src([
     'app/*.*',
     '!app/*.html',
+    '!app/**/*~',
+    '!app/**/*swp',
     'node_modules/apache-server-configs/dist/.htaccess'
   ], {
     dot: true

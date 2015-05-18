@@ -6,8 +6,12 @@
         <meta name="description" content="">
         <meta name="viewport" content="width=device-width, initial-scale=1, minimal-ui">
         <link href="//maxcdn.bootstrapcdn.com/font-awesome/4.2.0/css/font-awesome.min.css" rel="stylesheet">
+        <!-- build:css styles/main.css -->
         <link rel="stylesheet" href="styles/main.css">
+        <!-- endbuild -->
+        <!-- build:css styles/vis.css -->
         <link rel="stylesheet" href="../bower_components/vis/dist/vis.css">
+        <!-- endbuild -->
     </head>
     <body>
     <header>
@@ -49,13 +53,26 @@
             <span>Hi, this is the footer but it has no content!</span>
         </div>
     </footer>
-    <script src="schema/cloudformation.json"></script>
+    <!-- build:js js/canvas-toBlob.js -->
     <script src="../bower_components/canvas-toBlob.js/canvas-toBlob.js"></script>
+    <!-- endbuild -->
+    <!-- build:js js/FileSaver.js -->
     <script src="../bower_components/FileSaver/FileSaver.js"></script>
+    <!-- endbuild -->
+    <!-- build:js js/vis.js -->
     <script src="../bower_components/vis/dist/vis.js"></script>
+    <!-- endbuild -->
+    <!-- build:js js/jquery.js -->
     <script src="../bower_components/foundation/js/vendor/jquery.js"></script>
+    <!-- endbuild -->
+    <!-- build:js js/ace.js -->
     <script src="../bower_components/ace-builds/src/ace.js"></script>
+    <!-- endbuild -->
+    <!-- build:js js/ext-statusbar.js -->
     <script src="../bower_components/ace-builds/src/ext-statusbar.js"></script>
+    <!-- endbuild -->
+    <!-- build:js js/edit.js -->
     <script src="js/edit.js"></script>
+    <!-- endbuild -->
 </body>
 </html>
