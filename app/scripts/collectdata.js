@@ -8,7 +8,9 @@ exports.graphOptions = {
   'edges': {
     'style' : 'arrow',
     'color.highlight': 'red'
-  }
+  },
+  'stabilize': true,
+    'zoomExtentOnStabilize': true
 };
 exports.collectData = function(json) {
   'use strict';

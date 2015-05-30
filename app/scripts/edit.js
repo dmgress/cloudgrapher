@@ -69,14 +69,13 @@
     }
     if (!graphPane) {
       graphPane = $('div.graph_overlay');
-      graph = new vis.Network($('#graph_area').get(0), { options: collector.graphOptions});
+      graph = new vis.Network($('#graph_area').get(0), data, collector.graphOptions);
       graphPane.resize(function() {
         graph.redraw();
         graph.zoomExtent();
       });
     }
     graphPane.fadeIn(300, function(){
-      graph.setData(data);
       graph.redraw();
       graph.zoomExtent({easingFunction: 'linear'});
     });
