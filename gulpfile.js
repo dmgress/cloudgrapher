@@ -116,6 +116,17 @@ gulp.task('serve', ['connect', 'watch'], function () {
   require('opn')('http://localhost:9000');
 });
 
+// serve from build to ensure everything is there
+gulp.task('serve-build', ['clean'], function () {
+  gulp.start('build');
+  var serveStatic = require('serve-static');
+  var serveIndex = require('serve-index');
+  var app = require('connect')().use(serveStatic('dist')).use(serveIndex('dist'));
+  require('http').createServer(app).listen(9000).on('listening', function () {
+    console.log('Serving distribution at http://localhost:9000');
+  });
+});
+
 // inject bower components
 gulp.task('wiredep', function () {
   var wiredep = require('wiredep').stream;
