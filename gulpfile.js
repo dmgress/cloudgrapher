@@ -93,6 +93,12 @@ gulp.task('extras', function () {
   }).pipe(gulp.dest('dist'));
 });
 
+// clear all caches created by gulp-cache
+// do this if weird stuff happens with for instance images
+gulp.task('clear', function (done) {
+  return $.cache.clearAll(done);
+});
+
 gulp.task('clean', require('del').bind(null, ['.tmp', 'dist']));
 
 gulp.task('connect', function () {
