@@ -63,7 +63,10 @@ gulp.task('html', ['styles', 'javascript'], function () {
 
 //Optimize images
 gulp.task('images', function () {
-  return gulp.src('app/images/**/*')
+  return gulp.src([
+      'app/images/**/aws*.png',
+      'app/images/**/unknown.png'
+    ])
     .pipe($.cache($.imagemin({
       progressive: true,
       interlaced: true
