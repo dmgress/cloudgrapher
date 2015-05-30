@@ -155,6 +155,13 @@ gulp.task('test-watch', function () {
 });
 
 gulp.task('build', ['jshint', 'html', 'images', 'fonts', 'extras'], function () {
+  gulp.src([
+      'bower_components/ace-builds/src-min-noconflict/theme-tomorrow_night_eighties.js',
+      'bower_components/ace-builds/src-min-noconflict/worker-json.js',
+      'bower_components/ace-builds/src-min-noconflict/mode-json.js'
+    ])
+    .pipe($.size({title: 'copy ace js'}))
+    .pipe(gulp.dest('dist/js/ace/'));
   return gulp.src('dist/**/*').pipe($.size({title: 'build', gzip: true}));
 });
 
