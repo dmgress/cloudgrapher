@@ -39,7 +39,7 @@
 
   var loadTemplate = function(file){
     var reader = new FileReader();
-    reader.onload = function (e) {
+    reader.onload = function () {
       var data = reader.result;
       if(data) {
         editor.setValue(data);
