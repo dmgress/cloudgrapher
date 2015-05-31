@@ -151,3 +151,6 @@ a:hover {
   border: solid silver;
   border-width: 1px;
 }
+input[type=file] {
+  display: none
+}

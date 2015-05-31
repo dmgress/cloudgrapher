@@ -47,18 +47,21 @@
     evt.stopPropagation();
     evt.preventDefault();
 
-    var files = evt.dataTransfer.files;
+    var file = evt.dataTransfer.files[0];
+    loadTemplate(file);
+  }, false);
+  var loadTemplate = function(file){
     var reader = new FileReader();
-    reader.onload = function () {
-      var cfscript = reader.result;
-      if (cfscript) {
-        editor.setValue(cfscript);
-        editor.navigateTo(0,0);
+    reader.onload = function (e) {
+      var data = reader.result;
+      if(data) {
+        editor.setValue(data);
+        editor.navigateTo(0, 0);
       }
       editor.resize();
     };
-    reader.readAsText(files[0]);
-  }, false);
+    reader.readAsText(file);
+  };
   var showGraph = function() {
     var data;
     try {
@@ -103,6 +106,10 @@
     var blob = new Blob([prettyDoc], {type: 'text/plain;charset=utf-8'});
     saveAs(blob, getTemplateDescription() + '.json');
   };
+  $('#open_template').change(function(event){
+    var file = event.target.files[0];
+    loadTemplate(file);
+  });
   $('#save_template').click(function(event){ event.preventDefault(); saveTemplate(); return false;});
   $('#save_graph').click(function(event){ event.preventDefault(); saveImage(); return false;});
   $('#show_graph').click(function(event){ event.preventDefault(); showGraph(); return false;});
