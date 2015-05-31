@@ -37,19 +37,6 @@
     }
   });
 
-  var mainRow = document.getElementById('cfeditor');
-  mainRow.addEventListener('dragover', function(evt) {
-    evt.stopPropagation();
-    evt.preventDefault();
-    evt.dataTransfer.dropEffect = 'copy';
-  }, false);
-  mainRow.addEventListener('drop', function(evt) {
-    evt.stopPropagation();
-    evt.preventDefault();
-
-    var file = evt.dataTransfer.files[0];
-    loadTemplate(file);
-  }, false);
   var loadTemplate = function(file){
     var reader = new FileReader();
     reader.onload = function (e) {
@@ -106,10 +93,19 @@
     var blob = new Blob([prettyDoc], {type: 'text/plain;charset=utf-8'});
     saveAs(blob, getTemplateDescription() + '.json');
   };
-  $('#open_template').change(function(event){
-    var file = event.target.files[0];
-    loadTemplate(file);
-  });
+  var mainRow = document.getElementById('cfeditor');
+  mainRow.addEventListener('dragover', function(evt) {
+    evt.stopPropagation();
+    evt.preventDefault();
+    evt.dataTransfer.dropEffect = 'copy';
+  }, false);
+  mainRow.addEventListener('drop', function(evt) {
+    evt.stopPropagation();
+    evt.preventDefault();
+
+    loadTemplate(evt.dataTransfer.files[0]);
+  }, false);
+  $('#open_template').change(function(event){ loadTemplate(event.target.files[0]); });
   $('#save_template').click(function(event){ event.preventDefault(); saveTemplate(); return false;});
   $('#save_graph').click(function(event){ event.preventDefault(); saveImage(); return false;});
   $('#show_graph').click(function(event){ event.preventDefault(); showGraph(); return false;});
