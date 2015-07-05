@@ -49,7 +49,7 @@
     };
     reader.readAsText(file);
   };
-  var showGraph = function() {
+  var showVisGraph = function() {
     var data;
     try {
       data = collector.collectData(JSON.parse(editor.getValue()));
@@ -64,6 +64,9 @@
         graph.redraw();
         graph.zoomExtent();
       });
+    }
+    else {
+      graph.setData(data);
     }
     graphPane.fadeIn(300, function(){
       graph.redraw();
@@ -108,6 +111,6 @@
   $('#open_template').change(function(event){ loadTemplate(event.target.files[0]); });
   $('#save_template').click(function(event){ event.preventDefault(); saveTemplate(); return false;});
   $('#save_graph').click(function(event){ event.preventDefault(); saveImage(); return false;});
-  $('#show_graph').click(function(event){ event.preventDefault(); showGraph(); return false;});
+  $('#show_graph').click(function(event){ event.preventDefault(); showVisGraph(); return false;});
   $('#close_graph').click(function(event){ event.preventDefault(); graphPane.fadeOut(500); return false;});
 })();
