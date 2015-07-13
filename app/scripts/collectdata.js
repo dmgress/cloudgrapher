@@ -39,3 +39,38 @@ exports.collectData = function(json) {
   });
   return data;
 };
+
+exports.collectCyData = function(json) {
+  var data = { nodes:[], edges:[] };
+  var edgeIndex = 0;
+
+  var addEdge = function (toId, title) {
+    data.edges.push({ data: { id: 'e'+ (edgeIndex++), source: resourceKey, target: toId }});
+  };
+
+  var knownResources = {};
+  for (var resourceKey in json.Resources) {
+    var resource = json.Resources[resourceKey];
+    var r = {
+      data: {
+        id: resourceKey
+      },
+      classes: resource.Type.toLowerCase().replace(/::/g,'-'),
+      type: resource.Type
+    };
+    findEdges(resource.Properties, addEdge);
+    knownResources[resourceKey] = r;
+    data.nodes.push(r);
+  };
+
+  data.edges = data.edges.filter(function(edge) {
+    var target = knownResources[edge.data.target];
+    if (target && target.type === 'AWS::EC2::SecurityGroup'){
+      knownResources[edge.data.source].data['parent'] = edge.data.target;
+      return false;
+    }
+    return edge && target;
+  });
+
+  return data;
+};

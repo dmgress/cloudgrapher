@@ -8,6 +8,7 @@
     "js-beautify": "~1.5.4",
     "ace-builds": "1.1.8",
     "aws-sdk-js": "~2.1.18",
-    "jquery": "~2.1.4"
+    "jquery": "~2.1.4",
+    "cytoscape": "~2.4.2"
   }
 }

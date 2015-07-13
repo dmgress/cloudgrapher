@@ -49,29 +49,65 @@
     };
     reader.readAsText(file);
   };
-  var showVisGraph = function() {
+  var showCyGraph = function() {
     var data;
     try {
-      data = collector.collectData(JSON.parse(editor.getValue()));
+      data = collector.collectCyData(JSON.parse(editor.getValue()));
     }
     catch (e) {
       data = {};
     }
+    console.log(data);
     if (!graphPane) {
       graphPane = $('div.graph_overlay');
-      graph = new vis.Network($('#graph_area').get(0), data, collector.graphOptions);
-      graphPane.resize(function() {
-        graph.redraw();
-        graph.zoomExtent();
+    };
+      graph = cytoscape({
+        container: document.getElementById('graph_area'),
+        elements: data,
+
+        style: [
+        {
+          selector: 'node',
+          css: {
+            'content': 'data(id)',
+            'text-valign': 'center',
+            'text-halign': 'center'
+          }
+        },
+        {
+          selector: '$node > node',
+          css: {
+            'padding-top': '10px',
+            'padding-left': '10px',
+            'padding-bottom': '10px',
+              'padding-right': '10px',
+              'text-valign': 'top',
+                'text-halign': 'center'
+          }
+        },
+          {
+            selector: 'edge',
+            css: {
+              'target-arrow-shape': 'triangle'
+            }
+          },
+          {
+            selector: ':selected',
+            css: {
+              'background-color': 'black',
+              'line-color': 'black',
+              'target-arrow-color': 'black',
+                'source-arrow-color': 'black'
+            }
+          }
+        ],
+
+        layout: {
+          name: 'cose',
+          padding: 5
+        }
       });
-    }
-    else {
-      graph.setData(data);
-    }
-    graphPane.fadeIn(300, function(){
-      graph.redraw();
-      graph.zoomExtent({easingFunction: 'linear'});
-    });
+    graphPane.fadeIn(300);
   };
   var getTemplateDescription = function() {
     var description = 'template';
@@ -111,6 +147,6 @@
   $('#open_template').change(function(event){ loadTemplate(event.target.files[0]); });
   $('#save_template').click(function(event){ event.preventDefault(); saveTemplate(); return false;});
   $('#save_graph').click(function(event){ event.preventDefault(); saveImage(); return false;});
-  $('#show_graph').click(function(event){ event.preventDefault(); showVisGraph(); return false;});
+  $('#show_graph').click(function(event){ event.preventDefault(); showCyGraph(); return false;});
   $('#close_graph').click(function(event){ event.preventDefault(); graphPane.fadeOut(500); return false;});
 })();

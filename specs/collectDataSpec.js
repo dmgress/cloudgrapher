@@ -62,3 +62,49 @@ describe('collectData', function() {
     });
   });
 });
+describe('collectCyData', function() {
+  it('Wont have nodes and edges when the doc is empty', function() {
+    var doc = {};
+    var data = lib.collectCyData(doc);
+    expect(data.nodes.length).toBe(0);
+    expect(data.edges.length).toBe(0);
+  });
+  it('Will have a node when there is a resource', function() {
+    var doc = { 'Resources': { 'something': {'Type': 'something'}}};
+    var data = lib.collectCyData(doc);
+    expect(data.nodes.length).toBeGreaterThan(0);
+    expect(data.edges.length).toBe(0);
+  });
+  it('Should have an edge to a role', function() {
+    var resources = {
+      'something': {'Type': 'something'},
+      'policy': {
+        'Type': 'AWS::IAM::Policy',
+        'Properties': {
+          'Roles': [ { 'Ref': 'something' } ]
+        }
+      },
+    };
+    var data = lib.collectCyData({ 'Resources': resources});
+    expect(data.edges.length).toBe(1);
+  });
+  it('Will have an EC2 instance with SecurityGroup as parent', function() {
+    var doc = {
+      'Resources': {
+        'instance': {
+          'Type': 'AWS::EC2::Instance',
+          'Properties': {
+            'NetworkInterfaces': [{
+              'GroupSet': [ { 'Ref': 'SG' } ],
+            }]
+          }
+        },
+        'SG': {'Type': 'AWS::EC2::SecurityGroup' }
+      }
+    };
+    var data = lib.collectCyData(doc);
+    expect(data.nodes.length).toBeGreaterThan(0);
+    expect(data.edges.length).toBe(0);
+    expect(data.nodes[0].data['parent']).toBe('SG');
+  });
+});
