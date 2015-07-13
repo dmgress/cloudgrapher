@@ -10,7 +10,7 @@ exports.graphOptions = {
     'color.highlight': 'red'
   },
   'stabilize': true,
-    'zoomExtentOnStabilize': true
+  'zoomExtentOnStabilize': true
 };
 exports.collectData = function(json) {
   'use strict';
@@ -18,8 +18,8 @@ exports.collectData = function(json) {
   var knownResources = [];
   var possibleEdges = [];
   var addEdge = function (toId, title){
-      possibleEdges.push( {'from': resourceKey, 'to': toId, 'title': title } );
-    };
+    possibleEdges.push( {'from': resourceKey, 'to': toId, 'title': title } );
+  };
   for (var resourceKey in json.Resources) {
     var resource = json.Resources[resourceKey];
     var props = resource.Properties;
@@ -33,7 +33,7 @@ exports.collectData = function(json) {
       'image': 'images/' + group + '.png'
     });
     findEdges(props, addEdge);
-  }
+  };
   data.edges = possibleEdges.filter(function(edge) {
     return edge && knownResources.indexOf(edge.to) >= 0;
   });
