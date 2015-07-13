@@ -1,8 +1,11 @@
-Added two versions for editor, need to pick one
+# Cloud Grapher
+Cloud Grapher is a simple one page editor and visualization tool for CloudFormation scripts.
 
-1. index.html is sort of abandoned, but it uses josdejong's JSON editor
-2. index2.html is active, it uses jdorn's JSON editor which is backed
-  by JSON Schema validation AND it uses Vis to show a graph
+Writing CloudFormation scripts can be a painstaking job and understanding somebody else's script burns brain cells. Cloud grapher should reduce some of the pain. Visualizing scripts is better for presentations as well.
 
-Both options allow to drag a file onto the editor without validating if
- it's going well at all. Option 2 allows saving template + graph
+Current features:
+* basic editing using ace
+* opening a script by dropping it on the editor or using the menu
+* saving a script
+* showing a graph generated with vis.js
+* saving the graph
