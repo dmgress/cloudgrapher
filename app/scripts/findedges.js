@@ -11,7 +11,7 @@ exports.findEdges = function findIn (start, makeEdge, title) {
     if (Object.keys(start).length === 1) {
       var fn = Object.keys(start)[0];
       if (fn === 'Ref' && typeof start[fn] === 'string') {
-        makeEdge(start[fn], title || '');
+        makeEdge(start[fn], title || '', title);
       }
       else if (fn === 'Fn::Join' && start[fn] instanceof Array) {
         start[fn][1].forEach(function(elem) {
@@ -19,7 +19,7 @@ exports.findEdges = function findIn (start, makeEdge, title) {
         });
       }
       else if (fn === 'Fn::GetAtt' && start[fn] instanceof Array) {
-        makeEdge(start[fn][0], start[fn][1]);
+        makeEdge(start[fn][0], start[fn][1], title);
       }
       else {
         for (var key in start) {
