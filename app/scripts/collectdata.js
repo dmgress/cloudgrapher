@@ -40,12 +40,47 @@ exports.collectData = function(json) {
   return data;
 };
 
+
 exports.collectCyData = function(json) {
+  var edgeFilters = {
+    'AWS::EC2::SecurityGroupIngress': function(edge, source, target){
+      if (edge.data.resource === 'GroupId') {
+        // NOOP the direction is good
+      }
+      else if (edge.data.resource === 'SourceSecurityGroupId') {
+        var newTarget = edge.data.source;
+        edge.data.source = edge.data.target;
+        edge.data.target = newTarget;
+      }
+      return true;
+    },
+    'AWS::EC2::SecurityGroupEgress': function(edge, source, target) {
+      if (edge.data.resource === 'DestinationSecurityGroupId') {
+        // NOOP the direction is good
+      }
+      else if (edge.data.resource === 'GroupId') {
+        var newTarget = edge.data.source;
+        edge.data.source = edge.data.target;
+        edge.data.target = newTarget;
+      }
+      return true;
+    },
+    'default': function(edge, source, target) {
+      if (target && target.type === 'AWS::EC2::SecurityGroup'){
+        knownResources[edge.data.source].data['parent'] = edge.data.target;
+        return false;
+      }
+      return true;
+    },
+    'get': function(awsType) {
+      return this[awsType] || this['default'];
+    }
+  };
   var data = { nodes:[], edges:[] };
   var edgeIndex = 0;
 
-  var addEdge = function (toId, title) {
-    data.edges.push({ data: { id: 'e'+ (edgeIndex++), source: resourceKey, target: toId }});
+  var addEdge = function (toId, title, resource) {
+    data.edges.push({ data: { id: 'e'+ (edgeIndex++), source: resourceKey, target: toId, title: title, resource: resource }});
   };
 
   var knownResources = {};
@@ -64,12 +99,10 @@ exports.collectCyData = function(json) {
   };
 
   data.edges = data.edges.filter(function(edge) {
+    var source = knownResources[edge.data.source];
     var target = knownResources[edge.data.target];
-    if (target && target.type === 'AWS::EC2::SecurityGroup'){
-      knownResources[edge.data.source].data['parent'] = edge.data.target;
-      return false;
-    }
-    return edge && target;
+    var filter = edgeFilters.get(source.type);
+    return edge && source && target && filter(edge, source, target);
   });
 
   return data;
