@@ -101,7 +101,9 @@ gulp.task('clear', function (done) {
   return $.cache.clearAll(done);
 });
 
-gulp.task('clean', require('del').bind(null, ['.tmp', 'dist']));
+gulp.task('clean', ['clear'], function () {
+  require('del').bind(null, ['.tmp', 'dist']);
+});
 
 gulp.task('connect', function () {
   var serveStatic = require('serve-static');
