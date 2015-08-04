@@ -33,7 +33,7 @@ exports.collectData = function(json) {
       'image': 'images/' + group + '.png'
     });
     findEdges(props, addEdge);
-  };
+  }
   data.edges = possibleEdges.filter(function(edge) {
     return edge && knownResources.indexOf(edge.to) >= 0;
   });
@@ -42,8 +42,9 @@ exports.collectData = function(json) {
 
 
 exports.collectCyData = function(json) {
+  'use strict';
   var edgeFilters = {
-    'AWS::EC2::SecurityGroupIngress': function(edge, source, target){
+    'AWS::EC2::SecurityGroupIngress': function(edge /*, source, target*/){
       if (edge.data.resource === 'GroupId') {
         // NOOP the direction is good
       }
@@ -54,7 +55,7 @@ exports.collectCyData = function(json) {
       }
       return true;
     },
-    'AWS::EC2::SecurityGroupEgress': function(edge, source, target) {
+    'AWS::EC2::SecurityGroupEgress': function(edge /*, source, target*/) {
       if (edge.data.resource === 'DestinationSecurityGroupId') {
         // NOOP the direction is good
       }
@@ -67,7 +68,7 @@ exports.collectCyData = function(json) {
     },
     'default': function(edge, source, target) {
       if (target && target.type === 'AWS::EC2::SecurityGroup'){
-        knownResources[edge.data.source].data['parent'] = edge.data.target;
+        knownResources[edge.data.source].data.parent = edge.data.target;
         return false;
       }
       return true;
@@ -96,7 +97,7 @@ exports.collectCyData = function(json) {
     findEdges(resource.Properties, addEdge);
     knownResources[resourceKey] = r;
     data.nodes.push(r);
-  };
+  }
 
   data.edges = data.edges.filter(function(edge) {
     var source = knownResources[edge.data.source];

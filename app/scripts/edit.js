@@ -1,5 +1,5 @@
 /* jshint devel:true */
-/* global ace, vis, saveAs, require */
+/* global ace, cytoscape, saveAs, require */
 
 (function(){'use strict';
   var editor;
@@ -60,53 +60,53 @@
     console.log(data);
     if (!graphPane) {
       graphPane = $('div.graph_overlay');
-    };
-      graph = cytoscape({
-        container: document.getElementById('graph_area'),
-        elements: data,
+    }
+    graph = cytoscape({
+      container: document.getElementById('graph_area'),
+      elements: data,
 
-        style: [
-        {
-          selector: 'node',
-          css: {
-            'content': 'data(id)',
-            'text-valign': 'center',
-            'text-halign': 'center'
-          }
-        },
-        {
-          selector: '$node > node',
-          css: {
-            'padding-top': '10px',
-            'padding-left': '10px',
-            'padding-bottom': '10px',
-              'padding-right': '10px',
-              'text-valign': 'top',
-                'text-halign': 'center'
-          }
-        },
-          {
-            selector: 'edge',
-            css: {
-              'target-arrow-shape': 'triangle'
-            }
-          },
-          {
-            selector: ':selected',
-            css: {
-              'background-color': 'black',
-              'line-color': 'black',
-              'target-arrow-color': 'black',
-                'source-arrow-color': 'black'
-            }
-          }
-        ],
-
-        layout: {
-          name: 'cose',
-          padding: 5
+      style: [
+      {
+        selector: 'node',
+        css: {
+          'content': 'data(id)',
+          'text-valign': 'center',
+          'text-halign': 'center'
         }
-      });
+      },
+      {
+        selector: '$node > node',
+        css: {
+          'padding-top': '10px',
+          'padding-left': '10px',
+          'padding-bottom': '10px',
+            'padding-right': '10px',
+            'text-valign': 'top',
+              'text-halign': 'center'
+        }
+      },
+        {
+          selector: 'edge',
+          css: {
+            'target-arrow-shape': 'triangle'
+          }
+        },
+        {
+          selector: ':selected',
+          css: {
+            'background-color': 'black',
+            'line-color': 'black',
+            'target-arrow-color': 'black',
+              'source-arrow-color': 'black'
+          }
+        }
+      ],
+
+      layout: {
+        name: 'cose',
+        padding: 5
+      }
+    });
     graphPane.fadeIn(300);
   };
   var getTemplateDescription = function() {
