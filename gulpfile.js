@@ -4,7 +4,11 @@
 var gulp = require('gulp');
 var browserify = require('browserify');
 var transform = require('vinyl-transform');
-var $ = require('gulp-load-plugins')();
+var $ = require('gulp-load-plugins')({
+  rename: {
+    'gulp-gh-pages': 'ghPages'
+  }
+});
 
 var AUTOPREFIXER_BROWSERS = [
   'ie >= 10',
@@ -182,7 +186,11 @@ gulp.task('build', ['jshint', 'html', 'images', 'fonts', 'extras'], function () 
     ])
     .pipe($.size({title: 'copy ace js'}))
     .pipe(gulp.dest('dist/js/ace/'));
-  return gulp.src('dist/**/*').pipe($.size({title: 'build', gzip: true}));
+  return gulp.src('dist/**').pipe($.size({title: 'build', gzip: true}));
+});
+
+gulp.task('deploy', function() {
+  return gulp.src('dist/**').pipe($.ghPages());
 });
 
 gulp.task('default', ['clean'], function () {
