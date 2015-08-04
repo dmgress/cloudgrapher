@@ -33,7 +33,7 @@ exports.collectData = function(json) {
       'image': 'images/' + group + '.png'
     });
     findEdges(props, addEdge);
-  };
+  }
   data.edges = possibleEdges.filter(function(edge) {
     return edge && knownResources.indexOf(edge.to) >= 0;
   });
