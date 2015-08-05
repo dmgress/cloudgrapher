@@ -9,3 +9,5 @@ Current features:
 * saving a script
 * showing a graph generated with vis.js
 * saving the graph
+
+Available at http://dmgress.github.io/cloudgrapher/
