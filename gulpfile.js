@@ -47,7 +47,7 @@ gulp.task('javascript', function () {
     .pipe($.sourcemaps.init({loadMaps: true}))
       .pipe($.uglify())
     .pipe($.sourcemaps.write('./'))
-    .pipe(gulp.dest('.tmp/js'));
+    .pipe(gulp.dest('dist/js'));
 });
 
 gulp.task('html', ['styles', 'javascript'], function () {
