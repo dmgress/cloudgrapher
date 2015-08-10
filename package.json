@@ -5,11 +5,13 @@
   },
   "devDependencies": {
     "apache-server-configs": "^2.7.1",
+    "browserify": "^11.0.1",
     "connect": "^3.0.1",
     "connect-livereload": "^0.5.0",
     "del": "^0.1.0",
     "gulp": "^3.6.0",
     "gulp-autoprefixer": "^1.0.1",
+    "gulp-buffer": "0.0.2",
     "gulp-cache": "^0.2.2",
     "gulp-csso": "^0.2.6",
     "gulp-filter": "^1.0.2",
@@ -34,7 +36,7 @@
     "serve-index": "^1.1.4",
     "serve-static": "^1.4.0",
     "wiredep": "^2.0.0",
-    "browserify": "~9.0.3",
+    "vinyl-source-stream": "^1.1.0",
     "vinyl-transform": "~1.0.0",
     "gulp-sourcemaps": "~1.5.1"
   }

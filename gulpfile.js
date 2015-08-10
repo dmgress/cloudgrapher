@@ -4,6 +4,7 @@
 var gulp = require('gulp');
 var browserify = require('browserify');
 var transform = require('vinyl-transform');
+var source = require('vinyl-source-stream');
 var $ = require('gulp-load-plugins')({
   rename: {
     'gulp-gh-pages': 'ghPages'
@@ -37,19 +38,16 @@ gulp.task('jshint', function () {
 });
 
 gulp.task('javascript', function () {
-  // transform regular node stream to gulp (buffered vinyl) stream
-  var browserified = transform(function(filename) {
-    var b = browserify({entries: filename, debug: true});
-    return b.bundle();
-  });
-
-  return gulp.src('app/scripts/edit.js')
-    .pipe(browserified)
+  return browserify({
+    entries:['app/scripts/edit.js'],
+    debug: true
+  }).bundle()
+    .pipe(source('edit.bundle.js'))
+    .pipe($.buffer())
     .pipe($.sourcemaps.init({loadMaps: true}))
-        // Add transformation tasks to the pipeline here.
-       .pipe($.uglify())
+      .pipe($.uglify())
     .pipe($.sourcemaps.write('./'))
-    .pipe(gulp.dest('.tmp/js'));
+    .pipe(gulp.dest('dist/js'));
 });
 
 gulp.task('html', ['styles', 'javascript'], function () {
@@ -103,7 +101,9 @@ gulp.task('clear', function (done) {
   return $.cache.clearAll(done);
 });
 
-gulp.task('clean', require('del').bind(null, ['.tmp', 'dist']));
+gulp.task('clean', ['clear'], function () {
+  require('del').bind(null, ['.tmp', 'dist']);
+});
 
 gulp.task('connect', function () {
   var serveStatic = require('serve-static');
@@ -186,11 +186,7 @@ gulp.task('build', ['jshint', 'html', 'images', 'fonts', 'extras'], function () 
     ])
     .pipe($.size({title: 'copy ace js'}))
     .pipe(gulp.dest('dist/js/ace/'));
-  return gulp.src('dist/**').pipe($.size({title: 'build', gzip: true}));
-});
-
-gulp.task('deploy', function() {
-  return gulp.src('dist/**').pipe($.ghPages());
+  return gulp.src('dist/**/*').pipe($.size({title: 'build', gzip: true}));
 });
 
 gulp.task('default', ['clean'], function () {
