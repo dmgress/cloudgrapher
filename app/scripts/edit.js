@@ -149,4 +149,5 @@
   $('#save_graph').click(function(event){ event.preventDefault(); saveImage(); return false;});
   $('#show_graph').click(function(event){ event.preventDefault(); showCyGraph(); return false;});
   $('#close_graph').click(function(event){ event.preventDefault(); graphPane.fadeOut(500); return false;});
+  $('#graph_layout').change(function() { graph.layout( { 'name': $('#graph_layout').val() }); });
 })();

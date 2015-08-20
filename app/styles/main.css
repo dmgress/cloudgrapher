@@ -50,8 +50,24 @@ div, dl, dt, dd, ul, ol, li, h1, h2, h3, h4, h5, h6, pre, form, p, blockquote, t
   margin: 0;
   padding: 0;
 }
+.graph_layout {
+  display: inline-block;
+  background-color: #008CBA;
+  border-color: #FFFFFF;
+  color: #FFFFFF;
+  font-size: 1rem;
+  padding-top: 1rem;
+  padding-right: 2rem;
+  padding-bottom: 1.0625rem;
+  padding-left: 2rem;
+  font-family: "Helvetica Neue", Helvetica, Roboto, Arial, sans-serif;
+  font-weight: normal;
+  line-height: normal;
+  margin: 0 0 1.25rem;
+}
 .button-group {
   list-style: none;
+  display: inline-block;
   margin: 0 2px;
   left: 0;
 }
