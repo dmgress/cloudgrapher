@@ -81,10 +81,12 @@ exports.collectCyData = function(json) {
   var edgeIndex = 0;
 
   var addEdge = function (toId, title, resource) {
-    data.edges.push({ data: { id: 'e'+ (edgeIndex++), source: resourceKey, target: toId, title: title, resource: resource }});
+    possibleEdges.push({ data: { id: 'e'+ (edgeIndex++), source: resourceKey, target: toId, title: title, resource: resource }});
   };
 
   var knownResources = {};
+  var possibleEdges = [];
+
   for (var resourceKey in json.Resources) {
     var resource = json.Resources[resourceKey];
     var r = {
@@ -99,7 +101,7 @@ exports.collectCyData = function(json) {
     data.nodes.push(r);
   }
 
-  data.edges = data.edges.filter(function(edge) {
+  data.edges = possibleEdges.filter(function(edge) {
     var source = knownResources[edge.data.source];
     var target = knownResources[edge.data.target];
     var filter = edgeFilters.get(source.type);
