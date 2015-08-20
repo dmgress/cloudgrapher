@@ -96,7 +96,7 @@ button, .button {
   padding-left: 2rem;
   font-size: 1rem;
   background-color: #008CBA;
-  border-color: #FFFFF;
+  border-color: #FFFFFF;
   color: #FFFFFF;
   transition: background-color 300ms ease-out;
 }
