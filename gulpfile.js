@@ -53,7 +53,6 @@ gulp.task('javascript', function () {
 
 gulp.task('html', ['styles', 'javascript'], function () {
   var assets = $.useref.assets({searchPath: ['.tmp','app','.']});
-  //var assets = $.useref.assets();
 
   return gulp.src('app/*.html')
     .pipe(assets)
