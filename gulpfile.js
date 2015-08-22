@@ -186,7 +186,11 @@ gulp.task('build', ['jshint', 'html', 'images', 'fonts', 'extras'], function () 
     ])
     .pipe($.size({title: 'copy ace js'}))
     .pipe(gulp.dest('dist/js/ace/'));
-  return gulp.src('dist/**/*').pipe($.size({title: 'build', gzip: true}));
+  return gulp.src('dist/**').pipe($.size({title: 'build', gzip: true}));
+});
+
+gulp.task('deploy', function() {
+  return gulp.src('dist/**').pipe($.ghPages());
 });
 
 gulp.task('default', ['clean'], function () {
