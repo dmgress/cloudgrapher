@@ -24,8 +24,9 @@ var AUTOPREFIXER_BROWSERS = [
 ];
 
 gulp.task('styles', function () {
-  return gulp.src(['app/styles/main.css'])
-    .pipe($.autoprefixer(AUTOPREFIXER_BROWSERS))
+  gulp.src(['app/styles/*.cycss']).pipe(gulp.dest('dist/styles'));
+  return gulp.src(['app/styles/*.css'])
+    .pipe($.if('*.css', $.autoprefixer(AUTOPREFIXER_BROWSERS)))
     .pipe(gulp.dest('.tmp/styles'));
 });
 
