@@ -1,0 +1,97 @@
+/* On any node apply this */
+node {
+  content: data(id);
+  text-valign: bottom;
+  text-halign: center;
+  background-image: images/unknown.png;
+  background-fit: cover;
+  background-width: 100%;
+  background-height: 100%;
+}
+
+/* On parent nodes apply this */
+$node > node {
+  background-image: none;
+  padding-top: 10px;
+  padding-left: 10px;
+  padding-bottom: 10px;
+  padding-right: 10px;
+  text-valign: top;
+  text-halign: center;
+  border-width: 1px;
+  border-style: dashed;
+  border-color: red;
+  background-opacity: 0;
+  shape: roundrectangle;
+}
+
+/* On any edge apply this */
+edge {
+  target-arrow-shape: triangle;
+}
+
+/* On a selected thing apply this */
+:selected {
+  background-color: black;
+  line-color: black;
+  target-arrow-color: black;
+  source-arrow-color: black;
+}
+
+/* Override background images for known classes */
+
+node.aws-ec2-instance {
+  background-image: images/aws-ec2-instance.png;
+}
+
+node.aws-ec2-securitygroupegress {
+  background-image: images/aws-ec2-securitygroupegress.png;
+}
+
+node.aws-ec2-securitygroupingress {
+  background-image: images/aws-ec2-securitygroupingress.png;
+}
+
+node.aws-route53-recordset {
+  background-image: images/aws-route53-recordset.png;
+}
+
+node.aws-autoscaling-launchconfiguration {
+  background-image: images/aws-autoscaling-launchconfiguration.png;
+}
+
+node.aws-ec2-eipassociation {
+  background-image: images/aws-ec2-eipassociation.png;
+}
+
+node.aws-ec2-volume {
+  background-image: images/aws-ec2-volume.png;
+}
+
+node.aws-elasticloadbalancing-loadbalancer {
+  background-image: images/aws-elasticloadbalancing-loadbalancer.png;
+}
+
+node.aws-iam-instanceprofile {
+  background-image: images/aws-iam-instanceprofile.png;
+}
+
+node.aws-iam-policy {
+  background-image: images/aws-iam-policy.png;
+}
+
+node.aws-iam-role {
+  background-image: images/aws-iam-role.png;
+}
+
+node.aws-s3-bucket {
+  background-image: images/aws-s3-bucket.png;
+}
+
+node.aws-sqs-queue {
+  background-image: images/aws-sqs-queue.png;
+}
+
+node.aws-autoscaling-autoscalinggroup {
+  background-image: images/aws-autoscaling-autoscalinggroup.png;
+}

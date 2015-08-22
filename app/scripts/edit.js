@@ -6,6 +6,7 @@
   var collector = require('./collectdata');
   var graph;
   var graphPane;
+  var graphStyleP = $.ajax({ url: 'styles/main.cycss', type: 'GET', dataType: 'text' });
   editor = ace.edit('jsoneditor');
   editor.setTheme('ace/theme/tomorrow_night_eighties');
   editor.getSession().setMode('ace/mode/json');
@@ -64,44 +65,7 @@
     graph = cytoscape({
       container: document.getElementById('graph_area'),
       elements: data,
-
-      style: [
-      {
-        selector: 'node',
-        css: {
-          'content': 'data(id)',
-          'text-valign': 'center',
-          'text-halign': 'center'
-        }
-      },
-      {
-        selector: '$node > node',
-        css: {
-          'padding-top': '10px',
-          'padding-left': '10px',
-          'padding-bottom': '10px',
-            'padding-right': '10px',
-            'text-valign': 'top',
-              'text-halign': 'center'
-        }
-      },
-        {
-          selector: 'edge',
-          css: {
-            'target-arrow-shape': 'triangle'
-          }
-        },
-        {
-          selector: ':selected',
-          css: {
-            'background-color': 'black',
-            'line-color': 'black',
-            'target-arrow-color': 'black',
-              'source-arrow-color': 'black'
-          }
-        }
-      ],
-
+      style: graphStyleP,
       layout: {
         name: 'cose',
         padding: 5
