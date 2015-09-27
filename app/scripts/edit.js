@@ -81,7 +81,7 @@
     return description;
   };
   var saveImage = function() {
-    var saveWindow = window.open('/savegraph.html');
+    var saveWindow = window.open('savegraph.html');
     saveWindow.onload = function() {
       saveWindow.document.getElementById('graphPNG').src = graph.png();
     };
