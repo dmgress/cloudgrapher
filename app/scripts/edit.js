@@ -81,15 +81,10 @@
     return description;
   };
   var saveImage = function() {
-    var canvas = graphPane.find('canvas');
-    if (canvas && canvas.length === 1) {
-      canvas[0].toBlob(function(blob){
-        saveAs(blob, getTemplateDescription() + '.png');
-      });
-    }
-    else {
-      console.error('Expected to find one canvas but got ' + canvas);
-    }
+    var saveWindow = window.open('/savegraph.html');
+    saveWindow.onload = function() {
+      saveWindow.document.getElementById('graphPNG').src = graph.png();
+    };
   };
   var saveTemplate = function() {
     var prettyDoc = JSON.stringify(JSON.parse(editor.getValue()), null, 2);
