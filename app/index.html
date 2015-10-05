@@ -1,12 +1,16 @@
 <!doctype html>
 <html lang="en" class="no-js">
     <head>
-        <title>cfedit</title>
+        <title>AWS CloudFormation Graphing</title>
         <meta charset="utf-8">
         <meta name="description" content="">
         <meta name="viewport" content="width=device-width, initial-scale=1, minimal-ui">
         <!-- build:css styles/main.css -->
         <link rel="stylesheet" href="styles/main.css">
+        <link rel="stylesheet" href="../bower_components/CodeMirror/lib/codemirror.css">
+        <link rel="stylesheet" href="../bower_components/CodeMirror/theme/elegant.css">
+        <link rel="stylesheet" href="../bower_components/CodeMirror/addon/lint/lint.css">
+        <link rel="stylesheet" href="../bower_components/CodeMirror/addon/fold/foldgutter.css">
         <!-- endbuild -->
     </head>
     <body>
@@ -15,51 +19,40 @@
         <p class="browsehappy">You are using an <strong>outdated</strong> browser. Please <a href="http://browsehappy.com/">upgrade your browser</a> to improve your experience.</p>
         <![endif]-->
         <div class="row">
-            <div class="nav-bar right">
+            <h1 class="template_title">CloudFormation editor</h1>
+            <div class="menu">
+                Save as:
                 <ul class="button-group">
-                    <li><label class="button">Open template<input type="file" id="open_template" /></label></li>
-                    <li><a id="save_template" href="#" class="button">Save template</a></li>
-                    <li><a id="show_graph" href="#" class="button">Show graph</a></li>
+                    <li><a id="save_graph" href="#" class="button">Graph</a></li>
+                    <li><a id="save_json" href="#" class="button">JSON</a></li>
                 </ul>
+                Layout:
+                <select id="graph_layout" class="layout_select">
+                    <option value="arbor">Arbor layout</option>
+                    <option value="breadthfirst">BreadthFirst layout</option>
+                    <option value="circle">Circle layout</option>
+                    <option value="cola">Cola layout</option>
+                    <option value="concentric">Concentric layout</option>
+                    <option value="cose" selected>Cose layout</option>
+                    <option value="dagre">Dagre layout</option>
+                    <option value="grid">Grid layout</option>
+                    <option value="random">Random layout</option>
+                    <option value="spread">Spread layout</option>
+                </select>
             </div>
-            <h1>CloudFormation editor</h1>
-            <hr />
         </div>
     </header>
     <main>
-        <div id="cfeditor" class="row">
-            <pre id="jsoneditor"></pre>
-            <div id="statusbar" class="status-bar ace-editor">
-                <div class="status-icon"></div>
-                <div class="status-message">No content</div>
-            </div>
+    <div id="container">
+	    <div id="graph_area" class="graph_area"></div>
+        <div id="editor_pane">
+            <div id="border"></div><div id="editor"></div>
         </div>
-        <div class="graph_overlay">
-            <div class="nav-bar right">
-                <select id="graph_layout" class="graph_layout">
-                  <option value="arbor">Arbor layout</option>
-                  <option value="breadthfirst">BreadthFirst layout</option>
-                  <option value="circle">Circle layout</option>
-                  <option value="cola">Cola layout</option>
-                  <option value="concentric">Concentric layout</option>
-                  <option value="cose" selected>Cose layout</option>
-                  <option value="dagre">Dagre layout</option>
-                  <option value="grid">Grid layout</option>
-                  <option value="random">Random layout</option>
-                  <option value="spread">Spread layout</option>
-                </select> </label>
-                <ul class="button-group">
-                    <li><a id="save_graph" href="#" class="button">Save graph</a></li>
-                    <li><a id="close_graph" href="#" class="button">Close graph</a></li>
-                </ul>
-            </div>
-            <div id="graph_area" class="graph_area"></div>
-        </div>
+    </div>
     </main>
     <footer>
         <div class="row">
             <hr />
-            <span>Hi, this is the footer but it has no content!</span>
         </div>
         </footer>
         <!-- build:js js/canvas-toBlob.js -->
@@ -72,14 +65,18 @@
           <script src="../bower_components/jquery/dist/jquery.js"></script>
         <!-- endbuild -->
         <!-- arbor layout support DON'T UGLIFY THIS! -->
-	<!-- build:js js/arbor.js -->
-        <script src="../bower_components/cytoscape/lib/arbor.js"></script>
-	<!-- endbuild -->
-        <!-- build:js js/ace/ace.js -->
-          <script src="../bower_components/ace-builds/src-min-noconflict/ace.js"></script>
+        <!-- build:js js/arbor.js -->
+            <script src="../bower_components/cytoscape/lib/arbor.js"></script>
         <!-- endbuild -->
-        <!-- build:js js/ace/ext-statusbar.js -->
-          <script src="../bower_components/ace-builds/src-min-noconflict/ext-statusbar.js"></script>
+            <script src="../bower_components/jsonlint/lib/jsonlint.js"></script>
+        <!-- build:js js/codemirror.js -->
+            <script src="../bower_components/CodeMirror/lib/codemirror.js"></script>
+            <script src="../bower_components/CodeMirror/addon/lint/lint.js"></script>
+            <script src="../bower_components/CodeMirror/addon/lint/json-lint.js"></script>
+            <script src="../bower_components/CodeMirror/mode/javascript/javascript.js"></script>
+            <script src="../bower_components/CodeMirror/addon/fold/foldcode.js"></script>
+            <script src="../bower_components/CodeMirror/addon/fold/foldgutter.js"></script>
+            <script src="../bower_components/CodeMirror/addon/fold/brace-fold.js"></script>
         <!-- endbuild -->
         <!-- build:js js/graph_libs.js -->
           <!-- dagre layout support -->
