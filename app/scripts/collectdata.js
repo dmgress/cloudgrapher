@@ -67,7 +67,7 @@ exports.collectCyData = function(json) {
       return true;
     },
     'default': function(edge, source, target) {
-      if (target && target.type === 'AWS::EC2::SecurityGroup'){
+      if (target && target.type === 'AWS::EC2::SecurityGroup' && source.type !== 'AWS::EC2::SecurityGroup'){
         knownResources[edge.data.source].data.parent = edge.data.target;
         return false;
       }

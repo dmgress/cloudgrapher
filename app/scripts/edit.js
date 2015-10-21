@@ -1,17 +1,17 @@
 /* jshint devel:true */
-/* global ace, cytoscape, saveAs, require */
+/* global cytoscape, saveAs, require, CodeMirror, editor */
 
 (function(){'use strict';
   var collector = require('./collectdata');
-  var myCodeMirror = CodeMirror(document.getElementById("editor"), {
-    value: "",
+  var myCodeMirror = new CodeMirror(document.getElementById('editor'), {
+    value: '',
     lineNumbers: true,
-    mode: "application/json",
+    mode: 'application/json',
     foldGutter: true,
-    gutters: ["CodeMirror-linenumbers", "CodeMirror-foldgutter", "CodeMirror-lint-markers"],
+    gutters: ['CodeMirror-linenumbers', 'CodeMirror-foldgutter', 'CodeMirror-lint-markers'],
     lint: {
       onUpdateLinting: function (annotations) {
-        if (!annotations || annotations.length == 0) {
+        if (! annotations || annotations.length === 0) {
           showCyGraph( collector.collectCyData(JSON.parse (myCodeMirror.getDoc().getValue() )));
         }
       }
@@ -19,7 +19,6 @@
   });
   myCodeMirror.setSize('100%','800px');
   var graph;
-  var graphPane;
   var graphStyleP = $.ajax({ url: 'styles/main.cycss', type: 'GET', dataType: 'text' });
   var isResizing = false,
   lastDownX = 0;
@@ -85,12 +84,10 @@
 
     loadTemplate(evt.dataTransfer.files[0]);
   }, false);
-  $('#graph_area').css('background-image',"url('/images/aws-cloudformation-template.svg')");
+  $('#graph_area').css('background-image','url("/images/aws-cloudformation-template.svg")');
   $('#open_template').change(function(event){ loadTemplate(event.target.files[0]); });
   $('#save_template').click(function(event){ event.preventDefault(); saveTemplate(); return false;});
   $('#save_graph').click(function(event){ event.preventDefault(); saveImage(); return false;});
-  $('#show_graph').click(function(event){ event.preventDefault(); showCyGraph(); return false;});
-  $('#close_graph').click(function(event){ event.preventDefault(); graphPane.fadeOut(500); return false;});
   $('#graph_layout').change(function() { graph.layout( { 'name': $('#graph_layout').val() }); });
   var container = $('#container'),
   left = $('#graph_area'),
@@ -104,14 +101,15 @@
 
   $(document).on('mousemove', function (e) {
     // we don't want to do anything if we aren't resizing.
-    if (!isResizing)
+    if (!isResizing) {
       return;
+    }
 
     var offsetRight = container.width() - (e.clientX - container.offset().left);
 
     left.css('right', offsetRight);
     right.css('width', offsetRight);
-  }).on('mouseup', function (e) {
+  }).on('mouseup', function () {
     if (isResizing && graph) {
       graph.fit();
     }
