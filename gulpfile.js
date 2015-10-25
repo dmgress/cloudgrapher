@@ -67,7 +67,8 @@ gulp.task('html', ['styles', 'javascript'], function () {
 gulp.task('images', function () {
   return gulp.src([
       'app/images/**/aws*.png',
-      'app/images/**/unknown.png'
+      'app/images/**/unknown.png',
+      'app/images/**/aws*.svg'
     ])
     .pipe($.cache($.imagemin({
       progressive: true,
