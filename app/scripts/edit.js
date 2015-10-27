@@ -94,7 +94,8 @@
     template.load(evt.dataTransfer.files[0]);
   }, false);
   $('#graph_area').css('background-image','url("/images/aws-cloudformation-template.svg")');
-  $('#open_template').change(function(event){ loadTemplate(event.target.files[0]); });
+  $('#open_template').click(function(event){ event.preventDefault(); $('#template_input').click(); });
+  $('#template_input').change(function(event){ template.load(event.target.files[0]); });
   $('#save_template').click(function(event){ event.preventDefault(); saveTemplate(); return false;});
   $('#save_graph').click(function(event){ event.preventDefault(); saveImage(); return false;});
   $('#graph_layout').change(function() { template.setLayout( $('#graph_layout').val() ); });
