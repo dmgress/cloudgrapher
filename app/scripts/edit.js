@@ -1,5 +1,5 @@
 /* jshint devel:true */
-/* global cytoscape, saveAs, require, CodeMirror, editor */
+/* global cytoscape, saveAs, require, CodeMirror */
 
 (function(){'use strict';
   var collector = require('./collectdata');
