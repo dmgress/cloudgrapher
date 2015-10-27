@@ -11,8 +11,8 @@
     gutters: ['CodeMirror-linenumbers', 'CodeMirror-foldgutter', 'CodeMirror-lint-markers'],
     lint: {
       onUpdateLinting: function (annotations) {
-        if (! annotations || annotations.length === 0) {
-          showCyGraph( collector.collectCyData(JSON.parse (myCodeMirror.getDoc().getValue() )));
+        if (template && (! annotations || annotations.length === 0)) {
+          template.show( collector.collectCyData(JSON.parse (myCodeMirror.getDoc().getValue() )));
         }
       }
     }
@@ -23,54 +23,63 @@
   var isResizing = false,
   lastDownX = 0;
 
-  var loadTemplate = function(file){
-    var reader = new FileReader();
-    reader.onload = function () {
-      var data = reader.result;
-      console.log(data);
-      if(data) {
-        try {
-          myCodeMirror.getDoc().setValue(data);
-          showCyGraph( collector.collectCyData( JSON.parse(data) ) );
-          $('#graph_area').css('background-image','');
+  var template = {
+
+    load: function(file){
+      var reader = new FileReader();
+      reader.onload = function () {
+        var data = reader.result;
+        // console.log(data);
+        if(data) {
+          try {
+            myCodeMirror.getDoc().setValue(data);
+            template.show( collector.collectCyData( JSON.parse(data) ) );
+            $('#graph_area').css('background-image','');
+          }
+          catch (e) {
+            console.log('ERR - ' + e );
+          }
         }
-        catch (e) {
-          console.log('ERR - ' + e );
+      };
+      reader.readAsText(file);
+    },
+    show: function(data) {
+      graph = cytoscape({
+        container: document.getElementById('graph_area'),
+        elements: data,
+        style: graphStyleP,
+        layout: {
+          name: 'cose',
+          padding: 5
         }
-      }
-    };
-    reader.readAsText(file);
+      });
+      graph.boxSelectionEnabled(true);
+    },
+    description: function() {
+      var description = 'template';
+      try {
+        description = JSON.parse(template.content()).Description;
+      } catch (e) {}
+      return description;
+    },
+    base64Image: function () {
+      graph.center(); graph.fit();
+      return graph.png({full: false});
+    },
+    content: function() { return myCodeMirror.getDoc().getValue(); },
+      setLayout: function(name) {graph.layout( { 'name': name });}
   };
-  var showCyGraph = function(data) {
-    graph = cytoscape({
-      container: document.getElementById('graph_area'),
-      elements: data,
-      style: graphStyleP,
-      layout: {
-        name: 'cose',
-        padding: 5
-      }
-    });
-    graph.boxSelectionEnabled(true);
-  };
-  var getTemplateDescription = function() {
-    var description = 'template';
-    try {
-      description = JSON.parse(editor.getValue(editor.getValue())).Description;
-    } catch (e) {}
-    return description;
-  };
+
   var saveImage = function() {
     var saveWindow = window.open('savegraph.html');
-    graph.center(); graph.fit();
     saveWindow.onload = function() {
-      saveWindow.document.getElementById('graphPNG').src = graph.png({full: false});
+      saveWindow.document.getElementById('graphPNG').src = template.base64Image();
     };
   };
   var saveTemplate = function() {
-    var prettyDoc = JSON.stringify(JSON.parse(editor.getValue()), null, 2);
+    var prettyDoc = JSON.stringify(JSON.parse(template.content()), null, 2);
     var blob = new Blob([prettyDoc], {type: 'text/plain;charset=utf-8'});
-    saveAs(blob, getTemplateDescription() + '.json');
+    saveAs(blob, template.description() + '.json');
   };
   var mainRow = document.getElementById('graph_area');
   mainRow.addEventListener('dragover', function(evt) {
@@ -82,13 +91,13 @@
     evt.stopPropagation();
     evt.preventDefault();
 
-    loadTemplate(evt.dataTransfer.files[0]);
+    template.load(evt.dataTransfer.files[0]);
   }, false);
   $('#graph_area').css('background-image','url("/images/aws-cloudformation-template.svg")');
   $('#open_template').change(function(event){ loadTemplate(event.target.files[0]); });
   $('#save_template').click(function(event){ event.preventDefault(); saveTemplate(); return false;});
   $('#save_graph').click(function(event){ event.preventDefault(); saveImage(); return false;});
-  $('#graph_layout').change(function() { graph.layout( { 'name': $('#graph_layout').val() }); });
+  $('#graph_layout').change(function() { template.setLayout( $('#graph_layout').val() ); });
   var container = $('#container'),
   left = $('#graph_area'),
     right = $('#editor_pane'),
