@@ -4,7 +4,7 @@
 (function(){'use strict';
   var collector = require('./collectdata');
   var myCodeMirror = new CodeMirror(document.getElementById('editor'), {
-    value: '',
+    value: '{}',
     lineNumbers: true,
     mode: 'application/json',
     foldGutter: true,
