@@ -55,6 +55,17 @@ gulp.task('html', ['styles', 'javascript'], function () {
   var assets = $.useref.assets({searchPath: ['.tmp','app','.']});
 
   return gulp.src('app/*.html')
+    .pipe($.cdnizer({
+      relativeRoot: 'app/',
+      allowMin: true,
+      files: [
+        {
+          file: 'bower_components/fontawesome/css/font-awesome.css',
+          package: 'fontawesome',
+          cdn: '//maxcdn.bootstrapcdn.com/font-awesome/${version}/css/font-awesome.min.css'
+        }
+      ]
+    }))
     .pipe(assets)
     .pipe($.if('*.css', $.csso()))
     .pipe(assets.restore())

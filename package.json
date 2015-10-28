@@ -13,6 +13,7 @@
     "gulp-autoprefixer": "^1.0.1",
     "gulp-buffer": "0.0.2",
     "gulp-cache": "^0.2.2",
+    "gulp-cdnizer": "^1.1.6",
     "gulp-csso": "^0.2.6",
     "gulp-filter": "^1.0.2",
     "gulp-flatten": "^0.0.4",

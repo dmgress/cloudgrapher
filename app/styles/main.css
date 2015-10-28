@@ -68,18 +68,15 @@ div, dl, dt, dd, ul, ol, li, h1, h2, h3, h4, h5, h6, pre, form, p, blockquote, t
 .button-group {
   list-style: none;
   display: inline-block;
-  margin: 0 2px;
   left: 0;
 }
 .button-group > li {
-  margin: 0 -2px;
   display: inline-block;
 }
 button, .button {
   border-style: solid;
-  border-width: 1px 0 1px 1px;
+  border-width: 1px;
   cursor: pointer;
-  font-family: "Helvetica Neue", Helvetica, Roboto, Arial, sans-serif;
   font-weight: normal;
   line-height: normal;
   position: relative;
@@ -89,18 +86,17 @@ button, .button {
   -moz-appearance: none;
   border-radius: 0;
   display: inline-block;
-  padding-top: 1rem;
-  padding-right: 2rem;
-  padding-bottom: 1.0625rem;
-  padding-left: 2rem;
+  margin: 2px 2px;
+  min-width: 2rem;
+  padding: 0.75rem;
   font-size: 1rem;
-  background-color: #008CBA;
-  border-color: #FFFFFF;
-  color: #FFFFFF;
+  background-color: #FFFFFF;
+  border-color: #000000;
+  color: #000000;
   transition: background-color 300ms ease-out;
 }
 .button:hover {
-  background-color: #007095;
+  background-color: silver;
 }
 a:hover {
   cursor: pointer;
@@ -202,4 +198,11 @@ input[type=file] {
   display: inline-block;
   border: solid silver 1px;
   margin: 3px;
+  padding: 3px;
+}
+#options_icon {
+  padding: 0.75em;
+  border-width: 0 1px 0 0;
+  border-color: silver;
+  border-style: solid;
 }
