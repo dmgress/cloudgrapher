@@ -5,6 +5,7 @@
         <meta charset="utf-8">
         <meta name="description" content="">
         <meta name="viewport" content="width=device-width, initial-scale=1, minimal-ui">
+        <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/font-awesome/4.4.0/css/font-awesome.min.css">
         <link rel="stylesheet" href="styles/main.css">
     </head>
     <body>
@@ -15,16 +16,16 @@
         <div class="row">
             <h1 class="template_title">CloudFormation editor</h1>
             <div class="menu">
-             Open:
+                <input type="file" id="template_input"></input>
                 <ul class="button-group">
-                    <li><a id="open_template" href="#" class="button">JSON</a><input type="file" id="template_input"></input></li>
+                    <li><a id="open_template" href="#" class="button"><i class="fa fa-folder-open-o fa-lg"></i></a></li>
+                    <li><a id="save_template" href="#" class="button"><i class="fa fa-floppy-o"></i></a></li>
+                    <li><a id="save_graph" href="#" class="button"><i class="fa fa-picture-o"></i></a></li>
                 </ul>
-                Save as:
-                <ul class="button-group">
-                    <li><a id="save_graph" href="#" class="button">Graph</a></li>
-                    <li><a id="save_template" href="#" class="button">JSON</a></li>
-                </ul>
-                Layout:
+            </div>
+            <div class="menu">
+                <span id="options_icon" class="fa fa-sliders fa-lg"></span>
+                &nbsp;
                 <select id="graph_layout" class="layout_select">
                     <option value="arbor">Arbor layout</option>
                     <option value="breadthfirst">BreadthFirst layout</option>
@@ -53,11 +54,10 @@
             <hr />
         </div>
         </footer>
-        <script src="js/canvas-toBlob.js"></script>
-        <script src="js/FileSaver.js"></script>
-        <script src="js/jquery.js"></script>
+        <script src="//cdn.jsdelivr.net/jquery/2.1.4/jquery.min.js"></script>
         <!-- arbor layout support DON'T UGLIFY THIS! -->
         <script src="js/arbor.js"></script>
+        <script src="js/FileSaver.js"></script>
         <script src="js/jsonlint.js"></script>
         <script src="js/codemirror.js"></script>
         <script src="js/graph_libs.js"></script>
