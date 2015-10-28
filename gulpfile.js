@@ -60,6 +60,11 @@ gulp.task('html', ['styles', 'javascript'], function () {
       allowMin: true,
       files: [
         {
+          file: 'bower_components/jquery/dist/jquery.js',
+          package: 'jquery',
+          cdn: '//cdn.jsdelivr.net/jquery/${version}/jquery.min.js'
+        },
+        {
           file: 'bower_components/fontawesome/css/font-awesome.css',
           package: 'fontawesome',
           cdn: '//maxcdn.bootstrapcdn.com/font-awesome/${version}/css/font-awesome.min.css'
