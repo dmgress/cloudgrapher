@@ -65,7 +65,6 @@ gulp.task('javascript', function () {
 });
 
 gulp.task('html', ['styles', 'javascript'], function () {
-  var assets = $.useref.assets({searchPath: ['.tmp','app','.']});
 
   return gulp.src('app/*.html')
     .pipe($.cdnizer({
@@ -84,10 +83,8 @@ gulp.task('html', ['styles', 'javascript'], function () {
         }
       ]
     }))
-    .pipe(assets)
+    .pipe($.useref({searchPath: ['.tmp','app','.']}))
     .pipe($.if('*.css', $.csso()))
-    .pipe(assets.restore())
-    .pipe($.useref())
     //.pipe($.if('*.html', $.minifyHtml({conditionals: true, loose: true})))
     .pipe(gulp.dest('dist'));
 });
