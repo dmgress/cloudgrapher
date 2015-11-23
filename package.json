@@ -32,7 +32,7 @@
     "jasmine-core": "^2.2.0",
     "jshint": "^2.8.0",
     "jshint-stylish": "^2.1.0",
-    "karma": "^0.12.31",
+    "karma": "^0.13.15",
     "karma-jasmine": "^0.3.5",
     "main-bower-files": "^2.1.0",
     "npm-check": "^4.1.3",
