@@ -1,6 +1,19 @@
 /* jshint node:true */
 'use strict';
 
+/**
+ * Cloud9 (c9.io) provides environment variables IP and PORT, use the
+ * values of these variables or fall back to localhost:9000
+ */
+var HTTP_HOST = process.env.IP || 'localhost';
+var HTTP_PORT = process.env.PORT || 9000;
+/**
+ * LiveReload uses 35729 by default, but Cloud9 only opens
+ * ports (8080, 8081, 8082). Try using port 8082 for LiveReload when running
+ * on Cloud9 but fall back to default in any other case.
+ */
+var LIVERELOAD_PORT =  process.env.IP ? 8082 : 35729;
+
 var gulp = require('gulp');
 var browserify = require('browserify');
 var transform = require('vinyl-transform');
@@ -126,7 +139,7 @@ gulp.task('connect', function () {
   var serveStatic = require('serve-static');
   var serveIndex = require('serve-index');
   var app = require('connect')()
-    .use(require('connect-livereload')({port: 35729}))
+    .use(require('connect-livereload')({port: LIVERELOAD_PORT}))
     .use(serveStatic('.tmp'))
     .use(serveStatic('app'))
     .use(serveStatic('dist'))
@@ -136,14 +149,15 @@ gulp.task('connect', function () {
     .use(serveIndex('app'));
 
   require('http').createServer(app)
-    .listen(9000)
+    .listen(HTTP_PORT, HTTP_HOST)
     .on('listening', function () {
-      console.log('Started connect web server on http://localhost:9000');
+      console.log('Started connect web server on http://' +
+      HTTP_HOST + ':' + HTTP_PORT);
     });
 });
 
 gulp.task('serve', ['connect', 'watch'], function () {
-  require('opn')('http://localhost:9000');
+  require('opn')('http://' + HTTP_HOST + ':' + HTTP_PORT);
 });
 
 // serve from build to ensure everything is there
@@ -152,8 +166,8 @@ gulp.task('serve-build', ['clean'], function () {
   var serveStatic = require('serve-static');
   var serveIndex = require('serve-index');
   var app = require('connect')().use(serveStatic('dist')).use(serveIndex('dist'));
-  require('http').createServer(app).listen(9000).on('listening', function () {
-    console.log('Serving distribution at http://localhost:9000');
+  require('http').createServer(app).listen(HTTP_PORT, HTTP_HOST).on('listening', function () {
+    console.log('Serving distribution at http://' + HTTP_HOST + ':' + HTTP_PORT);
   });
 });
 
@@ -167,7 +181,7 @@ gulp.task('wiredep', function () {
 });
 
 gulp.task('watch', ['connect'], function () {
-  $.livereload.listen();
+  $.livereload.listen(LIVERELOAD_PORT);
 
   // watch for changes
   gulp.watch([
