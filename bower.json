@@ -12,7 +12,8 @@
     "dagre": "~0.7.4",
     "CodeMirror": "~5.7.0",
     "jsonlint": "~1.6.0",
-    "fontawesome": "~4.4.0"
+    "fontawesome": "~4.4.0",
+    "jsonproxy": "~0.3.1"
   },
   "resolutions": {
     "CodeMirror": "~5.7.0"

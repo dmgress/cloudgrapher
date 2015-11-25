@@ -24,6 +24,8 @@
                 <input type="file" id="template_input"></input>
                 <ul class="button-group">
                     <li><a id="open_template" href="#" class="button"><i class="fa fa-folder-open-o fa-lg"></i></a></li>
+                    <li title="open from web"><a id="open_url" href="#" class="button"><i class="fa fa-globe fa-lg"></i></a></li>
+                    <input id="remote_input" class="hidden" type="text" name="remoteTemplate"/>
                     <li><a id="save_template" href="#" class="button"><i class="fa fa-floppy-o"></i></a></li>
                     <li><a id="save_graph" href="#" class="button"><i class="fa fa-picture-o"></i></a></li>
                 </ul>
@@ -60,6 +62,8 @@
         </div>
         </footer>
         <script src="../bower_components/jquery/dist/jquery.min.js"></script>
+        <script src="../bower_components/URIjs/src/URI.min.js"></script>
+        <script src="../bower_components/jsonproxy/jsonp.js"></script>
         <!-- build:js js/arbor.js -->
         <!-- arbor layout support DON'T UGLIFY THIS! -->
             <script src="../bower_components/cytoscape/lib/arbor.js"></script>

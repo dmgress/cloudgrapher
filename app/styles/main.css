@@ -139,6 +139,9 @@ a:hover {
   border-color: red;
   color: red;
 }
+.hidden {
+  display: none;
+}
 .status-icon, .status-message {
   display: inline-block;
 }
