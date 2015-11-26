@@ -79,6 +79,15 @@
         success: template.setData
         // error, etc.
       });
+    },
+    fromURLInput: function(input) {
+      if (input[0].checkValidity()) {
+        template.fromURL(input.val());
+        input.hide();
+      }
+      else {
+        return false;
+      }
     }
   };
 
@@ -108,13 +117,15 @@
   $('#graph_area').css('background-image','url("images/aws-cloudformation-template.svg")');
   $('#open_template').click(function(event){ event.preventDefault(); $('#template_input').click(); });
   $('#open_url').click(function(event) {
-     event.preventDefault();
-     var remoteInput = $('#remote_input');
+    event.preventDefault();
+    var remoteInput = $('#remote_input');
 
-     if (remoteInput.is(':visible')) {
-       template.fromURL(remoteInput.val());
-     }
-     $('#remote_input').toggle();
+    if (remoteInput.is(':visible')) {
+      template.fromURLInput(remoteInput);
+    }
+    else {
+      remoteInput.show();
+    }
   });
   $('#template_input').change(function(event){ template.load(event.target.files[0]); });
   $('#save_template').click(function(event){ event.preventDefault(); saveTemplate(); return false;});
@@ -124,8 +135,7 @@
   $('#remote_input').keypress(function(e){
     var remoteInput = $('#remote_input');
     if (e.which === 13){
-      template.fromURL(remoteInput.val());
-      remoteInput.hide();
+      template.fromURLInput(remoteInput);
       return false;
     }
   });
