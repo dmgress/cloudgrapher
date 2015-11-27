@@ -1,4 +1,6 @@
 # Cloud Grapher
+[![Build Status](https://travis-ci.org/dmgress/cloudgrapher.svg?branch=master)](https://travis-ci.org/dmgress/cloudgrapher) [![devDependency Status](https://david-dm.org/dmgress/cloudgrapher/dev-status.svg)](https://david-dm.org/dmgress/cloudgrapher#info=devDependencies)
+
 Cloud Grapher is a simple one page visualization tool for CloudFormation scripts.
 
 Writing CloudFormation scripts can be a painstaking job and understanding
@@ -14,5 +16,3 @@ Current features:
 * loading a template from a remote URL through jsonp.afeld.me
 
 Available at http://dmgress.github.io/cloudgrapher/
-
-[![Build Status](https://travis-ci.org/dmgress/cloudgrapher.svg?branch=master)](https://travis-ci.org/dmgress/cloudgrapher) (`master` branch)
