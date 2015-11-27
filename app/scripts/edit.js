@@ -73,12 +73,14 @@
     content: function() { return myCodeMirror.getDoc().getValue(); },
       setLayout: function(name) {graph.layout( { 'name': name });},
     fromURL: function(url) {
+      if ( url ) {
       $.jsonp({
         url: url,
         corsSupport: true,
         success: template.setData
         // error, etc.
       });
+      }
     },
     fromURLInput: function(input) {
       if (input[0].checkValidity()) {
