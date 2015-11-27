@@ -18,6 +18,8 @@
                 <input type="file" id="template_input"></input>
                 <ul class="button-group">
                     <li><a id="open_template" href="#" class="button"><i class="fa fa-folder-open-o fa-lg"></i></a></li>
+                    <li title="open from web"><a id="open_url" href="#" class="button"><i class="fa fa-globe fa-lg"></i></a></li>
+                    <input id="remote_input" class="hidden" type="url" name="remoteTemplate"/>
                     <li><a id="save_template" href="#" class="button"><i class="fa fa-floppy-o"></i></a></li>
                     <li><a id="save_graph" href="#" class="button"><i class="fa fa-picture-o"></i></a></li>
                 </ul>
@@ -54,12 +56,15 @@
         </div>
         </footer>
         <script src="//cdn.jsdelivr.net/jquery/2.1.4/jquery.min.js"></script>
+        <script src="js/jsonproxy.js"></script>
         <script src="js/arbor.js"></script>
         <script src="js/FileSaver.js"></script>
         <script src="js/jsonlint.js"></script>
         <script src="js/codemirror.js"></script>
         <script src="js/graph_libs.js"></script>
+        <script src="js/alertify.js"></script>
         <script src="js/edit.bundle.js"></script>
+
         <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/font-awesome/4.4.0/css/font-awesome.min.css">
     </body>
 </html>
