@@ -6,7 +6,7 @@ before_script:
   - npm install -g gulp
   - npm install -g bower
   - bower install
-script: gulp
+script: gulp && cat ./.tmp/js/lcov.info | ./node_modules/codecov.io/bin/codecov.io.js
 cache:
   directories:
     - $HOME/.node_modules

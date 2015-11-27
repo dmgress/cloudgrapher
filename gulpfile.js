@@ -195,10 +195,19 @@ gulp.task('watch', ['connect'], function () {
   gulp.watch('bower.json', ['wiredep']);
 });
 
-gulp.task('test', function () {
-  var jasmine = require("gulp-jasmine");
+gulp.task('instrument', function() {
+  return gulp.src('app/scripts/**/*.js')
+    .pipe($.istanbul({includeUntested: true}))
+    .pipe($.istanbul.hookRequire())
+});
+
+gulp.task('test', ['instrument'], function () {
   gulp.src('specs/**.js')
-    .pipe(jasmine());
+    .pipe($.jasmine())
+    .pipe($.istanbul.writeReports({
+      dir: './.tmp/js',
+      reporters: [ 'lcov', 'json', 'text-summary' ]
+    }));
 });
 
 gulp.task('test-watch', function () {
@@ -208,7 +217,7 @@ gulp.task('test-watch', function () {
     ], ['test']);
 });
 
-gulp.task('build', ['jshint', 'html', 'images', 'fonts', 'extras'], function () {
+gulp.task('build', ['jshint', 'html', 'images', 'fonts', 'extras', 'test'], function () {
   gulp.src([
       'bower_components/ace-builds/src-min-noconflict/theme-tomorrow_night_eighties.js',
       'bower_components/ace-builds/src-min-noconflict/worker-json.js',
