@@ -1,5 +1,5 @@
 /* jshint devel:true */
-/* global cytoscape, saveAs, require, CodeMirror */
+/* global cytoscape, saveAs, require, CodeMirror, alertify */
 
 (function(){'use strict';
   var collector = require('./collectdata');
@@ -44,6 +44,7 @@
         }
         catch (e) {
           console.log('ERR - ' + e );
+          alertify.error(e);
         }
       }
     },
@@ -72,20 +73,33 @@
     },
     content: function() { return myCodeMirror.getDoc().getValue(); },
       setLayout: function(name) {graph.layout( { 'name': name });},
-    fromURL: function(url) {
+    fromURL: function(url, success) {
       if ( url ) {
       $.jsonp({
         url: url,
         corsSupport: true,
-        success: template.setData
+        success: function (data) {
+          template.setData(data);
+          if (success) {
+            success(data);
+          }
+        },
+        error: function(data) {
+          var message = 'ERROR: ' + data.status + ' ' + data.statusText + ': ' + url;
+          console.log(data);
+          alertify.error(message);
+        }
         // error, etc.
       });
       }
     },
     fromURLInput: function(input) {
+      var url = input.val();
       if (input[0].checkValidity()) {
-        template.fromURL(input.val());
         input.hide();
+        template.fromURL( url, function() {
+          alertify.success(url);
+        });
       }
       else {
         return false;
