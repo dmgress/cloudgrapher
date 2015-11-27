@@ -84,7 +84,7 @@
             success(data);
           }
         },
-        error: function(data, textStatus, errorThrown) {
+        error: function(data, textStatus) {
           console.log(textStatus );
           console.log( data);
           if (textStatus === 'parsererror') {
