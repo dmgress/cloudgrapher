@@ -43,7 +43,7 @@
           $('#graph_area').css('background-image','');
         }
         catch (e) {
-          console.log('ERR - ' + e );
+          console.log('ERROR processing data as JSON - ' + e );
           alertify.error(e);
         }
       }
@@ -84,10 +84,17 @@
             success(data);
           }
         },
-        error: function(data) {
+        error: function(data, textStatus, errorThrown) {
+          console.log(textStatus );
+          console.log( data);
+          if (textStatus === 'parsererror') {
+            myCodeMirror.getDoc().setValue(data.responseText);
+            alertify.closeLogOnClick(true).error('Unable to parse result from ' + url + ' as valid JSON');
+          }
+          else {
           var message = 'ERROR: ' + data.status + ' ' + data.statusText + ': ' + url;
-          console.log(data);
-          alertify.error(message);
+          alertify.closeLogOnClick(true).error(message);
+          }
         }
         // error, etc.
       });
