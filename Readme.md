@@ -11,5 +11,6 @@ Current features:
 * saving a script
 * showing a graph generated with [cytoscape.js](http://js.cytoscape.org/)
 * saving the graph
+* loading a template from a remote URL through jsonp.afeld.me
 
 Available at http://dmgress.github.io/cloudgrapher/

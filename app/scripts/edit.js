@@ -1,5 +1,5 @@
 /* jshint devel:true */
-/* global cytoscape, saveAs, require, CodeMirror */
+/* global cytoscape, saveAs, require, CodeMirror, alertify */
 
 (function(){'use strict';
   var collector = require('./collectdata');
@@ -28,20 +28,25 @@
     load: function(file){
       var reader = new FileReader();
       reader.onload = function () {
-        var data = reader.result;
-        // console.log(data);
-        if(data) {
-          try {
-            myCodeMirror.getDoc().setValue(data);
-            template.show( collector.collectCyData( JSON.parse(data) ) );
-            $('#graph_area').css('background-image','');
-          }
-          catch (e) {
-            console.log('ERR - ' + e );
-          }
-        }
+        template.setData(reader.result);
       };
       reader.readAsText(file);
+    },
+    setData: function(data) {
+      if(data) {
+        try {
+          var dataString = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+          var dataObject = typeof data === 'object' ? data : JSON.parse(data);
+
+          myCodeMirror.getDoc().setValue(dataString);
+          template.show( collector.collectCyData( dataObject ) );
+          $('#graph_area').css('background-image','');
+        }
+        catch (e) {
+          console.log('ERROR processing data as JSON - ' + e );
+          alertify.error(e);
+        }
+      }
     },
     show: function(data) {
       graph = cytoscape({
@@ -67,7 +72,46 @@
       return graph.png({full: false});
     },
     content: function() { return myCodeMirror.getDoc().getValue(); },
-      setLayout: function(name) {graph.layout( { 'name': name });}
+      setLayout: function(name) {graph.layout( { 'name': name });},
+    fromURL: function(url, success) {
+      if ( url ) {
+      $.jsonp({
+        url: url,
+        corsSupport: true,
+        success: function (data) {
+          template.setData(data);
+          if (success) {
+            success(data);
+          }
+        },
+        error: function(data, textStatus, errorThrown) {
+          console.log(textStatus );
+          console.log( data);
+          if (textStatus === 'parsererror') {
+            myCodeMirror.getDoc().setValue(data.responseText);
+            alertify.closeLogOnClick(true).error('Unable to parse result from ' + url + ' as valid JSON');
+          }
+          else {
+          var message = 'ERROR: ' + data.status + ' ' + data.statusText + ': ' + url;
+          alertify.closeLogOnClick(true).error(message);
+          }
+        }
+        // error, etc.
+      });
+      }
+    },
+    fromURLInput: function(input) {
+      var url = input.val();
+      if (input[0].checkValidity()) {
+        input.hide();
+        template.fromURL( url, function() {
+          alertify.success(url);
+        });
+      }
+      else {
+        return false;
+      }
+    }
   };
 
   var saveImage = function() {
@@ -95,10 +139,29 @@
   }, false);
   $('#graph_area').css('background-image','url("images/aws-cloudformation-template.svg")');
   $('#open_template').click(function(event){ event.preventDefault(); $('#template_input').click(); });
+  $('#open_url').click(function(event) {
+    event.preventDefault();
+    var remoteInput = $('#remote_input');
+
+    if (remoteInput.is(':visible')) {
+      template.fromURLInput(remoteInput);
+    }
+    else {
+      remoteInput.show();
+    }
+  });
   $('#template_input').change(function(event){ template.load(event.target.files[0]); });
   $('#save_template').click(function(event){ event.preventDefault(); saveTemplate(); return false;});
   $('#save_graph').click(function(event){ event.preventDefault(); saveImage(); return false;});
   $('#graph_layout').change(function() { template.setLayout( $('#graph_layout').val() ); });
+
+  $('#remote_input').keypress(function(e){
+    var remoteInput = $('#remote_input');
+    if (e.which === 13){
+      template.fromURLInput(remoteInput);
+      return false;
+    }
+  });
   var container = $('#container'),
   left = $('#graph_area'),
     right = $('#editor_pane'),
