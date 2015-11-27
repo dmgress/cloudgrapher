@@ -7,3 +7,11 @@ before_script:
   - npm install -g bower
   - bower install
 script: gulp
+cache:
+  directories:
+    - $HOME/.node_modules
+    - $HOME/bower_components
+before_cache:
+  - rm -f $HOME/.node_modules/npm-check
+  - npm prune
+  - bower prune
