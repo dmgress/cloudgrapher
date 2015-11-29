@@ -5,8 +5,12 @@ node_js:
 before_script:
   - npm install -g gulp
   - npm install -g bower
+  - npm install -g codeclimate-test-reporter
   - bower install
-script: gulp && cat ./.tmp/js/lcov.info | ./node_modules/codecov.io/bin/codecov.io.js
+script: gulp
+after_success:
+  - cat ./.tmp/js/lcov.info | ./node_modules/codecov.io/bin/codecov.io.js
+  - codeclimate-test-reporter < lcov.info
 cache:
   directories:
     - $HOME/.node_modules
@@ -15,3 +19,6 @@ before_cache:
   - rm -f $HOME/.node_modules/npm-check
   - npm prune
   - bower prune
+addons:
+  code_climate:
+    repo_token: 42a279ebfefeb7d8cab1a7acc719c20fa3f5306ec0e9226e82b98ff2645d9d05
