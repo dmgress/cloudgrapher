@@ -15,7 +15,7 @@ after_script:
   - codacy-coverage < .tmp/js/lcov.info
 cache:
   directories:
-    - $HOME/.node_modules
+    - $HOME/node_modules
     - $HOME/bower_components
 before_cache:
   - rm -f $HOME/.node_modules/npm-check
