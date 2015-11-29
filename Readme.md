@@ -1,4 +1,8 @@
 # Cloud Grapher
+[![Build Status](https://travis-ci.org/dmgress/cloudgrapher.svg?branch=master)](https://travis-ci.org/dmgress/cloudgrapher)
+[![codecov.io](https://codecov.io/github/dmgress/cloudgrapher/coverage.svg?branch=master)](https://codecov.io/github/dmgress/cloudgrapher?branch=master)
+[![devDependency Status](https://david-dm.org/dmgress/cloudgrapher/dev-status.svg)](https://david-dm.org/dmgress/cloudgrapher#info=devDependencies)
+
 Cloud Grapher is a simple one page visualization tool for CloudFormation scripts.
 
 Writing CloudFormation scripts can be a painstaking job and understanding
