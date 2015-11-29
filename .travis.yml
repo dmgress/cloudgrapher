@@ -6,11 +6,13 @@ before_script:
   - npm install -g gulp
   - npm install -g bower
   - npm install -g codeclimate-test-reporter
+  - npm install -g codacy-coverage
   - bower install
 script: gulp
 after_script:
   - cat ./.tmp/js/lcov.info | ./node_modules/codecov.io/bin/codecov.io.js
   - codeclimate-test-reporter < ./.tmp/js/lcov.info
+  - cat ./.tmp/js/lcov.info | ./node_modules/.bin/codacy-coverage
 cache:
   directories:
     - $HOME/.node_modules
