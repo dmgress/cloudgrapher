@@ -8,9 +8,9 @@ before_script:
   - npm install -g codeclimate-test-reporter
   - bower install
 script: gulp
-after_success:
+after_script:
   - cat ./.tmp/js/lcov.info | ./node_modules/codecov.io/bin/codecov.io.js
-  - codeclimate-test-reporter < lcov.info
+  - codeclimate-test-reporter < ./.tmp/js/lcov.info
 cache:
   directories:
     - $HOME/.node_modules
