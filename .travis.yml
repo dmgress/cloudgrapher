@@ -17,6 +17,8 @@ cache:
   directories:
     - $HOME/node_modules
     - $HOME/bower_components
+    - $TRAVIS_BUILD_DIR/node_modules
+    - $TRAVIS_BUILD_DIR/bower_components
 before_cache:
   - rm -f $HOME/.node_modules/npm-check
   - npm prune
