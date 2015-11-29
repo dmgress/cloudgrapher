@@ -209,3 +209,18 @@ input[type=file] {
   border-color: silver;
   border-style: solid;
 }
+.instructions {
+  border: solid 1px black;
+  border-radius: 5px;
+  padding: 5px;
+  text-align: center;
+}
+.instructions span {
+  margin: 0 5px;
+}
+.instructions i {
+  border-radius: 50%;
+  border-style: solid;
+  height: 1em;
+  width: 1em;
+}
