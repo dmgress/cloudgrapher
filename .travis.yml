@@ -6,7 +6,7 @@ before_script:
   - npm install -g gulp
   - npm install -g bower
   - npm install -g codeclimate-test-reporter
-  - npm install -g codacy-coverage
+  - npm install codacy-coverage
   - bower install
 script: gulp
 after_script:
