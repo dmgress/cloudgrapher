@@ -130,7 +130,8 @@ gulp.task('clear', function (done) {
 });
 
 gulp.task('clean', ['clear'], function () {
-  require('del').bind(null, ['.tmp', 'dist']);
+  var del = require('del')
+  return del(['.tmp', 'dist']);
 });
 
 gulp.task('connect', function () {
