@@ -20,7 +20,6 @@ cache:
     - $TRAVIS_BUILD_DIR/node_modules
     - $TRAVIS_BUILD_DIR/bower_components
 before_cache:
-  - rm -f $HOME/.node_modules/npm-check
   - npm prune
   - bower prune
 addons:
