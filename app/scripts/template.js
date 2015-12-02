@@ -54,6 +54,10 @@ exports.template = function(codemirror, graphArea) {
     }
   };
 
+  var refreshGraph = function(){
+    show(collector.collectCyData(JSON.parse(myCodeMirror.getDoc().getValue())));
+  }
+
   var show = function(data) {
     graph = cytoscape({
       container: graphArea[0],
@@ -145,7 +149,7 @@ exports.template = function(codemirror, graphArea) {
     fromURLInput: fromURLInput,
     fromURL: fromURL,
     content: content,
-    show: show,
+    refreshGraph: refreshGraph,
     setLayout: setLayout,
     base64Image: base64Image,
     description: description,

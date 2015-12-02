@@ -11,9 +11,9 @@
     foldGutter: true,
     gutters: ['CodeMirror-linenumbers', 'CodeMirror-foldgutter', 'CodeMirror-lint-markers'],
     lint: {
-      onUpdateLinting: function (annotations) {
-        if (template && (! annotations || annotations.length === 0)) {
-          template.show( collector.collectCyData(JSON.parse (myCodeMirror.getDoc().getValue() )));
+      onUpdateLinting: function(annotations) {
+        if (template && (!annotations || annotations.length === 0)) {
+          template.refreshGraph();
         }
       }
     }
