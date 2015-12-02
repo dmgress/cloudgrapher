@@ -7,6 +7,9 @@
  */
 var HTTP_HOST = process.env.IP || 'localhost';
 var HTTP_PORT = process.env.PORT || 9000;
+
+var BUILD_ENVIRONMENT = process.env.BUILD_ENVIRONMENT || 'production';
+
 /**
  * LiveReload uses 35729 by default, but Cloud9 only opens
  * ports (8080, 8081, 8082). Try using port 8082 for LiveReload when running
@@ -59,7 +62,7 @@ gulp.task('javascript', function () {
     .pipe(source('edit.bundle.js'))
     .pipe($.buffer())
     .pipe($.sourcemaps.init({loadMaps: true}))
-      .pipe($.uglify())
+      .pipe($.if(BUILD_ENVIRONMENT === 'production', $.uglify()))
     .pipe($.sourcemaps.write('./'))
     .pipe($.livereload())
     .pipe(gulp.dest('dist/js'));
@@ -156,6 +159,7 @@ gulp.task('connect', function () {
 });
 
 gulp.task('serve', ['connect', 'watch'], function () {
+  BUILD_ENVIRONMENT='development';
   require('opn')('http://' + HTTP_HOST + ':' + HTTP_PORT);
 });
 
