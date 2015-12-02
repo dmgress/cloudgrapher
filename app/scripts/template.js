@@ -56,7 +56,7 @@ exports.template = function(codemirror, graphArea) {
 
   var refreshGraph = function(){
     show(collector.collectCyData(json()));
-  }
+  };
 
   var show = function(data) {
     graph = cytoscape({
@@ -145,7 +145,7 @@ exports.template = function(codemirror, graphArea) {
 
   var text = function(indent) {
     return indent ? JSON.stringify(json(), null, indent) : myCodeMirror.getDoc().getValue();
-  }
+  };
 
   return {
     load: load,
