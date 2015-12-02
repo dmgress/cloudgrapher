@@ -62,8 +62,9 @@
     };
   };
   var saveTemplate = function() {
-    var prettyDoc = JSON.stringify(JSON.parse(template.content()), null, 2);
-    var blob = new Blob([prettyDoc], {type: 'text/plain;charset=utf-8'});
+    var blob = new Blob([template.text(2)], {
+      type: 'text/plain;charset=utf-8'
+    });
     saveAs(blob, template.description() + '.json');
   };
   var mainRow = document.getElementById('graph_area');

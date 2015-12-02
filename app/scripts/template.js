@@ -55,7 +55,7 @@ exports.template = function(codemirror, graphArea) {
   };
 
   var refreshGraph = function(){
-    show(collector.collectCyData(JSON.parse(myCodeMirror.getDoc().getValue())));
+    show(collector.collectCyData(json()));
   }
 
   var show = function(data) {
@@ -74,7 +74,7 @@ exports.template = function(codemirror, graphArea) {
   var description = function() {
     var description = 'template';
     try {
-      description = JSON.parse(content()).Description;
+      description = json().Description;
     }
     catch (e) {}
     return description;
@@ -91,8 +91,8 @@ exports.template = function(codemirror, graphArea) {
     });
   };
 
-  var content = function() {
-    return myCodeMirror.getDoc().getValue();
+  var json = function() {
+    return JSON.parse(myCodeMirror.getDoc().getValue());
   };
   var setLayout = function(name) {
     if (graph) {
@@ -143,17 +143,21 @@ exports.template = function(codemirror, graphArea) {
     }
   };
 
+  var text = function(indent) {
+    return indent ? JSON.stringify(json(), null, indent) : myCodeMirror.getDoc().getValue();
+  }
+
   return {
     load: load,
     setData: setData,
     fromURLInput: fromURLInput,
     fromURL: fromURL,
-    content: content,
     refreshGraph: refreshGraph,
     setLayout: setLayout,
     base64Image: base64Image,
     description: description,
     changeStyle: changeStyle,
-    graph: graph
+    graph: graph,
+    text: text
   };
 };
