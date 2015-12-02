@@ -18,14 +18,14 @@ exports.template = function(codemirror, graphArea) {
   var load = function(file, success, fail) {
     var reader = new FileReader();
     reader.onload = function() {
-      setData(reader.result, function(){
-      if (success) {
-        success(file.name);
-      }
-      }, function(e){
-       if (fail) {
-        fail(file.name, e);
-      }
+      setData(reader.result, function() {
+        if (success) {
+          success(file.name);
+        }
+      }, function(e) {
+        if (fail) {
+          fail(file.name, e);
+        }
       });
 
     };
