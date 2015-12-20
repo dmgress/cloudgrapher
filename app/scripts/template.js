@@ -1,13 +1,14 @@
 /* jshint devel:true */
 /* global exports, require, cytoscape */
 
-exports.template = function(codemirror, graphArea) {
+exports.template = function(codemirror, graphArea, cyto, jsonproxy) {
   'use strict';
 
   var myCodeMirror = codemirror;
   var collector = require('./collectdata');
   var graph;
   var style;
+  var cyto = cyto || cytoscape;
 
   var changeStyle = function(data) {
     style = data;
@@ -15,6 +16,7 @@ exports.template = function(codemirror, graphArea) {
       graph.style(style);
     }
   };
+
   var load = function(file, success, fail) {
     var reader = new FileReader();
     reader.onload = function() {
@@ -59,7 +61,7 @@ exports.template = function(codemirror, graphArea) {
   };
 
   var show = function(data) {
-    graph = cytoscape({
+    graph = cyto({
       container: graphArea[0],
       elements: data,
       style: style,
@@ -94,6 +96,7 @@ exports.template = function(codemirror, graphArea) {
   var json = function() {
     return JSON.parse(myCodeMirror.getDoc().getValue());
   };
+
   var setLayout = function(name) {
     if (graph) {
       graph.layout({
@@ -101,9 +104,10 @@ exports.template = function(codemirror, graphArea) {
       });
     }
   };
+
   var fromURL = function(url, success, onError) {
     if (url) {
-      $.jsonp({
+      jsonproxy({
         url: url,
         corsSupport: true,
         success: function(data) {

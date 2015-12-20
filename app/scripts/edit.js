@@ -19,7 +19,7 @@
     }
   });
   myCodeMirror.setSize('100%', '800px');
-  var template = require('./template').template(myCodeMirror, $('#graph_area'));
+  var template = require('./template').template(myCodeMirror, $('#graph_area'), $.jsonp);
   $.ajax({
     url: 'styles/main.cycss',
     type: 'GET',
