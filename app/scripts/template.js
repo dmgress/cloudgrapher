@@ -48,10 +48,14 @@ exports.template = function(codemirror, graphArea, cyto, jsonproxy) {
         }
       }
       catch (e) {
-        console.log('ERROR processing data as JSON - ' + e);
         if (onError) {
-          onError(e);
+          onError('Error processing data as JSON', e);
         }
+      }
+    }
+    else {
+      if (onError) {
+        onError('No data');
       }
     }
   };
@@ -117,8 +121,6 @@ exports.template = function(codemirror, graphArea, cyto, jsonproxy) {
           }
         },
         error: function(data, textStatus) {
-            console.log(textStatus);
-            console.log(data);
             var message;
             if (textStatus === 'parsererror') {
               myCodeMirror.getDoc().setValue(data.responseText);
@@ -128,7 +130,7 @@ exports.template = function(codemirror, graphArea, cyto, jsonproxy) {
               message = 'Unable to load: status ' + data.status + ' ' + data.statusText;
             }
             if (onError) {
-              onError(url, message);
+              onError(url, message, data, textStatus);
             }
           }
           // error, etc.
