@@ -7,12 +7,15 @@
  */
 var HTTP_HOST = process.env.IP || 'localhost';
 var HTTP_PORT = process.env.PORT || 9000;
+
+var BUILD_ENVIRONMENT = process.env.BUILD_ENVIRONMENT || 'production';
+
 /**
  * LiveReload uses 35729 by default, but Cloud9 only opens
  * ports (8080, 8081, 8082). Try using port 8082 for LiveReload when running
  * on Cloud9 but fall back to default in any other case.
  */
-var LIVERELOAD_PORT =  process.env.IP ? 8082 : 35729;
+var LIVERELOAD_PORT = process.env.IP ? 8082 : 35729;
 
 var gulp = require('gulp');
 var browserify = require('browserify');
@@ -36,7 +39,7 @@ var AUTOPREFIXER_BROWSERS = [
   'bb >= 10'
 ];
 
-gulp.task('styles', function () {
+gulp.task('styles', function() {
   gulp.src(['app/styles/*.cycss']).pipe(gulp.dest('dist/styles'));
   return gulp.src(['app/styles/*.css'])
     .pipe($.if('*.css', $.autoprefixer(AUTOPREFIXER_BROWSERS)))
@@ -44,54 +47,55 @@ gulp.task('styles', function () {
 });
 
 // Lint JavaScript
-gulp.task('jshint', function () {
+gulp.task('jshint', function() {
   return gulp.src('app/scripts/**/*.js')
     .pipe($.jshint())
     .pipe($.jshint.reporter('jshint-stylish'))
     .pipe($.jshint.reporter('fail'));
 });
 
-gulp.task('javascript', function () {
+gulp.task('javascript', function() {
   return browserify({
-    entries:['app/scripts/edit.js'],
-    debug: true
-  }).bundle()
+      entries: ['app/scripts/edit.js'],
+      debug: true
+    }).bundle()
     .pipe(source('edit.bundle.js'))
     .pipe($.buffer())
-    .pipe($.sourcemaps.init({loadMaps: true}))
-      .pipe($.uglify())
+    .pipe($.sourcemaps.init({
+      loadMaps: true
+    }))
+    .pipe($.if(BUILD_ENVIRONMENT === 'production', $.uglify()))
     .pipe($.sourcemaps.write('./'))
     .pipe($.livereload())
     .pipe(gulp.dest('dist/js'));
 });
 
-gulp.task('html', ['styles', 'javascript'], function () {
+gulp.task('html', ['styles', 'javascript'], function() {
 
   return gulp.src('app/*.html')
     .pipe($.cdnizer({
       relativeRoot: 'app/',
       allowMin: true,
-      files: [
-        {
-          file: 'bower_components/jquery/dist/jquery.js',
-          package: 'jquery',
-          cdn: '//cdn.jsdelivr.net/jquery/${version}/jquery.min.js'
-        },
-        {
-          file: 'bower_components/fontawesome/css/font-awesome.css',
-          package: 'fontawesome',
-          cdn: '//maxcdn.bootstrapcdn.com/font-awesome/${version}/css/font-awesome.min.css'
-        }
-      ]
+      files: [{
+        file: 'bower_components/jquery/dist/jquery.js',
+        package: 'jquery',
+        cdn: '//cdn.jsdelivr.net/jquery/${version}/jquery.min.js'
+      }, {
+        file: 'bower_components/fontawesome/css/font-awesome.css',
+        package: 'fontawesome',
+        cdn: '//maxcdn.bootstrapcdn.com/font-awesome/${version}/css/font-awesome.min.css'
+      }]
     }))
-    .pipe($.useref({searchPath: ['.tmp','app','.']}))
+    .pipe($.useref({
+      searchPath: ['.tmp', 'app', '.']
+    }))
     .pipe($.if('*.css', $.csso()))
     //.pipe($.if('*.html', $.minifyHtml({conditionals: true, loose: true})))
     .pipe(gulp.dest('dist'));
 });
 
 //Optimize images
-gulp.task('images', function () {
+gulp.task('images', function() {
   return gulp.src([
       'app/images/**/aws*.png',
       'app/images/**/unknown.png',
@@ -101,17 +105,19 @@ gulp.task('images', function () {
       progressive: true,
       interlaced: true
     })))
-    .pipe(gulp.dest('dist/images')).pipe($.size({title: 'images'}));
+    .pipe(gulp.dest('dist/images')).pipe($.size({
+      title: 'images'
+    }));
 });
 
-gulp.task('fonts', function () {
+gulp.task('fonts', function() {
   return gulp.src(require('main-bower-files')().concat('app/fonts/**/*'))
     .pipe($.filter('**/*.{eot,svg,ttf,woff}'))
     .pipe($.flatten())
     .pipe(gulp.dest('dist/fonts'));
 });
 
-gulp.task('extras', function () {
+gulp.task('extras', function() {
   return gulp.src([
     'app/*.*',
     '!app/*.html',
@@ -125,20 +131,22 @@ gulp.task('extras', function () {
 
 // clear all caches created by gulp-cache
 // do this if weird stuff happens with for instance images
-gulp.task('clear', function (done) {
+gulp.task('clear', function(done) {
   return $.cache.clearAll(done);
 });
 
-gulp.task('clean', ['clear'], function () {
+gulp.task('clean', ['clear'], function() {
   var del = require('del')
   return del(['.tmp', 'dist']);
 });
 
-gulp.task('connect', function () {
+gulp.task('connect', function() {
   var serveStatic = require('serve-static');
   var serveIndex = require('serve-index');
   var app = require('connect')()
-    .use(require('connect-livereload')({port: LIVERELOAD_PORT}))
+    .use(require('connect-livereload')({
+      port: LIVERELOAD_PORT
+    }))
     .use(serveStatic('.tmp'))
     .use(serveStatic('app'))
     .use(serveStatic('dist'))
@@ -149,29 +157,30 @@ gulp.task('connect', function () {
 
   require('http').createServer(app)
     .listen(HTTP_PORT, HTTP_HOST)
-    .on('listening', function () {
+    .on('listening', function() {
       console.log('Started connect web server on http://' +
-      HTTP_HOST + ':' + HTTP_PORT);
+        HTTP_HOST + ':' + HTTP_PORT);
     });
 });
 
-gulp.task('serve', ['connect', 'watch'], function () {
+gulp.task('serve', ['connect', 'watch'], function() {
+  BUILD_ENVIRONMENT = 'development';
   require('opn')('http://' + HTTP_HOST + ':' + HTTP_PORT);
 });
 
 // serve from build to ensure everything is there
-gulp.task('serve-build', ['clean'], function () {
+gulp.task('serve-build', ['clean'], function() {
   gulp.start('build');
   var serveStatic = require('serve-static');
   var serveIndex = require('serve-index');
   var app = require('connect')().use(serveStatic('dist')).use(serveIndex('dist'));
-  require('http').createServer(app).listen(HTTP_PORT, HTTP_HOST).on('listening', function () {
+  require('http').createServer(app).listen(HTTP_PORT, HTTP_HOST).on('listening', function() {
     console.log('Serving distribution at http://' + HTTP_HOST + ':' + HTTP_PORT);
   });
 });
 
 // inject bower components
-gulp.task('wiredep', function () {
+gulp.task('wiredep', function() {
   var wiredep = require('wiredep').stream;
 
   gulp.src('app/*.html')
@@ -179,7 +188,7 @@ gulp.task('wiredep', function () {
     .pipe(gulp.dest('app'));
 });
 
-gulp.task('watch', ['connect'], function () {
+gulp.task('watch', ['connect'], function() {
   $.livereload.listen(LIVERELOAD_PORT);
 
   // watch for changes
@@ -198,41 +207,48 @@ gulp.task('watch', ['connect'], function () {
 
 gulp.task('instrument', function() {
   return gulp.src('app/scripts/**/*.js')
-    .pipe($.istanbul({includeUntested: true}))
+    .pipe($.istanbul({
+      includeUntested: true
+    }))
     .pipe($.istanbul.hookRequire())
 });
 
-gulp.task('test', ['instrument'], function () {
+gulp.task('test', ['instrument'], function() {
   gulp.src('specs/**.js')
-    .pipe($.jasmine())
+    .pipe($.jasmine({includeStackTrace: true}))
     .pipe($.istanbul.writeReports({
       dir: './.tmp/js',
-      reporters: [ 'lcov', 'json', 'text-summary' ]
+      reporters: ['lcov', 'json', 'text-summary']
     }));
 });
 
-gulp.task('test-watch', function () {
-    gulp.watch([
-      'specs/**.js',
-      'app/scripts/**.js'
-    ], ['test']);
+gulp.task('test-watch', function() {
+  gulp.watch([
+    'specs/**.js',
+    'app/scripts/**.js'
+  ], ['test']);
 });
 
-gulp.task('build', ['jshint', 'html', 'images', 'fonts', 'extras', 'test'], function () {
+gulp.task('build', ['jshint', 'html', 'images', 'fonts', 'extras', 'test'], function() {
   gulp.src([
       'bower_components/ace-builds/src-min-noconflict/theme-tomorrow_night_eighties.js',
       'bower_components/ace-builds/src-min-noconflict/worker-json.js',
       'bower_components/ace-builds/src-min-noconflict/mode-json.js'
     ])
-    .pipe($.size({title: 'copy ace js'}))
+    .pipe($.size({
+      title: 'copy ace js'
+    }))
     .pipe(gulp.dest('dist/js/ace/'));
-  return gulp.src('dist/**').pipe($.size({title: 'build', gzip: true}));
+  return gulp.src('dist/**').pipe($.size({
+    title: 'build',
+    gzip: true
+  }));
 });
 
 gulp.task('deploy', function() {
   return gulp.src('dist/**').pipe($.ghPages());
 });
 
-gulp.task('default', ['clean'], function () {
+gulp.task('default', ['clean'], function() {
   gulp.start('build');
 });
