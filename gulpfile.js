@@ -215,7 +215,7 @@ gulp.task('instrument', function() {
 
 gulp.task('test', ['instrument'], function() {
   gulp.src('specs/**.js')
-    .pipe($.jasmine())
+    .pipe($.jasmine({includeStackTrace: true}))
     .pipe($.istanbul.writeReports({
       dir: './.tmp/js',
       reporters: ['lcov', 'json', 'text-summary']
