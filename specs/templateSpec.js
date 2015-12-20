@@ -117,15 +117,15 @@ describe('template', function() {
         options.error({status: 404, statusText: 'TEST - Not Found'},'error');
       });
       fromURL();
-      expect(callbacks.f).toHaveBeenCalledWith(url, 'Unable to load: status 404 TEST - Not Found');
+      expect(callbacks.f).toHaveBeenCalledWith(url, 'Unable to load: status 404 TEST - Not Found', jasmine.any(Object), jasmine.any(String));
     });
 
     it('calls failure function on parsererror', function() {
       jsonproxy.and.callFake(function(options) {
-        options.error('','parsererror');
+        options.error({},'parsererror');
       });
       fromURL();
-      expect(callbacks.f).toHaveBeenCalledWith(url, 'Unable to parse the result as valid JSON');
+      expect(callbacks.f).toHaveBeenCalledWith(url, 'Unable to parse the result as valid JSON', jasmine.any(Object), jasmine.any(String));
       expect(codemirrorDoc.setValue).toHaveBeenCalled();
     });
   });
