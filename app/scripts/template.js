@@ -164,6 +164,7 @@ exports.template = function(codemirror, graphArea, cyto, jsonproxy) {
     description: description,
     changeStyle: changeStyle,
     graph: graph,
-    text: text
+    text: text,
+    json: json
   };
 };
