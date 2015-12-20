@@ -1,14 +1,14 @@
 /* jshint devel:true */
 /* global exports, require, cytoscape */
 
-exports.template = function(codemirror, graphArea, cyto, jsonproxy) {
+exports.template = function(codemirror, graphArea, cytolib, jsonproxy) {
   'use strict';
 
   var myCodeMirror = codemirror;
   var collector = require('./collectdata');
   var graph;
   var style;
-  var cyto = cyto || cytoscape;
+  var cyto = cytolib || cytoscape;
 
   var changeStyle = function(data) {
     style = data;
