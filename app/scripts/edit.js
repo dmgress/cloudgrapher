@@ -115,9 +115,8 @@
     }
   });
   var container = $('#container'),
-    left = $('#graph_area'),
-    right = $('#editor_pane'),
     handle = $('#border');
+    editorPane = $('#editor_pane');
 
   handle.on('mousedown', function(e) {
     isResizing = true;
@@ -132,8 +131,8 @@
 
     var offsetRight = container.width() - (e.clientX - container.offset().left);
 
-    left.css('right', offsetRight);
-    right.css('width', offsetRight);
+    graphArea.css('right', offsetRight);
+    editorPane.css('width', offsetRight);
   }).on('mouseup', function() {
     if (isResizing) {
       template.fitGraph();
