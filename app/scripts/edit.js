@@ -56,12 +56,12 @@
   var loadTemplate = function(loadFn, arg) {
     loadFn(
       arg,
-      function(location) {
+      function(templateLocation) {
         graphArea.css('background-image', '');
-        alertify.success('Loaded template "' + location + '" successfully');
+        alertify.success('Loaded template "' + templateLocation + '" successfully');
       },
-      function(name, reason) {
-        alertify.error('Unable to load template "' + location + '" because of ' + reason);
+      function(templateLocation, reason) {
+        alertify.error('Unable to load template "' + templateLocation + '" because of ' + reason);
       }
     );
   };
