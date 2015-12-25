@@ -13,10 +13,10 @@ exports.template = function(options) {
   var cyto = options.cytolib || cytoscape;
 
   if (!myCodeMirror || !myCodeMirror.getDoc) {
-    throw "editor unavailable or doesn't support getDoc";
+    throw 'editor unavailable or doesn\'t support getDoc';
   }
   if (!cyto) {
-    throw "graphing library Cytoscape unavailable";
+    throw 'graphing library Cytoscape unavailable';
   }
 
   var changeStyle = function(data) {
@@ -75,7 +75,7 @@ exports.template = function(options) {
 
   var show = function(data, container) {
     if (!container && !defaultContainer) {
-      throw "No container available to show data";
+      throw 'No container available to show data';
     }
     graph = cyto({
       container: container || defaultContainer,
@@ -123,7 +123,7 @@ exports.template = function(options) {
 
   var fromURL = function(url, success, onError) {
     if (!jsonproxy) {
-      throw "No jsonproxy available to request URLs";
+      throw 'No jsonproxy available to request URLs';
     }
     if (url) {
       jsonproxy({
