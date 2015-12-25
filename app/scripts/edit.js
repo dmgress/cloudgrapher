@@ -39,26 +39,15 @@
 
   var remoteInput = $('#remote_input');
 
-  var loadURL = function() {
-    template.fromURLInput(remoteInput,
-      function(url) {
+  var loadTemplate = function(loadFn, arg) {
+    loadFn(
+      arg,
+      function(location) {
         graphArea.css('background-image', '');
-        alertify.success('Loaded URL "' + url + '" successfully');
-      },
-      function(url, message) {
-        alertify.error('Error while loading URL "' + url + '" :' + message);
-      }
-    );
-  };
-  var loadFile = function(file) {
-    template.load(
-      file,
-      function(name) {
-        graphArea.css('background-image', '');
-        alertify.success('Loaded file "' + name + '"');
+        alertify.success('Loaded template "' + location + '" successfully');
       },
       function(name, reason) {
-        alertify.error('Unable to load file "' + name + '" because of ' + reason);
+        alertify.error('Unable to load template "' + location + '" because of ' + reason);
       }
     );
   };
@@ -84,7 +73,7 @@
   mainRow.addEventListener('drop', function(evt) {
     evt.stopPropagation();
     evt.preventDefault();
-    loadFile(evt.dataTransfer.files[0]);
+    loadTemplate(template.load, evt.dataTransfer.files[0]);
   }, false);
   $('#graph_area').css('background-image', 'url("images/aws-cloudformation-template.svg")');
   $('#open_template').click(function(event) {
@@ -94,14 +83,14 @@
   $('#open_url').click(function(event) {
     event.preventDefault();
     if (remoteInput.is(':visible')) {
-      loadURL();
+      loadTemplate(template.fromURLInput, remoteInput);
     }
     else {
       remoteInput.show();
     }
   });
   $('#template_input').change(function(event) {
-    loadFile(event.target.files[0]);
+    loadTemplate(template.load, event.target.files[0]);
   });
   $('#save_template').click(function(event) {
     event.preventDefault();
@@ -119,7 +108,7 @@
 
   $('#remote_input').keypress(function(e) {
     if (e.which === 13) {
-      loadURL();
+      loadTemplate(template.fromURLInput, remoteInput);
       return false;
     }
   });
