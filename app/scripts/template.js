@@ -155,6 +155,12 @@ exports.template = function(options) {
     return indent ? JSON.stringify(json(), null, indent) : myCodeMirror.getDoc().getValue();
   };
 
+  var fitGraph= function (){
+    if (graph) {
+      graph.fit();
+    }
+  };
+
   return {
     load: load,
     setData: setData,
@@ -165,7 +171,7 @@ exports.template = function(options) {
     base64Image: base64Image,
     description: description,
     changeStyle: changeStyle,
-    graph: graph,
+    fitGraph: fitGraph,
     text: text,
     json: json
   };

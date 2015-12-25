@@ -145,7 +145,7 @@
     right.css('width', offsetRight);
   }).on('mouseup', function() {
     if (isResizing) {
-      template.graph.fit();
+      template.fitGraph();
     }
     // stop resizing
     isResizing = false;
