@@ -1,5 +1,5 @@
 /* jshint devel:true */
-/* global saveAs, require, CodeMirror, alertify */
+/* global saveAs, require, CodeMirror, alertify, cytoscape */
 
 (function() {
   'use strict';
@@ -19,7 +19,13 @@
     }
   });
   myCodeMirror.setSize('100%', '800px');
-  var template = require('./template').template(myCodeMirror, $('#graph_area'), $.jsonp);
+  var graphArea = $('#graph_area');
+  var template = require('./template').template({
+    'editor': myCodeMirror,
+    'cytolib': cytoscape,
+    'graphContainer': graphArea[0],
+    'jsonproxy': $.jsonp
+  });
   $.ajax({
     url: 'styles/main.cycss',
     type: 'GET',
@@ -36,6 +42,7 @@
   var loadURL = function() {
     template.fromURLInput(remoteInput,
       function(url) {
+        graphArea.css('background-image', '');
         alertify.success('Loaded URL "' + url + '" successfully');
       },
       function(url, message) {
@@ -47,6 +54,7 @@
     template.load(
       file,
       function(name) {
+        graphArea.css('background-image', '');
         alertify.success('Loaded file "' + name + '"');
       },
       function(name, reason) {

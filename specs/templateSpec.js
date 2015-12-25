@@ -22,7 +22,11 @@ describe('template', function() {
 
     beforeEach(function() {
       test = jasmine.createSpyObj('test', ['success', 'failure']);
-      template = lib.template(codemirror, graphArea, cytoscape);
+      template = lib.template({
+        'editor': codemirror,
+        'graphContainer': graphArea,
+        'cytolib': cytoscape
+      });
     });
 
     it('will call the success function on success', function() {
@@ -45,7 +49,12 @@ describe('template', function() {
 
     beforeEach(function() {
       jsonproxy = jasmine.createSpy('jsonp');
-      template = lib.template(codemirror, graphArea, cytoscape, jsonproxy);
+      template = lib.template({
+        'editor': codemirror,
+        'graphContainer': graphArea,
+        'cytolib': cytoscape,
+        'jsonproxy': jsonproxy
+      });
 
       input = jasmine.createSpyObj('inputJQuery', ['val', 'hide']);
       input[0] = jasmine.createSpyObj('inputDOM', ['checkValidity']);
@@ -74,7 +83,11 @@ describe('template', function() {
       codemirror = jasmine.createSpyObj('codemirror', ['getDoc']);
       codemirrorDoc = jasmine.createSpyObj('codemirrorDoc', ['getValue']);
       codemirror.getDoc.and.returnValue(codemirrorDoc);
-      template = lib.template(codemirror, graphArea, cytoscape);
+      template = lib.template({
+        'editor': codemirror,
+        'graphContainer': graphArea,
+        'cytolib': cytoscape
+      });
       spyOn(template, 'json');
     });
     it('will retrieve directly from codemirror without indent', function() {
@@ -97,7 +110,12 @@ describe('template', function() {
     beforeEach(function() {
       url = 'http://www.example.com';
       jsonproxy = jasmine.createSpy('jsonp');
-      template = lib.template(codemirror, graphArea, cytoscape, jsonproxy);
+      template = lib.template({
+        'editor': codemirror,
+        'graphContainer': graphArea,
+        'cytolib': cytoscape,
+        'jsonproxy': jsonproxy
+      });
       callbacks = jasmine.createSpyObj('callbacks', ['s', 'f']);
       fromURL = function(){
         return template.fromURL(url, callbacks.s, callbacks.f);

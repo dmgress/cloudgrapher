@@ -1,14 +1,16 @@
 /* jshint devel:true */
 /* global exports, require, cytoscape */
 
-exports.template = function(codemirror, graphArea, cytolib, jsonproxy) {
+exports.template = function(options) {
   'use strict';
 
-  var myCodeMirror = codemirror;
+  var myCodeMirror = options.editor;
   var collector = require('./collectdata');
+  var defaultContainer = options.graphContainer;
+  var jsonproxy = options.jsonproxy;
   var graph;
   var style;
-  var cyto = cytolib || cytoscape;
+  var cyto = options.cytolib || cytoscape;
 
   var changeStyle = function(data) {
     style = data;
@@ -42,7 +44,7 @@ exports.template = function(codemirror, graphArea, cytolib, jsonproxy) {
 
         myCodeMirror.getDoc().setValue(dataString);
         show(collector.collectCyData(dataObject));
-        graphArea.css('background-image', '');
+
         if (onSuccess) {
           onSuccess();
         }
@@ -64,9 +66,9 @@ exports.template = function(codemirror, graphArea, cytolib, jsonproxy) {
     show(collector.collectCyData(json()));
   };
 
-  var show = function(data) {
+  var show = function(data, container) {
     graph = cyto({
-      container: graphArea[0],
+      container: container || defaultContainer,
       elements: data,
       style: style,
       layout: {
