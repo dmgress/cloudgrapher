@@ -26,7 +26,7 @@ exports.template = function(options) {
     }
   };
 
-  var load = function(file, success, fail) {
+  var fromFile = function(file, success, fail) {
     var reader = new FileReader();
     reader.onload = function() {
       setData(reader.result, function() {
@@ -164,8 +164,8 @@ exports.template = function(options) {
   };
 
   return {
-    load: load,
     setData: setData,
+    fromFile: fromFile,
     fromURL: fromURL,
     refreshGraph: refreshGraph,
     setLayout: setLayout,

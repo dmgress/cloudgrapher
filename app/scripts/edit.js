@@ -31,7 +31,7 @@
   graphArea[0].addEventListener('drop', function(evt) {
     evt.stopPropagation();
     evt.preventDefault();
-    loadTemplate(template.load, evt.dataTransfer.files[0]);
+    loadTemplate(template.fromFile, evt.dataTransfer.files[0]);
   }, false);
 
   var template = require('./template').template({
@@ -90,7 +90,7 @@
     $('#template_input').click();
   });
   $('#template_input').change(function(event) {
-    loadTemplate(template.load, event.target.files[0]);
+    loadTemplate(template.fromFile, event.target.files[0]);
   });
 
   $('#open_url').click(function(event) {
