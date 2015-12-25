@@ -70,6 +70,9 @@
   }
 
   var loadTemplate = function(loadFn, arg) {
+    if (!arg) {
+      return;
+    }
     loadFn(
       arg,
       function(templateLocation) {
