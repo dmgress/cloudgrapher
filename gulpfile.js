@@ -72,6 +72,10 @@ gulp.task('javascript', function() {
 
 gulp.task('html', ['styles', 'javascript'], function() {
 
+  var productionHtml = function(file) {
+    return require('gulp-match')(file, '*.html') && BUILD_ENVIRONMENT === 'production';
+  }
+
   return gulp.src('app/*.html')
     .pipe($.cdnizer({
       relativeRoot: 'app/',
@@ -90,7 +94,12 @@ gulp.task('html', ['styles', 'javascript'], function() {
       searchPath: ['.tmp', 'app', '.']
     }))
     .pipe($.if('*.css', $.csso()))
-    //.pipe($.if('*.html', $.minifyHtml({conditionals: true, loose: true})))
+    .pipe($.if(productionHtml, $.htmlmin({
+      removeComments: true,
+      collapseWhitespace: true,
+      conservativeCollapse: true,
+      collapseBooleanAttributes: true
+    })))
     .pipe(gulp.dest('dist'));
 });
 
