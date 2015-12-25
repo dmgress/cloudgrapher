@@ -124,10 +124,9 @@
   });
 
   var container = $('#container'),
-    handle = $('#border');
     editorPane = $('#editor_pane');
 
-  handle.on('mousedown', function(e) {
+  $('#border').on('mousedown', function(e) {
     isResizing = true;
     lastDownX = e.clientX;
   });
