@@ -82,18 +82,6 @@
     );
   };
 
-  var saveImage = function() {
-    var saveWindow = window.open('savegraph.html');
-    saveWindow.onload = function() {
-      saveWindow.document.getElementById('graphPNG').src = template.base64Image();
-    };
-  };
-  var saveTemplate = function() {
-    var blob = new Blob([template.text(2)], {
-      type: 'text/plain;charset=utf-8'
-    });
-    saveAs(blob, template.description() + '.json');
-  };
   $('#open_template').click(function(event) {
     event.preventDefault();
     $('#template_input').click();
@@ -112,12 +100,18 @@
   });
   $('#save_template').click(function(event) {
     event.preventDefault();
-    saveTemplate();
+    var blob = new Blob([template.text(2)], {
+      type: 'text/plain;charset=utf-8'
+    });
+    saveAs(blob, template.description() + '.json');
     return false;
   });
   $('#save_graph').click(function(event) {
     event.preventDefault();
-    saveImage();
+    var saveWindow = window.open('savegraph.html');
+    saveWindow.onload = function() {
+      saveWindow.document.getElementById('graphPNG').src = template.base64Image();
+    };
     return false;
   });
   $('#graph_layout').change(function() {
