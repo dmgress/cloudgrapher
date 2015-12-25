@@ -89,6 +89,10 @@
     event.preventDefault();
     $('#template_input').click();
   });
+  $('#template_input').change(function(event) {
+    loadTemplate(template.load, event.target.files[0]);
+  });
+
   $('#open_url').click(function(event) {
     event.preventDefault();
     if (remoteInput.is(':visible')) {
@@ -98,9 +102,7 @@
       remoteInput.show();
     }
   });
-  $('#template_input').change(function(event) {
-    loadTemplate(template.load, event.target.files[0]);
-  });
+
   $('#save_template').click(function(event) {
     event.preventDefault();
     var blob = new Blob([template.text(2)], {
