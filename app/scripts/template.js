@@ -153,17 +153,6 @@ exports.template = function(options) {
     }
   };
 
-  var fromURLInput = function(input, onSuccess, onError) {
-    var url = input.val();
-    if (input[0].checkValidity()) {
-      input.hide();
-      fromURL(url, onSuccess, onError);
-    }
-    else {
-      return false;
-    }
-  };
-
   var text = function(indent) {
     return indent ? JSON.stringify(json(), null, indent) : myCodeMirror.getDoc().getValue();
   };
@@ -177,7 +166,6 @@ exports.template = function(options) {
   return {
     load: load,
     setData: setData,
-    fromURLInput: fromURLInput,
     fromURL: fromURL,
     refreshGraph: refreshGraph,
     setLayout: setLayout,

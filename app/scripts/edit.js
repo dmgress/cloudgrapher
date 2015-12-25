@@ -53,6 +53,22 @@
 
   var remoteInput = $('#remote_input');
 
+  $('#remote_input').keypress(function(e) {
+    if (e.which === 13) {
+      loadTemplate(template.fromURL, getTemplateUrl());
+      return false;
+    }
+  });
+
+  var getTemplateUrl = function (argument) {
+    var url = remoteInput.val();
+    if (remoteInput[0].checkValidity()){
+      remoteInput.hide();
+      return url;
+    }
+    return undefined;
+  }
+
   var loadTemplate = function(loadFn, arg) {
     loadFn(
       arg,
@@ -85,7 +101,7 @@
   $('#open_url').click(function(event) {
     event.preventDefault();
     if (remoteInput.is(':visible')) {
-      loadTemplate(template.fromURLInput, remoteInput);
+      loadTemplate(template.fromURL, getTemplateUrl());
     }
     else {
       remoteInput.show();
@@ -108,12 +124,6 @@
     template.setLayout($('#graph_layout').val());
   });
 
-  $('#remote_input').keypress(function(e) {
-    if (e.which === 13) {
-      loadTemplate(template.fromURLInput, remoteInput);
-      return false;
-    }
-  });
   var container = $('#container'),
     handle = $('#border');
     editorPane = $('#editor_pane');

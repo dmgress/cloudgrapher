@@ -44,39 +44,6 @@ describe('template', function() {
     });
   });
 
-  describe('template.fromURLInput', function() {
-    var input, template, jsonproxy;
-
-    beforeEach(function() {
-      jsonproxy = jasmine.createSpy('jsonp');
-      template = lib.template({
-        'editor': codemirror,
-        'graphContainer': graphArea,
-        'cytolib': cytoscape,
-        'jsonproxy': jsonproxy
-      });
-
-      input = jasmine.createSpyObj('inputJQuery', ['val', 'hide']);
-      input[0] = jasmine.createSpyObj('inputDOM', ['checkValidity']);
-    });
-    it('will call fromURL on valid input', function() {
-      input[0].checkValidity.and.returnValue(true);
-      input.val.and.returnValue('http://example.com');
-      template.fromURLInput(input);
-      expect(input.val).toHaveBeenCalled();
-      expect(input[0].checkValidity).toHaveBeenCalled();
-      expect(input.hide).toHaveBeenCalled();
-      expect(jsonproxy).toHaveBeenCalled();
-    });
-    it('will NOT call fromURL on invalid input', function() {
-      input[0].checkValidity.and.returnValue(false);
-      template.fromURLInput(input);
-      expect(input.val).toHaveBeenCalled();
-      expect(input[0].checkValidity).toHaveBeenCalled();
-      expect(jsonproxy).not.toHaveBeenCalled();
-    });
-  });
-
   describe('template.text', function() {
     var codemirror, codemirrorDoc, template;
     beforeEach(function() {
