@@ -19,7 +19,21 @@
     }
   });
   myCodeMirror.setSize('100%', '800px');
+
   var graphArea = $('#graph_area');
+
+  graphArea.css('background-image', 'url("images/aws-cloudformation-template.svg")');
+  graphArea[0].addEventListener('dragover', function(evt) {
+    evt.stopPropagation();
+    evt.preventDefault();
+    evt.dataTransfer.dropEffect = 'copy';
+  }, false);
+  graphArea[0].addEventListener('drop', function(evt) {
+    evt.stopPropagation();
+    evt.preventDefault();
+    loadTemplate(template.load, evt.dataTransfer.files[0]);
+  }, false);
+
   var template = require('./template').template({
     'editor': myCodeMirror,
     'cytolib': cytoscape,
@@ -64,18 +78,6 @@
     });
     saveAs(blob, template.description() + '.json');
   };
-  var mainRow = document.getElementById('graph_area');
-  mainRow.addEventListener('dragover', function(evt) {
-    evt.stopPropagation();
-    evt.preventDefault();
-    evt.dataTransfer.dropEffect = 'copy';
-  }, false);
-  mainRow.addEventListener('drop', function(evt) {
-    evt.stopPropagation();
-    evt.preventDefault();
-    loadTemplate(template.load, evt.dataTransfer.files[0]);
-  }, false);
-  $('#graph_area').css('background-image', 'url("images/aws-cloudformation-template.svg")');
   $('#open_template').click(function(event) {
     event.preventDefault();
     $('#template_input').click();
