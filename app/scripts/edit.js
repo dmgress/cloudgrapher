@@ -60,14 +60,14 @@
     }
   });
 
-  var getTemplateUrl = function (argument) {
+  var getTemplateUrl = function () {
     var url = remoteInput.val();
     if (remoteInput[0].checkValidity()){
       remoteInput.hide();
       return url;
     }
     return undefined;
-  }
+  };
 
   var loadTemplate = function(loadFn, arg) {
     if (!arg) {
