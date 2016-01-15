@@ -105,10 +105,10 @@
 
   $('#save_template').click(function(event) {
     event.preventDefault();
-    var blob = new Blob([template.text(2)], {
-      type: 'text/plain;charset=utf-8'
-    });
-    saveAs(blob, template.description() + '.json');
+    saveAs(
+      new Blob( [template.text(2)], { type: 'text/plain;charset=utf-8' }),
+      template.description() + '.json'
+    );
     return false;
   });
   $('#save_graph').click(function(event) {
