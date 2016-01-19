@@ -76,14 +76,17 @@
     return undefined;
   };
 
-  var loadTemplate = function(loadFn, arg) {
-    if (!arg) {
+  var loadTemplate = function(loadFn, url) {
+    if (!url) {
       return;
     }
     loadFn(
-      arg,
+      url,
       function(templateLocation) {
         graphArea.css('background-image', '');
+        if (remoteInput.val() !== url) {
+          remoteInput.val(url);
+        }
         alertify.success('Loaded template "' + templateLocation + '" successfully');
       },
       function(templateLocation, reason) {
