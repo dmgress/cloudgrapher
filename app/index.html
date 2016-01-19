@@ -35,16 +35,12 @@
                 <span id="options_icon" class="fa fa-sliders fa-lg"></span>
                 &nbsp;
                 <select id="graph_layout" class="layout_select">
-                    <option value="arbor">Arbor layout</option>
                     <option value="breadthfirst">BreadthFirst layout</option>
                     <option value="circle">Circle layout</option>
-                    <option value="cola">Cola layout</option>
                     <option value="concentric">Concentric layout</option>
                     <option value="cose" selected>Cose layout</option>
-                    <option value="dagre">Dagre layout</option>
                     <option value="grid">Grid layout</option>
                     <option value="random">Random layout</option>
-                    <option value="spread">Spread layout</option>
                 </select>
             </div>
         </div>
@@ -68,10 +64,6 @@
         <script src="../bower_components/URIjs/src/URI.min.js"></script>
         <script src="../bower_components/jsonproxy/jsonp.js"></script>
         <!-- endbuild -->
-        <!-- build:js js/arbor.js -->
-        <!-- arbor layout support DON'T UGLIFY THIS! -->
-            <script src="../bower_components/cytoscape/lib/arbor.js"></script>
-        <!-- endbuild -->
         <!-- build:js js/FileSaver.js -->
           <script src="../bower_components/FileSaver/FileSaver.js"></script>
         <!-- endbuild -->
@@ -88,15 +80,6 @@
             <script src="../bower_components/CodeMirror/addon/fold/brace-fold.js"></script>
         <!-- endbuild -->
         <!-- build:js js/graph_libs.js -->
-          <!-- dagre layout support -->
-          <script src="../bower_components/lodash/lodash.min.js"></script>
-          <script src="../bower_components/graphlib/dist/graphlib.core.min.js"></script>
-          <script src="../bower_components/dagre/dist/dagre.core.min.js"></script>
-          <!-- cola layout support -->
-          <script src="../bower_components/cytoscape/lib/cola.v3.min.js"></script>
-          <!-- spread layout support -->
-          <script src="../bower_components/cytoscape/lib/foograph.js"></script>
-          <script src="../bower_components/cytoscape/lib/rhill-voronoi-core.js"></script>
           <!-- cytoscape -->
           <script src="../bower_components/cytoscape/dist/cytoscape.min.js"></script>
         <!-- endbuild -->

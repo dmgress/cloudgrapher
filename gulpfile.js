@@ -85,8 +85,8 @@ gulp.task('html', ['styles', 'javascript'], function() {
         package: 'jquery',
         cdn: '//cdn.jsdelivr.net/jquery/${version}/jquery.min.js'
       }, {
-        file: 'bower_components/fontawesome/css/font-awesome.css',
-        package: 'fontawesome',
+        file: 'bower_components/font-awesome/css/font-awesome.css',
+        package: 'font-awesome',
         cdn: '//maxcdn.bootstrapcdn.com/font-awesome/${version}/css/font-awesome.min.css'
       }]
     }))
