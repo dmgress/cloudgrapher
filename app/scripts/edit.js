@@ -152,7 +152,7 @@
     // stop resizing
     isResizing = false;
   });
-  $(document).ready(function(e) {
+  $(document).ready(function() {
         //----- Parse Query -----//
   require('./queryparser').parser(window.location.search,{
     onTemplate: function (url) {
