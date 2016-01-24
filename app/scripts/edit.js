@@ -48,6 +48,7 @@
       template.changeStyle(responseText);
     }
   });
+
   var isResizing = false,
     lastDownX = 0;
 
@@ -69,14 +70,17 @@
     return undefined;
   };
 
-  var loadTemplate = function(loadFn, arg) {
-    if (!arg) {
+  var loadTemplate = function(loadFn, url) {
+    if (!url) {
       return;
     }
     loadFn(
-      arg,
+      url,
       function(templateLocation) {
         graphArea.css('background-image', '');
+        if (remoteInput.val() !== url) {
+          remoteInput.val(url);
+        }
         alertify.success('Loaded template "' + templateLocation + '" successfully');
       },
       function(templateLocation, reason) {
@@ -147,5 +151,14 @@
     }
     // stop resizing
     isResizing = false;
+  });
+  $(document).ready(function() {
+        //----- Parse Query -----//
+  require('./queryparser').parser(window.location.search,{
+    onTemplate: function (url) {
+      loadTemplate(template.fromURL, url);
+    }
+  });
+  //----- Parse Query -----//
   });
 })();
