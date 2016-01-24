@@ -48,13 +48,7 @@
       template.changeStyle(responseText);
     }
   });
-  //----- Parse Query -----//
-  require('./queryparser').parser(window.location.search,{
-    onTemplate: function (url) {
-      loadTemplate(template.fromURL, url);
-    }
-  });
-  //----- Parse Query -----//
+
   var isResizing = false,
     lastDownX = 0;
 
@@ -157,5 +151,14 @@
     }
     // stop resizing
     isResizing = false;
+  });
+  $(document).ready(function(e) {
+        //----- Parse Query -----//
+  require('./queryparser').parser(window.location.search,{
+    onTemplate: function (url) {
+      loadTemplate(template.fromURL, url);
+    }
+  });
+  //----- Parse Query -----//
   });
 })();
