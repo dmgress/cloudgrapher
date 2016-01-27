@@ -11,6 +11,7 @@ exports.template = function(options) {
   var graph;
   var style;
   var cyto = options.cytolib || cytoscape;
+  var initialData;
 
   if (!myCodeMirror || !myCodeMirror.getDoc) {
     throw 'editor unavailable or doesn\'t support getDoc';
@@ -50,6 +51,7 @@ exports.template = function(options) {
         var dataObject = typeof data === 'object' ? data : JSON.parse(data);
 
         myCodeMirror.getDoc().setValue(dataString);
+        initialData = text();
         show(collector.collectCyData(dataObject));
 
         if (onSuccess) {
@@ -163,6 +165,11 @@ exports.template = function(options) {
     }
   };
 
+  var hasChanged = function() {
+    var changed = initialData === text();
+    return !changed;
+  };
+
   return {
     setData: setData,
     fromFile: fromFile,
@@ -174,6 +181,8 @@ exports.template = function(options) {
     changeStyle: changeStyle,
     fitGraph: fitGraph,
     text: text,
-    json: json
+    json: json,
+    hasChanged: hasChanged,
+    initialData: initialData
   };
 };

@@ -10,3 +10,10 @@ exports.parser = function(url, callbacks) {
         }
     }
 };
+
+exports.createEmbedUrl = function(host, target) {
+    'use strict';
+    return new URI(host).search(function(data) {
+        data.CFTemplateURL = target;
+    });
+};
