@@ -71,6 +71,44 @@ describe('template', function() {
     });
   });
 
+  describe('template.fromFile', function() {
+    var template, callbacks;
+    var mockReader = { readAsText: function(){} };
+    FileReader = function() {
+      return mockReader;
+    };
+
+    beforeEach(function() {
+      template = lib.template({
+        'editor': codemirror,
+        'graphContainer': graphArea,
+        'cytolib': cytoscape,
+        'jsonproxy': jasmine.createSpy('jsonp')
+      });
+      callbacks = jasmine.createSpyObj('callbacks', ['s', 'f']);
+    });
+
+    it('calls success function on success', function() {
+
+      spyOn(mockReader,'readAsText').and.callFake(function(){
+      mockReader.result = {};
+      mockReader.onload();
+      });
+      template.fromFile({name: 'test.txt'}, callbacks.s, callbacks.f);
+      expect(callbacks.s).toHaveBeenCalled();
+    });
+
+    it('calls failure function on failure', function() {
+
+      spyOn(mockReader,'readAsText').and.callFake(function(){
+      mockReader.result = 'O_o';
+      mockReader.onload();
+      });
+      template.fromFile({name: 'test.txt'}, callbacks.s, callbacks.f);
+      expect(callbacks.f).toHaveBeenCalled();
+    });
+  });
+
   describe('template.fromURL', function() {
     var input, template, jsonproxy, callbacks, fromURL, url;
 
