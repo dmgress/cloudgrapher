@@ -36,7 +36,10 @@
   }, false);
 
   var template = require('./template').template({
-    'editor': myCodeMirror,
+    'editor': {
+      setValue: myCodeMirror.getDoc.setValue,
+      getValue: myCodeMirror.getDoc.getValue
+    },
     'cytolib': cytoscape,
     'graphContainer': graphArea[0],
     'jsonproxy': $.jsonp
