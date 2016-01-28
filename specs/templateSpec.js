@@ -9,7 +9,7 @@ describe('template', function() {
 
   beforeEach(function() {
     codemirror = jasmine.createSpyObj('codemirror', ['getDoc']);
-    codemirrorDoc = jasmine.createSpyObj('codemirrorDoc', ['setValue']);
+    codemirrorDoc = jasmine.createSpyObj('codemirrorDoc', ['setValue', 'getValue']);
     codemirror.getDoc.and.returnValue(codemirrorDoc);
     graphArea = jasmine.createSpyObj('graphArea', ['css']);
     cytoscape = jasmine.createSpy('cytoscape');

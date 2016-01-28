@@ -14,6 +14,7 @@
       onUpdateLinting: function(annotations) {
         if (template && (!annotations || annotations.length === 0)) {
           template.refreshGraph();
+          $('#embed_link').toggle(!template.hasChanged());
         }
       }
     }
@@ -78,8 +79,15 @@
       url,
       function(templateLocation) {
         graphArea.css('background-image', '');
-        if (remoteInput.val() !== url) {
-          remoteInput.val(url);
+        if (typeof url === 'string') {
+          if (remoteInput.val() !== url) {
+            remoteInput.val(url);
+          }
+          var embedUrl = queryTools.createEmbedUrl(window.location, url);
+          $('#embed_link').html('Use <a href="'+ embedUrl + '">'+ embedUrl + '</a> to open directly');
+        }
+        else {
+          $('#embed_link > a').remove();
         }
         alertify.success('Loaded template "' + templateLocation + '" successfully');
       },
@@ -152,9 +160,10 @@
     // stop resizing
     isResizing = false;
   });
+  var queryTools = require('./queryparser');
   $(document).ready(function() {
         //----- Parse Query -----//
-  require('./queryparser').parser(window.location.search,{
+  queryTools.parser(window.location.search,{
     onTemplate: function (url) {
       loadTemplate(template.fromURL, url);
     }
