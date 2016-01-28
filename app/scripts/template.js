@@ -4,7 +4,7 @@
 exports.template = function(options) {
   'use strict';
 
-  var myCodeMirror = options.editor;
+  var editor = options.editor;
   var collector = require('./collectdata');
   var defaultContainer = options.graphContainer;
   var jsonproxy = options.jsonproxy;
@@ -12,9 +12,10 @@ exports.template = function(options) {
   var style;
   var cyto = options.cytolib || cytoscape;
   var initialData;
+  var layoutName = 'cose';
 
-  if (!myCodeMirror || !myCodeMirror.getDoc) {
-    throw 'editor unavailable or doesn\'t support getDoc';
+  if (!editor || !editor.getValue) {
+    throw 'editor unavailable or doesn\'t support getValue';
   }
   if (!cyto) {
     throw 'graphing library Cytoscape unavailable';
@@ -41,7 +42,14 @@ exports.template = function(options) {
       });
 
     };
-    reader.readAsText(file);
+    try {
+      reader.readAsText(file);
+    }
+    catch (e) {
+      if (fail) {
+        fail(file.name, e);
+      }
+    }
   };
 
   var setData = function(data, onSuccess, onError) {
@@ -50,7 +58,7 @@ exports.template = function(options) {
         var dataString = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
         var dataObject = typeof data === 'object' ? data : JSON.parse(data);
 
-        myCodeMirror.getDoc().setValue(dataString);
+        editor.setValue(dataString);
         initialData = text();
         show(collector.collectCyData(dataObject));
 
@@ -84,7 +92,7 @@ exports.template = function(options) {
       elements: data,
       style: style,
       layout: {
-        name: 'cose',
+        name: layoutName,
         padding: 5
       }
     });
@@ -112,10 +120,11 @@ exports.template = function(options) {
   };
 
   var json = function() {
-    return JSON.parse(myCodeMirror.getDoc().getValue());
+    return JSON.parse(editor.getValue());
   };
 
   var setLayout = function(name) {
+    layoutName = name;
     if (graph) {
       graph.layout({
         'name': name
@@ -140,7 +149,7 @@ exports.template = function(options) {
         error: function(data, textStatus) {
             var message;
             if (textStatus === 'parsererror') {
-              myCodeMirror.getDoc().setValue(data.responseText);
+              editor.setValue(data.responseText);
               message = 'Unable to parse the result as valid JSON';
             }
             else {
@@ -156,7 +165,7 @@ exports.template = function(options) {
   };
 
   var text = function(indent) {
-    return indent ? JSON.stringify(json(), null, indent) : myCodeMirror.getDoc().getValue();
+    return indent ? JSON.stringify(json(), null, indent) : editor.getValue();
   };
 
   var fitGraph= function (){
