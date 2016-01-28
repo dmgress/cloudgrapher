@@ -12,6 +12,7 @@ exports.template = function(options) {
   var style;
   var cyto = options.cytolib || cytoscape;
   var initialData;
+  var layoutName = 'cose';
 
   if (!editor || !editor.getValue) {
     throw 'editor unavailable or doesn\'t support getValue';
@@ -91,7 +92,7 @@ exports.template = function(options) {
       elements: data,
       style: style,
       layout: {
-        name: 'cose',
+        name: layoutName,
         padding: 5
       }
     });
@@ -123,6 +124,7 @@ exports.template = function(options) {
   };
 
   var setLayout = function(name) {
+    layoutName = name;
     if (graph) {
       graph.layout({
         'name': name

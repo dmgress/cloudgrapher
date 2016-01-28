@@ -149,4 +149,21 @@ describe('template', function() {
       expect(codemirror.setValue).toHaveBeenCalled();
     });
   });
+
+  describe('template.refreshGraph', function() {
+    beforeEach(function() {
+      codemirror.getValue.and.returnValue('{}');
+    });
+    it('uses the cose layout by default', function() {
+      template.refreshGraph();
+      expect(cytoscape.calls.count()).toBe(1);
+      expect(cytoscape.calls.first().args[0].layout).toEqual(jasmine.objectContaining({name: 'cose'}));
+    });
+    it('uses the current template layout', function() {
+      template.setLayout('cola');
+      template.refreshGraph();
+      expect(cytoscape.calls.count()).toBe(1);
+      expect(cytoscape.calls.first().args[0].layout).toEqual(jasmine.objectContaining({name: 'cola'}));
+    });
+  });
 });
