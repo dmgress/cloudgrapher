@@ -41,7 +41,14 @@ exports.template = function(options) {
       });
 
     };
-    reader.readAsText(file);
+    try {
+      reader.readAsText(file);
+    }
+    catch (e) {
+      if (fail) {
+        fail(file.name, e);
+      }
+    }
   };
 
   var setData = function(data, onSuccess, onError) {

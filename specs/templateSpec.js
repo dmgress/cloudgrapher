@@ -98,12 +98,19 @@ describe('template', function() {
       expect(callbacks.s).toHaveBeenCalled();
     });
 
-    it('calls failure function on failure', function() {
+    it('calls failure function on data failure', function() {
 
       spyOn(mockReader,'readAsText').and.callFake(function(){
       mockReader.result = 'O_o';
       mockReader.onload();
       });
+      template.fromFile({name: 'test.txt'}, callbacks.s, callbacks.f);
+      expect(callbacks.f).toHaveBeenCalled();
+    });
+
+    it('calls failure function on read failure', function() {
+
+      spyOn(mockReader,'readAsText').and.throwError('O_o');
       template.fromFile({name: 'test.txt'}, callbacks.s, callbacks.f);
       expect(callbacks.f).toHaveBeenCalled();
     });
