@@ -37,8 +37,8 @@
 
   var template = require('./template').template({
     'editor': {
-      setValue: myCodeMirror.getDoc.setValue,
-      getValue: myCodeMirror.getDoc.getValue
+      setValue: function(value) { myCodeMirror.getDoc().setValue(value); },
+      getValue: function() { return myCodeMirror.getDoc().getValue(); }
     },
     'cytolib': cytoscape,
     'graphContainer': graphArea[0],
