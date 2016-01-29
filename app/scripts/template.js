@@ -21,6 +21,14 @@ exports.template = function(options) {
     throw 'graphing library Cytoscape unavailable';
   }
 
+  var json = function() {
+    return JSON.parse(editor.getValue());
+  };
+
+  var text = function(indent) {
+    return indent ? JSON.stringify(json(), null, indent) : editor.getValue();
+  };
+
   var changeStyle = function(data) {
     style = data;
     if (graph) {
@@ -28,28 +36,20 @@ exports.template = function(options) {
     }
   };
 
-  var fromFile = function(file, success, fail) {
-    var reader = new FileReader();
-    reader.onload = function() {
-      setData(reader.result, function() {
-        if (success) {
-          success(file.name);
-        }
-      }, function(reason, e) {
-        if (fail) {
-          fail(file.name, reason, e);
-        }
-      });
-
-    };
-    try {
-      reader.readAsText(file);
+  var show = function(data, container) {
+    if (!container && !defaultContainer) {
+      throw 'No container available to show data';
     }
-    catch (e) {
-      if (fail) {
-        fail(file.name, e);
+    graph = cyto({
+      container: container || defaultContainer,
+      elements: data,
+      style: style,
+      layout: {
+        name: layoutName,
+        padding: 5
       }
-    }
+    });
+    graph.boxSelectionEnabled(true);
   };
 
   var setData = function(data, onSuccess, onError) {
@@ -79,25 +79,35 @@ exports.template = function(options) {
     }
   };
 
-  var refreshGraph = function(){
+  var fromFile = function(file, success, fail) {
+    var reader = new FileReader();
+    reader.onload = function() {
+      setData(reader.result, function() {
+        if (success) {
+          success(file.name);
+        }
+      }, function(reason, e) {
+        if (fail) {
+          fail(file.name, reason, e);
+        }
+      });
+
+    };
+    try {
+      reader.readAsText(file);
+    }
+    catch (e) {
+      if (fail) {
+        fail(file.name, e);
+      }
+    }
+  };
+
+  var refreshGraph = function() {
     show(collector.collectCyData(json()));
   };
 
-  var show = function(data, container) {
-    if (!container && !defaultContainer) {
-      throw 'No container available to show data';
-    }
-    graph = cyto({
-      container: container || defaultContainer,
-      elements: data,
-      style: style,
-      layout: {
-        name: layoutName,
-        padding: 5
-      }
-    });
-    graph.boxSelectionEnabled(true);
-  };
+
 
   var description = function() {
     var description = 'template';
@@ -119,9 +129,7 @@ exports.template = function(options) {
     });
   };
 
-  var json = function() {
-    return JSON.parse(editor.getValue());
-  };
+
 
   var setLayout = function(name) {
     layoutName = name;
@@ -164,11 +172,9 @@ exports.template = function(options) {
     }
   };
 
-  var text = function(indent) {
-    return indent ? JSON.stringify(json(), null, indent) : editor.getValue();
-  };
 
-  var fitGraph= function (){
+
+  var fitGraph = function() {
     if (graph) {
       graph.fit();
     }
