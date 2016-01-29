@@ -35,9 +35,9 @@ exports.template = function(options) {
         if (success) {
           success(file.name);
         }
-      }, function(e) {
+      }, function(reason, e) {
         if (fail) {
-          fail(file.name, e);
+          fail(file.name, reason, e);
         }
       });
 

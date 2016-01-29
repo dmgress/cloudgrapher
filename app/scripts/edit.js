@@ -94,8 +94,9 @@
         }
         alertify.success('Loaded template "' + templateLocation + '" successfully');
       },
-      function(templateLocation, reason) {
+      function(templateLocation, reason, e) {
         alertify.error('Unable to load template "' + templateLocation + '" because of ' + reason);
+        console.log(e);
       }
     );
   };
