@@ -14,15 +14,6 @@ after_script:
   - codecov < .tmp/js/lcov.info
   - codeclimate-test-reporter < ./.tmp/js/lcov.info
   - codacy-coverage < .tmp/js/lcov.info
-cache:
-  directories:
-    - $HOME/node_modules
-    - $HOME/bower_components
-    - $TRAVIS_BUILD_DIR/node_modules
-    - $TRAVIS_BUILD_DIR/bower_components
-before_cache:
-  - npm prune
-  - bower prune
 addons:
   code_climate:
     repo_token: 42a279ebfefeb7d8cab1a7acc719c20fa3f5306ec0e9226e82b98ff2645d9d05
