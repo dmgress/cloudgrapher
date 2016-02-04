@@ -48,6 +48,9 @@ exports.collectData = function(json) {
 
 exports.collectCyData = function(json) {
   'use strict';
+
+  var knownResources = {};
+  var possibleEdges = [];
   var edgeFilters = {
     'AWS::EC2::SecurityGroupIngress': function(edge /*, source, target*/){
       if (edge.data.title === 'GroupId') {
@@ -84,9 +87,6 @@ exports.collectCyData = function(json) {
   };
   var data = { nodes:[], edges:[] };
   var edgeIndex = 0;
-
-  var knownResources = {};
-  var possibleEdges = [];
   var addEdge = function(edge) {
     possibleEdges.push({
       data: {
