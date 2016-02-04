@@ -17,6 +17,13 @@ exports.collectData = function(json) {
   var data = { nodes:[], edges:[] };
   var knownResources = [];
   var possibleEdges = [];
+  var addEdge = function(edge) {
+    possibleEdges.push({
+      'from': this,
+      'to': edge.toResource,
+      'title': edge.label
+    });
+  };
 
   for (var resourceKey in json.Resources) {
     var resource = json.Resources[resourceKey];
@@ -30,13 +37,7 @@ exports.collectData = function(json) {
       'shape': 'image',
       'image': 'images/' + group + '.png'
     });
-    findEdges(props).forEach(function (edge) {
-      possibleEdges.push({
-        'from' : resourceKey,
-        'to'   : edge.toResource,
-        'title': edge.label
-      });
-    });
+    findEdges(props).forEach(addEdge, resourceKey);
   }
   data.edges = possibleEdges.filter(function(edge) {
     return edge && knownResources.indexOf(edge.to) >= 0;
@@ -86,6 +87,17 @@ exports.collectCyData = function(json) {
 
   var knownResources = {};
   var possibleEdges = [];
+  var addEdge = function(edge) {
+    possibleEdges.push({
+      data: {
+        id: 'e' + (edgeIndex++),
+        source: this,
+        target: edge.toResource,
+        title: edge.label,
+        targetProperty: edge.toProperty
+      }
+    });
+  };
 
   for (var resourceKey in json.Resources) {
     var resource = json.Resources[resourceKey];
@@ -96,17 +108,7 @@ exports.collectCyData = function(json) {
       classes: resource.Type.toLowerCase().replace(/::/g,'-'),
       type: resource.Type
     };
-    findEdges(resource.Properties).forEach(function(edge) {
-        possibleEdges.push({
-          data: {
-            id: 'e'+ (edgeIndex++),
-            source: resourceKey,
-            target: edge.toResource,
-            title: edge.label,
-            targetProperty: edge.toProperty
-          }
-        });
-    });
+    findEdges(resource.Properties).forEach(addEdge, resourceKey);
     knownResources[resourceKey] = r;
     data.nodes.push(r);
   }
