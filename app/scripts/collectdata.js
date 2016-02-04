@@ -17,9 +17,7 @@ exports.collectData = function(json) {
   var data = { nodes:[], edges:[] };
   var knownResources = [];
   var possibleEdges = [];
-  var addEdge = function (toId, title){
-    possibleEdges.push( {'from': resourceKey, 'to': toId, 'title': title } );
-  };
+
   for (var resourceKey in json.Resources) {
     var resource = json.Resources[resourceKey];
     var props = resource.Properties;
@@ -32,7 +30,13 @@ exports.collectData = function(json) {
       'shape': 'image',
       'image': 'images/' + group + '.png'
     });
-    findEdges(props, addEdge);
+    findEdges(props).forEach(function (edge) {
+      possibleEdges.push({
+        'from' : resourceKey,
+        'to'   : edge.toResource,
+        'title': edge.label
+      });
+    });
   }
   data.edges = possibleEdges.filter(function(edge) {
     return edge && knownResources.indexOf(edge.to) >= 0;
@@ -45,10 +49,10 @@ exports.collectCyData = function(json) {
   'use strict';
   var edgeFilters = {
     'AWS::EC2::SecurityGroupIngress': function(edge /*, source, target*/){
-      if (edge.data.resource === 'GroupId') {
+      if (edge.data.title === 'GroupId') {
         // NOOP the direction is good
       }
-      else if (edge.data.resource === 'SourceSecurityGroupId') {
+      else if (edge.data.title === 'SourceSecurityGroupId') {
         var newTarget = edge.data.source;
         edge.data.source = edge.data.target;
         edge.data.target = newTarget;
@@ -56,10 +60,10 @@ exports.collectCyData = function(json) {
       return true;
     },
     'AWS::EC2::SecurityGroupEgress': function(edge /*, source, target*/) {
-      if (edge.data.resource === 'DestinationSecurityGroupId') {
+      if (edge.data.title === 'DestinationSecurityGroupId') {
         // NOOP the direction is good
       }
-      else if (edge.data.resource === 'GroupId') {
+      else if (edge.data.title === 'GroupId') {
         var newTarget = edge.data.source;
         edge.data.source = edge.data.target;
         edge.data.target = newTarget;
@@ -80,10 +84,6 @@ exports.collectCyData = function(json) {
   var data = { nodes:[], edges:[] };
   var edgeIndex = 0;
 
-  var addEdge = function (toId, title, resource) {
-    possibleEdges.push({ data: { id: 'e'+ (edgeIndex++), source: resourceKey, target: toId, title: title, resource: resource }});
-  };
-
   var knownResources = {};
   var possibleEdges = [];
 
@@ -96,7 +96,17 @@ exports.collectCyData = function(json) {
       classes: resource.Type.toLowerCase().replace(/::/g,'-'),
       type: resource.Type
     };
-    findEdges(resource.Properties, addEdge);
+    findEdges(resource.Properties).forEach(function(edge) {
+        possibleEdges.push({
+          data: {
+            id: 'e'+ (edgeIndex++),
+            source: resourceKey,
+            target: edge.toResource,
+            title: edge.label,
+            targetProperty: edge.toProperty
+          }
+        });
+    });
     knownResources[resourceKey] = r;
     data.nodes.push(r);
   }
