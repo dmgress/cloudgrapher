@@ -1,5 +1,7 @@
+/*global expect, jasmine */
 var lib = require('../app/scripts/findedges');
 describe('findEdges', function() {
+  'use strict';
   it('Wont find edges when the doc is empty', function() {
     var doc = {};
     var data = { edges: []};
@@ -14,7 +16,7 @@ describe('findEdges', function() {
         },
       };
       var data = { edges: []};
-      lib.findEdges(resources, function (id, title){data.edges.push({'id': id, 'title': title})});
+      var found = lib.findEdges(resources, function (id, title){data.edges.push({'id': id, 'title': title})});
       expect(data.edges[0]).toEqual(jasmine.objectContaining({ 'id': 'something', 'title': 'Resource'}));
       done();
     });
@@ -29,7 +31,7 @@ describe('findEdges', function() {
         },
       };
       var data = { edges: []};
-      lib.findEdges({ 'Resources': resources}, function (id, title){data.edges.push({'id': id, 'title': title})});
+      var found = lib.findEdges({ 'Resources': resources}, function (id, title){data.edges.push({'id': id, 'title': title})});
       expect(data.edges[0]).toEqual(jasmine.objectContaining({ 'id': 'something', 'title': 'Roles'}));
       done();
     });
@@ -44,7 +46,7 @@ describe('findEdges', function() {
         },
       };
       var data = { edges: []};
-      lib.findEdges({ 'Resources': resources}, function (id, title){data.edges.push({'id': id, 'title': title})});
+      var found = lib.findEdges({ 'Resources': resources}, function (id, title){data.edges.push({'id': id, 'title': title})});
       expect(data.edges[0]).toEqual(jasmine.objectContaining({ 'id': 'something', 'title': 'Resource'}));
       expect(data.edges[1]).toEqual(jasmine.objectContaining({ 'id': 'something', 'title': 'Roles'}));
       done();
@@ -62,9 +64,12 @@ describe('findEdges', function() {
         },
       };
       var data = { edges: []};
-      lib.findEdges({ 'Resources': resources}, function (id, title, resource){data.edges.push({'id': id, 'title': title, 'resource': resource})});
+      var found = lib.findEdges({ 'Resources': resources}, function (id, title, resource){data.edges.push({'id': id, 'title': title, 'resource': resource})});
       expect(data.edges[0]).toEqual(jasmine.objectContaining({ 'id': 'SG', 'title': 'GroupId', 'resource': 'GroupId'}));
       expect(data.edges[1]).toEqual(jasmine.objectContaining({ 'id': 'SG2', 'title': 'GroupId', 'resource': 'SourceSecurityGroupId'}));
+      expect(found.length).toBe(2);
+      expect(found).toContain(jasmine.objectContaining({ 'toResource': 'SG', 'toProperty': 'GroupId', 'label': 'GroupId'}));
+      expect(found).toContain(jasmine.objectContaining({ 'toResource': 'SG2', 'toProperty': 'GroupId', 'label': 'SourceSecurityGroupId'}));
       done();
     });
   });
