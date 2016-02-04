@@ -57,8 +57,8 @@ exports.findEdges = function findIn (start, title) {
     // if we have more than one key we have to delve deeper to find edges
     //
     else {
-      for (var key in start) {
-        found.push( findIn(start[key], key) );
+      for (var k in start) {
+        found.push( findIn(start[k], k) );
       }
     }
   }
