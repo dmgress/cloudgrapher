@@ -1,7 +1,7 @@
 var lib = require('../app/scripts/collectdata');
 
 describe('collectData', function() {
-
+  'use strict';
   it('Wont have nodes and edges when the doc is empty', function() {
     var doc = {};
     var data = lib.collectData(doc);
@@ -53,7 +53,7 @@ describe('collectData', function() {
         'policy': {
           'Type': 'AWS::IAM::Policy',
           'Properties': {
-            'Roles': [ { 'Ref': 'something' } ] 
+            'Roles': [ { 'Ref': 'something' } ]
           }
         },
       };

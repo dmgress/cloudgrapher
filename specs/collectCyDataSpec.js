@@ -31,6 +31,7 @@ var findById = function (arr, id) {
 };
 
 describe('collectCyData', function() {
+  'use strict';
   beforeEach(function() {
     jasmine.addMatchers(customMatchers);
   });
