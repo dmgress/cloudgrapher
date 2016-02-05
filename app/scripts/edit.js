@@ -4,75 +4,11 @@
 (function() {
   'use strict';
 
-  var myCodeMirror = new CodeMirror(document.getElementById('editor'), {
-    value: '{}',
-    lineNumbers: true,
-    mode: 'application/json',
-    foldGutter: true,
-    gutters: ['CodeMirror-linenumbers', 'CodeMirror-foldgutter', 'CodeMirror-lint-markers'],
-    lint: {
-      onUpdateLinting: function(annotations) {
-        if (template && (!annotations || annotations.length === 0)) {
-          template.refreshGraph();
-          $('#embed_link').toggle(!template.hasChanged());
-        }
-      }
-    }
-  });
-  myCodeMirror.setSize('100%', '800px');
-
   var graphArea = $('#graph_area');
 
-  graphArea.css('background-image', 'url("images/aws-cloudformation-template.svg")');
-  graphArea[0].addEventListener('dragover', function(evt) {
-    evt.stopPropagation();
-    evt.preventDefault();
-    evt.dataTransfer.dropEffect = 'copy';
-  }, false);
-  graphArea[0].addEventListener('drop', function(evt) {
-    evt.stopPropagation();
-    evt.preventDefault();
-    loadTemplate(template.fromFile, evt.dataTransfer.files[0]);
-  }, false);
-
-  var template = require('./template').template({
-    'editor': {
-      setValue: function(value) { myCodeMirror.getDoc().setValue(value); },
-      getValue: function() { return myCodeMirror.getDoc().getValue(); }
-    },
-    'cytolib': cytoscape,
-    'graphContainer': graphArea[0],
-    'jsonproxy': $.jsonp
-  });
-  $.ajax({
-    url: 'styles/main.cycss',
-    type: 'GET',
-    dataType: 'text',
-    success: function(responseText) {
-      template.changeStyle(responseText);
-    }
-  });
-
-  var isResizing = false,
-    lastDownX = 0;
+  var queryTools = require('./queryparser');
 
   var remoteInput = $('#remote_input');
-
-  $('#remote_input').keypress(function(e) {
-    if (e.which === 13) {
-      loadTemplate(template.fromURL, getTemplateUrl());
-      return false;
-    }
-  });
-
-  var getTemplateUrl = function () {
-    var url = remoteInput.val();
-    if (remoteInput[0].checkValidity()){
-      remoteInput.hide();
-      return url;
-    }
-    return undefined;
-  };
 
   var loadTemplate = function(loadFn, url) {
     if (!url) {
@@ -100,6 +36,77 @@
       }
     );
   };
+
+  var myCodeMirror = new CodeMirror(document.getElementById('editor'), {
+    value: '{}',
+    lineNumbers: true,
+    mode: 'application/json',
+    foldGutter: true,
+    gutters: ['CodeMirror-linenumbers', 'CodeMirror-foldgutter', 'CodeMirror-lint-markers'],
+
+  });
+  myCodeMirror.setSize('100%', '800px');
+
+  var template = require('./template').template({
+    'editor': {
+      setValue: function(value) { myCodeMirror.getDoc().setValue(value); },
+      getValue: function() { return myCodeMirror.getDoc().getValue(); }
+    },
+    'cytolib': cytoscape,
+    'graphContainer': graphArea[0],
+    'jsonproxy': $.jsonp
+  });
+  $.ajax({
+    url: 'styles/main.cycss',
+    type: 'GET',
+    dataType: 'text',
+    success: function(responseText) {
+      template.changeStyle(responseText);
+    }
+  });
+
+  myCodeMirror.setOption('lint', {
+    onUpdateLinting: function(annotations) {
+      if (template && (!annotations || annotations.length === 0)) {
+        template.refreshGraph();
+        $('#embed_link').toggle(!template.hasChanged());
+      }
+    }
+  });
+
+  graphArea.css('background-image', 'url("images/aws-cloudformation-template.svg")');
+  graphArea[0].addEventListener('dragover', function(evt) {
+    evt.stopPropagation();
+    evt.preventDefault();
+    evt.dataTransfer.dropEffect = 'copy';
+  }, false);
+  graphArea[0].addEventListener('drop', function(evt) {
+    evt.stopPropagation();
+    evt.preventDefault();
+    loadTemplate(template.fromFile, evt.dataTransfer.files[0]);
+  }, false);
+
+
+  var isResizing = false,
+    lastDownX = 0;
+
+
+  var getTemplateUrl = function () {
+    var url = remoteInput.val();
+    if (remoteInput[0].checkValidity()){
+      remoteInput.hide();
+      return url;
+    }
+    return undefined;
+  };
+
+
+  $('#remote_input').keypress(function(e) {
+    if (e.which === 13) {
+      loadTemplate(template.fromURL, getTemplateUrl());
+      return false;
+    }
+  });
 
   $('#open_template').click(function(event) {
     event.preventDefault();
@@ -164,7 +171,7 @@
     // stop resizing
     isResizing = false;
   });
-  var queryTools = require('./queryparser');
+
   $(document).ready(function() {
         //----- Parse Query -----//
   queryTools.parser(window.location.search,{

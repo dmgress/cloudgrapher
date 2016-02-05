@@ -7,7 +7,7 @@
     "js-beautify": "~1.5.4",
     "alertify.js": "alertifyjs#~1.0",
     "jquery": "~2.1.4",
-    "cytoscape": "~2.5",
+    "cytoscape": "~2.6",
     "CodeMirror": "~5.10.0",
     "jsonproxy": "~0.3.1",
     "font-awesome": "fontawesome#~4.5.0",
