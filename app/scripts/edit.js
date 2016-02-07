@@ -10,31 +10,8 @@
 
   var remoteInput = $('#remote_input');
 
-  var loadTemplate = function(loadFn, url) {
-    if (!url) {
-      return;
-    }
-    loadFn(
-      url,
-      function(templateLocation) {
-        graphArea.css('background-image', '');
-        if (typeof url === 'string') {
-          if (remoteInput.val() !== url) {
-            remoteInput.val(url);
-          }
-          var embedUrl = queryTools.createEmbedUrl(window.location, url);
-          $('#embed_link').html('Use <a href="'+ embedUrl + '">'+ embedUrl + '</a> to open directly');
-        }
-        else {
-          $('#embed_link > a').remove();
-        }
-        alertify.success('Loaded template "' + templateLocation + '" successfully');
-      },
-      function(templateLocation, reason, e) {
-        alertify.error('Unable to load template "' + templateLocation + '" because of ' + reason);
-        console.log(e);
-      }
-    );
+  var showGraphBackGround = function (hidden) {
+    graphArea.css('background-image', !hidden ? 'url("images/aws-cloudformation-template.svg")' : '');
   };
 
   var myCodeMirror = new CodeMirror(document.getElementById('editor'), {
@@ -56,6 +33,35 @@
     'graphContainer': graphArea[0],
     'jsonproxy': $.jsonp
   });
+
+  var loadTemplate = function(loadFn, url) {
+    if (!url) {
+      return;
+    }
+    loadFn(
+      url,
+      function(templateLocation) {
+        showGraphBackGround(true);
+        if (typeof url === 'string') {
+          if (remoteInput.val() !== url) {
+            remoteInput.val(url);
+          }
+          var embedUrl = queryTools.createEmbedUrl(window.location, url);
+          $('#embed_link').html('Use <a href="'+ embedUrl + '">'+ embedUrl + '</a> to open directly');
+        }
+        else {
+          $('#embed_link > a').remove();
+        }
+        alertify.success('Loaded template "' + templateLocation + '" successfully');
+      },
+      function(templateLocation, reason, e) {
+        template.setData('{"Error": "Unable to load template ' + templateLocation + ' because of ' + reason + '" }', showGraphBackGround);
+        alertify.error('Unable to load template "' + templateLocation + '" because of ' + reason);
+        console.log(e);
+      }
+    );
+  };
+
   $.ajax({
     url: 'styles/main.cycss',
     type: 'GET',
@@ -74,7 +80,6 @@
     }
   });
 
-  graphArea.css('background-image', 'url("images/aws-cloudformation-template.svg")');
   graphArea[0].addEventListener('dragover', function(evt) {
     evt.stopPropagation();
     evt.preventDefault();
@@ -173,6 +178,7 @@
   });
 
   $(document).ready(function() {
+    showGraphBackGround();
         //----- Parse Query -----//
   queryTools.parser(window.location.search,{
     onTemplate: function (url) {
