@@ -223,9 +223,13 @@ gulp.task('instrument', function() {
     .pipe($.istanbul.hookRequire())
 });
 
-gulp.task('test', ['instrument'], function() {
-  gulp.src('specs/**.js')
+gulp.task('test', ['instrument'], function(done) {
+  return gulp.src('specs/**.js')
     .pipe($.jasmine({includeStackTrace: true}))
+    .on('error', function(error) {
+      // we have an error
+      done(error);
+    })
     .pipe($.istanbul.writeReports({
       dir: './.tmp/js',
       reporters: ['lcov', 'json', 'text-summary']
