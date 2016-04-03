@@ -5,6 +5,7 @@
   'use strict';
 
   var graphArea = $('#graph_area');
+  var refreshTimeoutID;
 
   var queryTools = require('./queryparser');
 
@@ -83,11 +84,19 @@
     }
   });
 
+  var delayedRefresh = function() {
+    template.refreshGraph();
+    $('#embed_link').toggle(!template.hasChanged());
+    refreshTimeoutID = undefined;
+  };
+
   myCodeMirror.setOption('lint', {
     onUpdateLinting: function(annotations) {
       if (template && (!annotations || annotations.length === 0)) {
-        template.refreshGraph();
-        $('#embed_link').toggle(!template.hasChanged());
+        if (refreshTimeoutID) {
+          window.clearTimeout(refreshTimeoutID);
+        }
+        refreshTimeoutID = window.setTimeout(delayedRefresh, 300);
       }
     }
   });
