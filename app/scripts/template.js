@@ -170,8 +170,6 @@ exports.template = function(options) {
     }
   };
 
-
-
   var fitGraph = function() {
     if (graph) {
       graph.fit();
@@ -180,7 +178,7 @@ exports.template = function(options) {
 
   var hasChanged = function() {
     var changed = initialData === text();
-    return !changed;
+    return initialData ? ! changed : false;
   };
 
   return {
