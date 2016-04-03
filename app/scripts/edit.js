@@ -34,8 +34,19 @@
     'jsonproxy': $.jsonp
   });
 
+  var myConfirmation = function(event) {
+    if (!template.hasChanged()) {
+      return undefined;
+    }
+    if (event && event.type === 'beforeunload') {
+      event.returnValue = 'The current template has unsaved changes.';
+      return 'The current template has unsaved changes.';
+    }
+    return window.confirm('The current template has unsaved changes. Continue loading?');
+  };
+
   var loadTemplate = function(loadFn, url) {
-    if (!url) {
+    if (!url || (template.hasChanged() && !myConfirmation())) {
       return;
     }
     loadFn(
@@ -47,10 +58,11 @@
             remoteInput.val(url);
           }
           var embedUrl = queryTools.createEmbedUrl(window.location, url);
-          $('#embed_link').html('Use <a href="'+ embedUrl + '">'+ embedUrl + '</a> to open directly');
+          $('#embed_link').html('Use <a href="' + embedUrl + '">' + embedUrl + '</a> to open directly');
         }
         else {
-          $('#embed_link > a').remove();
+          remoteInput.val('');
+          $('#embed_link').html('');
         }
         alertify.success('Loaded template "' + templateLocation + '" successfully');
       },
@@ -179,12 +191,14 @@
 
   $(document).ready(function() {
     showGraphBackGround();
-        //----- Parse Query -----//
-  queryTools.parser(window.location.search,{
-    onTemplate: function (url) {
-      loadTemplate(template.fromURL, url);
-    }
-  });
-  //----- Parse Query -----//
+    //----- Parse Query -----//
+    queryTools.parser(window.location.search, {
+      onTemplate: function(url) {
+        loadTemplate(template.fromURL, url);
+      }
+    });
+    //----- Parse Query -----//
+
+    window.addEventListener('beforeunload', myConfirmation);
   });
 })();
