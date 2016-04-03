@@ -63,6 +63,27 @@ describe('template', function() {
     });
   });
 
+  describe('template.hasChanged', function() {
+    beforeEach(function() {
+      spyOn(template, 'json');
+    });
+    it('will say nothing changed when no data is set', function() {
+      codemirror.getValue.and.returnValue('{}');
+      expect(template.hasChanged()).toBe(false);
+    });
+    it('will say nothing changed when data is set', function() {
+      codemirror.getValue.and.returnValue('{}');
+      template.setData('{}');
+      expect(template.hasChanged()).toBe(false);
+    });
+    it('will say nothing changed when editor content changed from first load', function() {
+      codemirror.getValue.and.returnValue('{}');
+      template.setData('{}');
+      codemirror.getValue.and.returnValue('{"a": 1}');
+      expect(template.hasChanged()).toBe(true);
+    });
+  });
+
   describe('template.fromFile', function() {
     var callbacks;
     var mockReader = {
