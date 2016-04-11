@@ -1,26 +1,24563 @@
 /*!
- * This file is part of Cytoscape.js 2.5.4.
- *
- * Cytoscape.js is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by the Free
- * Software Foundation, either version 3 of the License, or (at your option) any
- * later version.
- *
- * Cytoscape.js is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
- * FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more
- * details.
- *
- * You should have received a copy of the GNU Lesser General Public License along with
- * Cytoscape.js. If not, see <http://www.gnu.org/licenses/>.
+Copyright (c) 2016 The Cytoscape Consortium
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the “Software”), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+
+(function(f){if(typeof exports==="object"&&typeof module!=="undefined"){module.exports=f()}else if(typeof define==="function"&&define.amd){define([],f)}else{var g;if(typeof window!=="undefined"){g=window}else if(typeof global!=="undefined"){g=global}else if(typeof self!=="undefined"){g=self}else{g=this}g.cytoscape = f()}})(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(_dereq_,module,exports){
+'use strict';
+
+var util = _dereq_('./util');
+var is = _dereq_('./is');
+var Promise = _dereq_('./promise');
+
+var Animation = function( target, opts, opts2 ){
+  if( !(this instanceof Animation) ){
+    return new Animation( target, opts, opts2 );
+  }
+
+  var _p = this._private = util.extend( {
+    duration: 1000
+  }, opts, opts2 );
+
+  _p.target = target;
+  _p.style = _p.style || _p.css;
+  _p.started = false;
+  _p.playing = false;
+  _p.hooked = false;
+  _p.applying = false;
+  _p.progress = 0;
+  _p.completes = [];
+  _p.frames = [];
+
+  if( _p.complete && is.fn(_p.complete) ){
+    _p.completes.push( _p.complete );
+  }
+
+  // for future timeline/animations impl
+  this.length = 1;
+  this[0] = this;
+};
+
+var anifn = Animation.prototype;
+
+util.extend( anifn, {
+
+  instanceString: function(){ return 'animation'; },
+
+  hook: function(){
+    var _p = this._private;
+
+    if( !_p.hooked ){
+      // add to target's animation queue
+      var q;
+      var tAni = _p.target._private.animation;
+      if( _p.queue ){
+        q = tAni.queue;
+      } else {
+        q = tAni.current;
+      }
+      q.push( this );
+
+      // add to the animation loop pool
+      if( is.elementOrCollection( _p.target ) ){
+        _p.target.cy().addToAnimationPool( _p.target );
+      }
+
+      _p.hooked = true;
+    }
+
+    return this;
+  },
+
+  play: function(){
+    var _p = this._private;
+
+    // autorewind
+    if( _p.progress === 1 ){
+      _p.progress = 0;
+    }
+
+    _p.playing = true;
+    _p.started = false; // needs to be started by animation loop
+    _p.stopped = false;
+
+    this.hook();
+
+    // the animation loop will start the animation...
+
+    return this;
+  },
+
+  playing: function(){
+    return this._private.playing;
+  },
+
+  apply: function(){
+    var _p = this._private;
+
+    _p.applying = true;
+    _p.started = false; // needs to be started by animation loop
+    _p.stopped = false;
+
+    this.hook();
+
+    // the animation loop will apply the animation at this progress
+
+    return this;
+  },
+
+  applying: function(){
+    return this._private.applying;
+  },
+
+  pause: function(){
+    var _p = this._private;
+
+    _p.playing = false;
+    _p.started = false;
+
+    return this;
+  },
+
+  stop: function(){
+    var _p = this._private;
+
+    _p.playing = false;
+    _p.started = false;
+    _p.stopped = true; // to be removed from animation queues
+
+    return this;
+  },
+
+  rewind: function(){
+    return this.progress(0);
+  },
+
+  fastforward: function(){
+    return this.progress(1);
+  },
+
+  time: function( t ){
+    var _p = this._private;
+
+    if( t === undefined ){
+      return _p.progress * _p.duration;
+    } else {
+      return this.progress( t / _p.duration );
+    }
+  },
+
+  progress: function( p ){
+    var _p = this._private;
+    var wasPlaying = _p.playing;
+
+    if( p === undefined ){
+      return _p.progress;
+    } else {
+      if( wasPlaying ){
+        this.pause();
+      }
+
+      _p.progress = p;
+      _p.started = false;
+
+      if( wasPlaying ){
+        this.play();
+      }
+    }
+
+    return this;
+  },
+
+  completed: function(){
+    return this._private.progress === 1;
+  },
+
+  reverse: function(){
+    var _p = this._private;
+    var wasPlaying = _p.playing;
+
+    if( wasPlaying ){
+      this.pause();
+    }
+
+    _p.progress = 1 - _p.progress;
+    _p.started = false;
+
+    var swap = function( a, b ){
+      var _pa = _p[a];
+
+      _p[a] = _p[b];
+      _p[b] = _pa;
+    };
+
+    swap( 'zoom', 'startZoom' );
+    swap( 'pan', 'startPan' );
+    swap( 'position', 'startPosition' );
+
+    // swap styles
+    for( var i = 0; i < _p.style.length; i++ ){
+      var prop = _p.style[i];
+      var name = prop.name;
+      var startStyleProp = _p.startStyle[ name ];
+
+      _p.startStyle[ name ] = _p.startStyle[ util.dash2camel( name ) ] = prop;
+      _p.style[i] = startStyleProp;
+    }
+
+    if( wasPlaying ){
+      this.play();
+    }
+
+    return this;
+  },
+
+  promise: function( type ){
+    var _p = this._private;
+
+    var arr;
+
+    switch( type ){
+      case 'frame':
+        arr = _p.frames;
+        break;
+      default:
+      case 'complete':
+      case 'completed':
+        arr = _p.completes;
+    }
+
+    return new Promise(function( resolve, reject ){
+      arr.push(function(){
+        resolve();
+      });
+    });
+  }
+
+} );
+
+anifn.complete = anifn.completed;
+
+module.exports = Animation;
+
+},{"./is":77,"./promise":80,"./util":94}],2:[function(_dereq_,module,exports){
+'use strict';
+
+var is = _dereq_('../../is');
+
+var elesfn = ({
+
+  // Implemented from pseudocode from wikipedia
+  aStar: function(options) {
+    var eles = this;
+
+    options = options || {};
+
+    // Reconstructs the path from Start to End, acumulating the result in pathAcum
+    var reconstructPath = function(start, end, cameFromMap, pathAcum) {
+      // Base case
+      if (start == end) {
+        pathAcum.push( cy.getElementById(end) );
+        return pathAcum;
+      }
+
+      if (end in cameFromMap) {
+        // We know which node is before the last one
+        var previous = cameFromMap[end];
+        var previousEdge = cameFromEdge[end];
+
+        pathAcum.push( cy.getElementById(end) );
+        pathAcum.push( cy.getElementById(previousEdge) );
+
+
+        return reconstructPath(start,
+                     previous,
+                     cameFromMap,
+                     pathAcum);
+      }
+
+      // We should not reach here!
+      return undefined;
+    };
+
+    // Returns the index of the element in openSet which has minimum fScore
+    var findMin = function(openSet, fScore) {
+      if (openSet.length === 0) {
+        // Should never be the case
+        return undefined;
+      }
+      var minPos = 0;
+      var tempScore = fScore[openSet[0]];
+      for (var i = 1; i < openSet.length; i++) {
+        var s = fScore[openSet[i]];
+        if (s < tempScore) {
+          tempScore = s;
+          minPos = i;
+        }
+      }
+      return minPos;
+    };
+
+    var cy = this._private.cy;
+
+    // root - mandatory!
+    if (options != null && options.root != null) {
+      var source = is.string(options.root) ?
+        // use it as a selector, e.g. "#rootID
+        this.filter(options.root)[0] :
+        options.root[0];
+    } else {
+      return undefined;
+    }
+
+    // goal - mandatory!
+    if (options.goal != null) {
+      var target = is.string(options.goal) ?
+        // use it as a selector, e.g. "#goalID
+        this.filter(options.goal)[0] :
+        options.goal[0];
+    } else {
+      return undefined;
+    }
+
+    // Heuristic function - optional
+    if (options.heuristic != null && is.fn(options.heuristic)) {
+      var heuristic = options.heuristic;
+    } else {
+      var heuristic = function(){ return 0; }; // use constant if unspecified
+    }
+
+    // Weight function - optional
+    if (options.weight != null && is.fn(options.weight)) {
+      var weightFn = options.weight;
+    } else {
+      // If not specified, assume each edge has equal weight (1)
+      var weightFn = function(e) {return 1;};
+    }
+
+    // directed - optional
+    if (options.directed != null) {
+      var directed = options.directed;
+    } else {
+      var directed = false;
+    }
+
+    var closedSet = [];
+    var openSet = [source.id()];
+    var cameFrom = {};
+    var cameFromEdge = {};
+    var gScore = {};
+    var fScore = {};
+
+    gScore[source.id()] = 0;
+    fScore[source.id()] = heuristic(source);
+
+    var edges = this.edges().stdFilter(function(e){ return !e.isLoop(); });
+    var nodes = this.nodes();
+
+    // Counter
+    var steps = 0;
+
+    // Main loop
+    while (openSet.length > 0) {
+      var minPos = findMin(openSet, fScore);
+      var cMin = cy.getElementById( openSet[minPos] );
+      steps++;
+
+      // If we've found our goal, then we are done
+      if (cMin.id() == target.id()) {
+        var rPath = reconstructPath(source.id(), target.id(), cameFrom, []);
+        rPath.reverse();
+        return {
+          found : true,
+          distance : gScore[cMin.id()],
+          path : eles.spawn(rPath),
+          steps : steps
+        };
+      }
+
+      // Add cMin to processed nodes
+      closedSet.push(cMin.id());
+      // Remove cMin from boundary nodes
+      openSet.splice(minPos, 1);
+
+      // Update scores for neighbors of cMin
+      // Take into account if graph is directed or not
+      var vwEdges = cMin.connectedEdges();
+      if( directed ){ vwEdges = vwEdges.stdFilter(function(ele){ return ele.data('source') === cMin.id(); }); }
+      vwEdges = vwEdges.intersect(edges);
+
+      for (var i = 0; i < vwEdges.length; i++) {
+        var e = vwEdges[i];
+        var w = e.connectedNodes().stdFilter(function(n){ return n.id() !== cMin.id(); }).intersect(nodes);
+
+        // if node is in closedSet, ignore it
+        if (closedSet.indexOf(w.id()) != -1) {
+          continue;
+        }
+
+        // New tentative score for node w
+        var tempScore = gScore[cMin.id()] + weightFn.apply(e, [e]);
+
+        // Update gScore for node w if:
+        //   w not present in openSet
+        // OR
+        //   tentative gScore is less than previous value
+
+        // w not in openSet
+        if (openSet.indexOf(w.id()) == -1) {
+          gScore[w.id()] = tempScore;
+          fScore[w.id()] = tempScore + heuristic(w);
+          openSet.push(w.id()); // Add node to openSet
+          cameFrom[w.id()] = cMin.id();
+          cameFromEdge[w.id()] = e.id();
+          continue;
+        }
+        // w already in openSet, but with greater gScore
+        if (tempScore < gScore[w.id()]) {
+          gScore[w.id()] = tempScore;
+          fScore[w.id()] = tempScore + heuristic(w);
+          cameFrom[w.id()] = cMin.id();
+        }
+
+      } // End of neighbors update
+
+    } // End of main loop
+
+    // If we've reached here, then we've not reached our goal
+    return {
+      found : false,
+      distance : undefined,
+      path : undefined,
+      steps : steps
+    };
+  }
+
+}); // elesfn
+
+
+module.exports = elesfn;
+
+},{"../../is":77}],3:[function(_dereq_,module,exports){
+'use strict';
+
+var is = _dereq_('../../is');
+var util = _dereq_('../../util');
+
+var elesfn = ({
+
+  // Implemented from pseudocode from wikipedia
+  bellmanFord: function(options) {
+    var eles = this;
+
+    options = options || {};
+
+    // Weight function - optional
+    if (options.weight != null && is.fn(options.weight)) {
+      var weightFn = options.weight;
+    } else {
+      // If not specified, assume each edge has equal weight (1)
+      var weightFn = function(e) {return 1;};
+    }
+
+    // directed - optional
+    if (options.directed != null) {
+      var directed = options.directed;
+    } else {
+      var directed = false;
+    }
+
+    // root - mandatory!
+    if (options.root != null) {
+      if (is.string(options.root)) {
+        // use it as a selector, e.g. "#rootID
+        var source = this.filter(options.root)[0];
+      } else {
+        var source = options.root[0];
+      }
+    } else {
+      return undefined;
+    }
+
+    var cy = this._private.cy;
+    var edges = this.edges().stdFilter(function(e){ return !e.isLoop(); });
+    var nodes = this.nodes();
+    var numNodes = nodes.length;
+
+    // mapping: node id -> position in nodes array
+    var id2position = {};
+    for (var i = 0; i < numNodes; i++) {
+      id2position[nodes[i].id()] = i;
+    }
+
+    // Initializations
+    var cost = [];
+    var predecessor = [];
+    var predEdge = [];
+
+    for (var i = 0; i < numNodes; i++) {
+      if (nodes[i].id() === source.id()) {
+        cost[i] = 0;
+      } else {
+        cost[i] = Infinity;
+      }
+      predecessor[i] = undefined;
+    }
+
+    // Edges relaxation
+    var flag = false;
+    for (var i = 1; i < numNodes; i++) {
+      flag = false;
+      for (var e = 0; e < edges.length; e++) {
+        var sourceIndex = id2position[edges[e].source().id()];
+        var targetIndex = id2position[edges[e].target().id()];
+        var weight = weightFn.apply(edges[e], [edges[e]]);
+
+        var temp = cost[sourceIndex] + weight;
+        if (temp < cost[targetIndex]) {
+          cost[targetIndex] = temp;
+          predecessor[targetIndex] = sourceIndex;
+          predEdge[targetIndex] = edges[e];
+          flag = true;
+        }
+
+        // If undirected graph, we need to take into account the 'reverse' edge
+        if (!directed) {
+          var temp = cost[targetIndex] + weight;
+          if (temp < cost[sourceIndex]) {
+            cost[sourceIndex] = temp;
+            predecessor[sourceIndex] = targetIndex;
+            predEdge[sourceIndex] = edges[e];
+            flag = true;
+          }
+        }
+      }
+
+      if (!flag) {
+        break;
+      }
+    }
+
+    if (flag) {
+      // Check for negative weight cycles
+      for (var e = 0; e < edges.length; e++) {
+        var sourceIndex = id2position[edges[e].source().id()];
+        var targetIndex = id2position[edges[e].target().id()];
+        var weight = weightFn.apply(edges[e], [edges[e]]);
+
+        if (cost[sourceIndex] + weight < cost[targetIndex]) {
+          util.error("Graph contains a negative weight cycle for Bellman-Ford");
+          return { pathTo: undefined,
+               distanceTo: undefined,
+               hasNegativeWeightCycle: true};
+        }
+      }
+    }
+
+    // Build result object
+    var position2id = [];
+    for (var i = 0; i < numNodes; i++) {
+      position2id.push(nodes[i].id());
+    }
+
+
+    var res = {
+      distanceTo : function(to) {
+        if (is.string(to)) {
+          // to is a selector string
+          var toId = (cy.filter(to)[0]).id();
+        } else {
+          // to is a node
+          var toId = to.id();
+        }
+
+        return cost[id2position[toId]];
+      },
+
+      pathTo : function(to) {
+
+        var reconstructPathAux = function(predecessor, fromPos, toPos, position2id, acumPath, predEdge) {
+          for(;;){
+            // Add toId to path
+            acumPath.push( cy.getElementById(position2id[toPos]) );
+            acumPath.push( predEdge[toPos] );
+
+            if (fromPos === toPos) {
+              // reached starting node
+              return acumPath;
+            }
+
+            // If no path exists, discart acumulated path and return undefined
+            var predPos = predecessor[toPos];
+            if (typeof predPos === "undefined") {
+              return undefined;
+            }
+
+            toPos = predPos;
+          }
+
+        };
+
+        if (is.string(to)) {
+          // to is a selector string
+          var toId = (cy.filter(to)[0]).id();
+        } else {
+          // to is a node
+          var toId = to.id();
+        }
+        var path = [];
+
+        // This returns a reversed path
+        var res =  reconstructPathAux(predecessor,
+                      id2position[source.id()],
+                      id2position[toId],
+                      position2id,
+                      path,
+                      predEdge);
+
+        // Get it in the correct order and return it
+        if (res != null) {
+          res.reverse();
+        }
+
+        return eles.spawn(res);
+      },
+
+      hasNegativeWeightCycle: false
+    };
+
+    return res;
+
+  } // bellmanFord
+
+}); // elesfn
+
+module.exports = elesfn;
+
+},{"../../is":77,"../../util":94}],4:[function(_dereq_,module,exports){
+'use strict';
+
+var is = _dereq_('../../is');
+
+var elesfn = ({
+
+  // Implemented from the algorithm in the paper "On Variants of Shortest-Path Betweenness Centrality and their Generic Computation" by Ulrik Brandes
+  betweennessCentrality: function (options) {
+    options = options || {};
+
+    // Weight - optional
+    if (options.weight != null && is.fn(options.weight)) {
+      var weightFn = options.weight;
+      var weighted = true;
+    } else {
+      var weighted = false;
+    }
+
+    // Directed - default false
+    if (options.directed != null && is.bool(options.directed)) {
+      var directed = options.directed;
+    } else {
+      var directed = false;
+    }
+
+    var priorityInsert = function (queue, ele) {
+      queue.unshift(ele);
+      for (var i = 0; d[queue[i]] < d[queue[i + 1]] && i < queue.length - 1; i++) {
+        var tmp = queue[i];
+        queue[i] = queue[i + 1];
+        queue[i + 1] = tmp;
+      }
+    };
+
+    var cy = this._private.cy;
+
+    // starting
+    var V = this.nodes();
+    var A = {};
+    var C = {};
+
+    // A contains the neighborhoods of every node
+    for (var i = 0; i < V.length; i++) {
+      if (directed) {
+        A[V[i].id()] = V[i].outgoers("node"); // get outgoers of every node
+      } else {
+        A[V[i].id()] = V[i].openNeighborhood("node"); // get neighbors of every node
+      }
+    }
+
+    // C contains the betweenness values
+    for (var i = 0; i < V.length; i++) {
+      C[V[i].id()] = 0;
+    }
+
+    for (var s = 0; s < V.length; s++) {
+      var S = []; // stack
+      var P = {};
+      var g = {};
+      var d = {};
+      var Q = []; // queue
+
+      // init dictionaries
+      for (var i = 0; i < V.length; i++) {
+        P[V[i].id()] = [];
+        g[V[i].id()] = 0;
+        d[V[i].id()] = Number.POSITIVE_INFINITY;
+      }
+
+      g[V[s].id()] = 1; // sigma
+      d[V[s].id()] = 0; // distance to s
+
+      Q.unshift(V[s].id());
+
+      while (Q.length > 0) {
+        var v = Q.pop();
+        S.push(v);
+        if (weighted) {
+          A[v].forEach(function (w) {
+            if (cy.$('#' + v).edgesTo(w).length > 0) {
+              var edge = cy.$('#' + v).edgesTo(w)[0];
+            } else {
+              var edge = w.edgesTo('#' + v)[0];
+            }
+
+            var edgeWeight = weightFn.apply(edge, [edge]);
+
+            if (d[w.id()] > d[v] + edgeWeight) {
+              d[w.id()] = d[v] + edgeWeight;
+              if (Q.indexOf(w.id()) < 0) { //if w is not in Q
+                priorityInsert(Q, w.id());
+              } else { // update position if w is in Q
+                Q.splice(Q.indexOf(w.id()), 1);
+                priorityInsert(Q, w.id());
+              }
+              g[w.id()] = 0;
+              P[w.id()] = [];
+            }
+            if (d[w.id()] == d[v] + edgeWeight) {
+              g[w.id()] = g[w.id()] + g[v];
+              P[w.id()].push(v);
+            }
+          });
+        } else {
+          A[v].forEach(function (w) {
+            if (d[w.id()] == Number.POSITIVE_INFINITY) {
+              Q.unshift(w.id());
+              d[w.id()] = d[v] + 1;
+            }
+            if (d[w.id()] == d[v] + 1) {
+              g[w.id()] = g[w.id()] + g[v];
+              P[w.id()].push(v);
+            }
+          });
+        }
+      }
+
+      var e = {};
+      for (var i = 0; i < V.length; i++) {
+        e[V[i].id()] = 0;
+      }
+
+      while (S.length > 0) {
+        var w = S.pop();
+        P[w].forEach(function (v) {
+          e[v] = e[v] + (g[v] / g[w]) * (1 + e[w]);
+          if (w != V[s].id())
+            C[w] = C[w] + e[w];
+        });
+      }
+    }
+
+    var max = 0;
+    for (var key in C) {
+      if (max < C[key])
+        max = C[key];
+    }
+
+    var ret = {
+      betweenness: function (node) {
+        if (is.string(node)) {
+          var node = (cy.filter(node)[0]).id();
+        } else {
+          var node = node.id();
+        }
+
+        return C[node];
+      },
+
+      betweennessNormalized: function (node) {
+        if (is.string(node)) {
+          var node = (cy.filter(node)[0]).id();
+        } else {
+          var node = node.id();
+        }
+
+        return C[node] / max;
+      }
+    };
+
+    // alias
+    ret.betweennessNormalised = ret.betweennessNormalized;
+
+    return ret;
+  } // betweennessCentrality
+
+}); // elesfn
+
+// nice, short mathemathical alias
+elesfn.bc = elesfn.betweennessCentrality;
+
+module.exports = elesfn;
+
+},{"../../is":77}],5:[function(_dereq_,module,exports){
+'use strict';
+
+var is = _dereq_('../../is');
+var Heap = _dereq_('../../heap');
+
+var defineSearch = function( params ){
+  params = {
+    bfs: params.bfs || !params.dfs,
+    dfs: params.dfs || !params.bfs
+  };
+
+  // from pseudocode on wikipedia
+  return function searchFn( roots, fn, directed ){
+    var options;
+    var std;
+    var thisArg;
+    if( is.plainObject(roots) && !is.elementOrCollection(roots) ){
+      options = roots;
+      roots = options.roots || options.root;
+      fn = options.visit;
+      directed = options.directed;
+      std = options.std;
+      thisArg = options.thisArg;
+    }
+
+    directed = arguments.length === 2 && !is.fn(fn) ? fn : directed;
+    fn = is.fn(fn) ? fn : function(){};
+
+    var cy = this._private.cy;
+    var v = roots = is.string(roots) ? this.filter(roots) : roots;
+    var Q = [];
+    var connectedNodes = [];
+    var connectedBy = {};
+    var id2depth = {};
+    var V = {};
+    var j = 0;
+    var found;
+    var nodes = this.nodes();
+    var edges = this.edges();
+
+    // enqueue v
+    for( var i = 0; i < v.length; i++ ){
+      if( v[i].isNode() ){
+        Q.unshift( v[i] );
+
+        if( params.bfs ){
+          V[ v[i].id() ] = true;
+
+          connectedNodes.push( v[i] );
+        }
+
+        id2depth[ v[i].id() ] = 0;
+      }
+    }
+
+    while( Q.length !== 0 ){
+      var v = params.bfs ? Q.shift() : Q.pop();
+
+      if( params.dfs ){
+        if( V[ v.id() ] ){ continue; }
+
+        V[ v.id() ] = true;
+
+        connectedNodes.push( v );
+      }
+
+      var depth = id2depth[ v.id() ];
+      var prevEdge = connectedBy[ v.id() ];
+      var prevNode = prevEdge == null ? undefined : prevEdge.connectedNodes().not( v )[0];
+      var ret;
+
+      if( std ){
+        ret = fn.call(thisArg, v, prevEdge, prevNode, j++, depth);
+      } else {
+        ret = fn.call(v, j++, depth, v, prevEdge, prevNode);
+      }
+
+      if( ret === true ){
+        found = v;
+        break;
+      }
+
+      if( ret === false ){
+        break;
+      }
+
+      var vwEdges = v.connectedEdges(directed ? function(){ return this.data('source') === v.id(); } : undefined).intersect( edges );
+      for( var i = 0; i < vwEdges.length; i++ ){
+        var e = vwEdges[i];
+        var w = e.connectedNodes(function(){ return this.id() !== v.id(); }).intersect( nodes );
+
+        if( w.length !== 0 && !V[ w.id() ] ){
+          w = w[0];
+
+          Q.push( w );
+
+          if( params.bfs ){
+            V[ w.id() ] = true;
+
+            connectedNodes.push( w );
+          }
+
+          connectedBy[ w.id() ] = e;
+
+          id2depth[ w.id() ] = id2depth[ v.id() ] + 1;
+        }
+      }
+
+    }
+
+    var connectedEles = [];
+
+    for( var i = 0; i < connectedNodes.length; i++ ){
+      var node = connectedNodes[i];
+      var edge = connectedBy[ node.id() ];
+
+      if( edge ){
+        connectedEles.push( edge );
+      }
+
+      connectedEles.push( node );
+    }
+
+    return {
+      path: cy.collection( connectedEles, { unique: true } ),
+      found: cy.collection( found )
+    };
+  };
+};
+
+// search, spanning trees, etc
+var elesfn = ({
+
+  breadthFirstSearch: defineSearch({ bfs: true }),
+  depthFirstSearch: defineSearch({ dfs: true }),
+
+  // kruskal's algorithm (finds min spanning tree, assuming undirected graph)
+  // implemented from pseudocode from wikipedia
+  kruskal: function( weightFn ){
+    var cy = this.cy();
+
+    weightFn = is.fn(weightFn) ? weightFn : function(){ return 1; }; // if not specified, assume each edge has equal weight (1)
+
+    function findSet(ele){
+      for( var i = 0; i < forest.length; i++ ){
+        var eles = forest[i];
+
+        if( eles.anySame(ele) ){
+          return {
+            eles: eles,
+            index: i
+          };
+        }
+      }
+    }
+
+    var A = cy.collection(cy, []);
+    var forest = [];
+    var nodes = this.nodes();
+
+    for( var i = 0; i < nodes.length; i++ ){
+      forest.push( nodes[i].collection() );
+    }
+
+    var edges = this.edges();
+    var S = edges.toArray().sort(function(a, b){
+      var weightA = weightFn.call(a, a);
+      var weightB = weightFn.call(b, b);
+
+      return weightA - weightB;
+    });
+
+    for(var i = 0; i < S.length; i++){
+      var edge = S[i];
+      var u = edge.source()[0];
+      var v = edge.target()[0];
+      var setU = findSet(u);
+      var setV = findSet(v);
+
+      if( setU.index !== setV.index ){
+        A = A.add( edge );
+
+        // combine forests for u and v
+        forest[ setU.index ] = setU.eles.add( setV.eles );
+        forest.splice( setV.index, 1 );
+      }
+    }
+
+    return nodes.add( A );
+
+  },
+
+  dijkstra: function( root, weightFn, directed ){
+    var options;
+    if( is.plainObject(root) && !is.elementOrCollection(root) ){
+      options = root;
+      root = options.root;
+      weightFn = options.weight;
+      directed = options.directed;
+    }
+
+    var cy = this._private.cy;
+    weightFn = is.fn(weightFn) ? weightFn : function(){ return 1; }; // if not specified, assume each edge has equal weight (1)
+
+    var source = is.string(root) ? this.filter(root)[0] : root[0];
+    var dist = {};
+    var prev = {};
+    var knownDist = {};
+
+    var edges = this.edges().filter(function(){ return !this.isLoop(); });
+    var nodes = this.nodes();
+
+    var getDist = function(node){
+      return dist[ node.id() ];
+    };
+
+    var setDist = function(node, d){
+      dist[ node.id() ] = d;
+
+      Q.updateItem( node );
+    };
+
+    var Q = new Heap(function( a, b ){
+      return getDist(a) - getDist(b);
+    });
+
+    for( var i = 0; i < nodes.length; i++ ){
+      var node = nodes[i];
+
+      dist[ node.id() ] = node.same( source ) ? 0 : Infinity;
+      Q.push( node );
+    }
+
+    var distBetween = function(u, v){
+      var uvs = ( directed ? u.edgesTo(v) : u.edgesWith(v) ).intersect(edges);
+      var smallestDistance = Infinity;
+      var smallestEdge;
+
+      for( var i = 0; i < uvs.length; i++ ){
+        var edge = uvs[i];
+        var weight = weightFn.apply( edge, [edge] );
+
+        if( weight < smallestDistance || !smallestEdge ){
+          smallestDistance = weight;
+          smallestEdge = edge;
+        }
+      }
+
+      return {
+        edge: smallestEdge,
+        dist: smallestDistance
+      };
+    };
+
+    while( Q.size() > 0 ){
+      var u = Q.pop();
+      var smalletsDist = getDist(u);
+      var uid = u.id();
+
+      knownDist[uid] = smalletsDist;
+
+      if( smalletsDist === Math.Infinite ){
+        break;
+      }
+
+      var neighbors = u.neighborhood().intersect(nodes);
+      for( var i = 0; i < neighbors.length; i++ ){
+        var v = neighbors[i];
+        var vid = v.id();
+        var vDist = distBetween(u, v);
+
+        var alt = smalletsDist + vDist.dist;
+
+        if( alt < getDist(v) ){
+          setDist(v, alt);
+
+          prev[ vid ] = {
+            node: u,
+            edge: vDist.edge
+          };
+        }
+      } // for
+    } // while
+
+    return {
+      distanceTo: function(node){
+        var target = is.string(node) ? nodes.filter(node)[0] : node[0];
+
+        return knownDist[ target.id() ];
+      },
+
+      pathTo: function(node){
+        var target = is.string(node) ? nodes.filter(node)[0] : node[0];
+        var S = [];
+        var u = target;
+
+        if( target.length > 0 ){
+          S.unshift( target );
+
+          while( prev[ u.id() ] ){
+            var p = prev[ u.id() ];
+
+            S.unshift( p.edge );
+            S.unshift( p.node );
+
+            u = p.node;
+          }
+        }
+
+        return cy.collection( S );
+      }
+    };
+  }
+});
+
+// nice, short mathemathical alias
+elesfn.bfs = elesfn.breadthFirstSearch;
+elesfn.dfs = elesfn.depthFirstSearch;
+
+module.exports = elesfn;
+
+},{"../../heap":75,"../../is":77}],6:[function(_dereq_,module,exports){
+'use strict';
+
+var is = _dereq_('../../is');
+
+var elesfn = ({
+
+  closenessCentralityNormalized: function (options) {
+    options = options || {};
+
+    var cy = this.cy();
+
+    var harmonic = options.harmonic;
+    if( harmonic === undefined ){
+      harmonic = true;
+    }
+
+    var closenesses = {};
+    var maxCloseness = 0;
+    var nodes = this.nodes();
+    var fw = this.floydWarshall({ weight: options.weight, directed: options.directed });
+
+    // Compute closeness for every node and find the maximum closeness
+    for(var i = 0; i < nodes.length; i++){
+      var currCloseness = 0;
+      for (var j = 0; j < nodes.length; j++) {
+        if (i != j) {
+          var d = fw.distance(nodes[i], nodes[j]);
+
+          if( harmonic ){
+            currCloseness += 1 / d;
+          } else {
+            currCloseness += d;
+          }
+        }
+      }
+
+      if( !harmonic ){
+        currCloseness = 1 / currCloseness;
+      }
+
+      if (maxCloseness < currCloseness){
+        maxCloseness = currCloseness;
+      }
+
+      closenesses[nodes[i].id()] = currCloseness;
+    }
+
+    return {
+      closeness: function (node) {
+        if (is.string(node)) {
+          // from is a selector string
+          var node = (cy.filter(node)[0]).id();
+        } else {
+          // from is a node
+          var node = node.id();
+        }
+
+        return closenesses[node] / maxCloseness;
+      }
+    };
+  },
+
+  // Implemented from pseudocode from wikipedia
+  closenessCentrality: function (options) {
+    options = options || {};
+
+    // root - mandatory!
+    if (options.root != null) {
+      if (is.string(options.root)) {
+        // use it as a selector, e.g. "#rootID
+        var root = this.filter(options.root)[0];
+      } else {
+        var root = options.root[0];
+      }
+    } else {
+      return undefined;
+    }
+
+    // weight - optional
+    if (options.weight != null && is.fn(options.weight)) {
+      var weight = options.weight;
+    } else {
+      var weight = function(){return 1;};
+    }
+
+    // directed - optional
+    if (options.directed != null && is.bool(options.directed)) {
+      var directed = options.directed;
+    } else {
+      var directed = false;
+    }
+
+    var harmonic = options.harmonic;
+    if( harmonic === undefined ){
+      harmonic = true;
+    }
+
+    // we need distance from this node to every other node
+    var dijkstra = this.dijkstra({
+      root: root,
+      weight: weight,
+      directed: directed
+    });
+    var totalDistance = 0;
+
+    var nodes = this.nodes();
+    for (var i = 0; i < nodes.length; i++){
+      if (nodes[i].id() != root.id()){
+        var d = dijkstra.distanceTo(nodes[i]);
+
+        if( harmonic ){
+          totalDistance += 1 / d;
+        } else {
+          totalDistance += d;
+        }
+      }
+    }
+
+    return harmonic ? totalDistance : 1 / totalDistance;
+  } // closenessCentrality
+
+}); // elesfn
+
+// nice, short mathemathical alias
+elesfn.cc = elesfn.closenessCentrality;
+elesfn.ccn = elesfn.closenessCentralityNormalised = elesfn.closenessCentralityNormalized;
+
+module.exports = elesfn;
+
+},{"../../is":77}],7:[function(_dereq_,module,exports){
+'use strict';
+
+var is = _dereq_('../../is');
+var util = _dereq_('../../util');
+
+var elesfn = ({
+
+  degreeCentralityNormalized: function (options) {
+    options = options || {};
+
+    var cy = this.cy();
+
+    // directed - optional
+    if (options.directed != null) {
+      var directed = options.directed;
+    } else {
+      var directed = false;
+    }
+
+    var nodes = this.nodes();
+    var numNodes = nodes.length;
+
+    if (!directed) {
+      var degrees = {};
+      var maxDegree = 0;
+
+      for (var i = 0; i < numNodes; i++) {
+        var node = nodes[i];
+        // add current node to the current options object and call degreeCentrality
+        var currDegree = this.degreeCentrality(util.extend({}, options, {root: node}));
+        if (maxDegree < currDegree.degree)
+          maxDegree = currDegree.degree;
+
+        degrees[node.id()] = currDegree.degree;
+      }
+
+      return {
+        degree: function (node) {
+          if (is.string(node)) {
+            // from is a selector string
+            var node = (cy.filter(node)[0]).id();
+          } else {
+            // from is a node
+            var node = node.id();
+          }
+
+          return degrees[node] / maxDegree;
+        }
+      };
+    } else {
+      var indegrees = {};
+      var outdegrees = {};
+      var maxIndegree = 0;
+      var maxOutdegree = 0;
+
+      for (var i = 0; i < numNodes; i++) {
+        var node = nodes[i];
+        // add current node to the current options object and call degreeCentrality
+        var currDegree = this.degreeCentrality(util.extend({}, options, {root: node}));
+
+        if (maxIndegree < currDegree.indegree)
+          maxIndegree = currDegree.indegree;
+
+        if (maxOutdegree < currDegree.outdegree)
+          maxOutdegree = currDegree.outdegree;
+
+        indegrees[node.id()] = currDegree.indegree;
+        outdegrees[node.id()] = currDegree.outdegree;
+      }
+
+      return {
+        indegree: function (node) {
+          if (is.string(node)) {
+            // from is a selector string
+            var node = (cy.filter(node)[0]).id();
+          } else {
+            // from is a node
+            var node = node.id();
+          }
+
+          return indegrees[node] / maxIndegree;
+        },
+        outdegree: function (node) {
+          if (is.string(node)) {
+            // from is a selector string
+            var node = (cy.filter(node)[0]).id();
+          } else {
+            // from is a node
+            var node = node.id();
+          }
+
+          return outdegrees[node] / maxOutdegree;
+        }
+
+      };
+    }
+
+  }, // degreeCentralityNormalized
+
+  // Implemented from the algorithm in Opsahl's paper
+  // "Node centrality in weighted networks: Generalizing degree and shortest paths"
+  // check the heading 2 "Degree"
+  degreeCentrality: function (options) {
+    options = options || {};
+
+    var callingEles = this;
+
+    // root - mandatory!
+    if (options != null && options.root != null) {
+      var root = is.string(options.root) ? this.filter(options.root)[0] : options.root[0];
+    } else {
+      return undefined;
+    }
+
+    // weight - optional
+    if (options.weight != null && is.fn(options.weight)) {
+      var weightFn = options.weight;
+    } else {
+      // If not specified, assume each edge has equal weight (1)
+      var weightFn = function (e) {
+        return 1;
+      };
+    }
+
+    // directed - optional
+    if (options.directed != null) {
+      var directed = options.directed;
+    } else {
+      var directed = false;
+    }
+
+    // alpha - optional
+    if (options.alpha != null && is.number(options.alpha)) {
+      var alpha = options.alpha;
+    } else {
+      alpha = 0;
+    }
+
+
+    if (!directed) {
+      var connEdges = root.connectedEdges().intersection( callingEles );
+      var k = connEdges.length;
+      var s = 0;
+
+      // Now, sum edge weights
+      for (var i = 0; i < connEdges.length; i++) {
+        var edge = connEdges[i];
+        s += weightFn.apply(edge, [edge]);
+      }
+
+      return {
+        degree: Math.pow(k, 1 - alpha) * Math.pow(s, alpha)
+      };
+    } else {
+      var incoming = root.connectedEdges('edge[target = "' + root.id() + '"]').intersection( callingEles );
+      var outgoing = root.connectedEdges('edge[source = "' + root.id() + '"]').intersection( callingEles );
+      var k_in = incoming.length;
+      var k_out = outgoing.length;
+      var s_in = 0;
+      var s_out = 0;
+
+      // Now, sum incoming edge weights
+      for (var i = 0; i < incoming.length; i++) {
+        var edge = incoming[i];
+        s_in += weightFn.apply(edge, [edge]);
+      }
+
+      // Now, sum outgoing edge weights
+      for (var i = 0; i < outgoing.length; i++) {
+        var edge = outgoing[i];
+        s_out += weightFn.apply(edge, [edge]);
+      }
+
+      return {
+        indegree: Math.pow(k_in, 1 - alpha) * Math.pow(s_in, alpha),
+        outdegree: Math.pow(k_out, 1 - alpha) * Math.pow(s_out, alpha)
+      };
+    }
+  } // degreeCentrality
+
+}); // elesfn
+
+// nice, short mathemathical alias
+elesfn.dc = elesfn.degreeCentrality;
+elesfn.dcn = elesfn.degreeCentralityNormalised = elesfn.degreeCentralityNormalized;
+
+module.exports = elesfn;
+
+},{"../../is":77,"../../util":94}],8:[function(_dereq_,module,exports){
+'use strict';
+
+var is = _dereq_('../../is');
+
+var elesfn = ({
+
+  // Implemented from pseudocode from wikipedia
+  floydWarshall: function(options) {
+    options = options || {};
+
+    var cy = this.cy();
+
+    // Weight function - optional
+    if (options.weight != null && is.fn(options.weight)) {
+      var weightFn = options.weight;
+    } else {
+      // If not specified, assume each edge has equal weight (1)
+      var weightFn = function(e) {return 1;};
+    }
+
+    // directed - optional
+    if (options.directed != null) {
+      var directed = options.directed;
+    } else {
+      var directed = false;
+    }
+
+    var edges = this.edges().stdFilter(function(e){ return !e.isLoop(); });
+    var nodes = this.nodes();
+    var numNodes = nodes.length;
+
+    // mapping: node id -> position in nodes array
+    var id2position = {};
+    for (var i = 0; i < numNodes; i++) {
+      id2position[nodes[i].id()] = i;
+    }
+
+    // Initialize distance matrix
+    var dist = [];
+    for (var i = 0; i < numNodes; i++) {
+      var newRow = new Array(numNodes);
+      for (var j = 0; j < numNodes; j++) {
+        if (i == j) {
+          newRow[j] = 0;
+        } else {
+          newRow[j] = Infinity;
+        }
+      }
+      dist.push(newRow);
+    }
+
+    // Initialize matrix used for path reconstruction
+    // Initialize distance matrix
+    var next = [];
+    var edgeNext = [];
+
+    var initMatrix = function(next){
+      for (var i = 0; i < numNodes; i++) {
+        var newRow = new Array(numNodes);
+        for (var j = 0; j < numNodes; j++) {
+          newRow[j] = undefined;
+        }
+        next.push(newRow);
+      }
+    };
+
+    initMatrix(next);
+    initMatrix(edgeNext);
+
+    // Process edges
+    for (var i = 0; i < edges.length ; i++) {
+      var sourceIndex = id2position[edges[i].source().id()];
+      var targetIndex = id2position[edges[i].target().id()];
+      var weight = weightFn.apply(edges[i], [edges[i]]);
+
+      // Check if already process another edge between same 2 nodes
+      if (dist[sourceIndex][targetIndex] > weight) {
+        dist[sourceIndex][targetIndex] = weight;
+        next[sourceIndex][targetIndex] = targetIndex;
+        edgeNext[sourceIndex][targetIndex] = edges[i];
+      }
+    }
+
+    // If undirected graph, process 'reversed' edges
+    if (!directed) {
+      for (var i = 0; i < edges.length ; i++) {
+        var sourceIndex = id2position[edges[i].target().id()];
+        var targetIndex = id2position[edges[i].source().id()];
+        var weight = weightFn.apply(edges[i], [edges[i]]);
+
+        // Check if already process another edge between same 2 nodes
+        if (dist[sourceIndex][targetIndex] > weight) {
+          dist[sourceIndex][targetIndex] = weight;
+          next[sourceIndex][targetIndex] = targetIndex;
+          edgeNext[sourceIndex][targetIndex] = edges[i];
+        }
+      }
+    }
+
+    // Main loop
+    for (var k = 0; k < numNodes; k++) {
+      for (var i = 0; i < numNodes; i++) {
+        for (var j = 0; j < numNodes; j++) {
+          if (dist[i][k] + dist[k][j] < dist[i][j]) {
+            dist[i][j] = dist[i][k] + dist[k][j];
+            next[i][j] = next[i][k];
+          }
+        }
+      }
+    }
+
+    // Build result object
+    var position2id = [];
+    for (var i = 0; i < numNodes; i++) {
+      position2id.push(nodes[i].id());
+    }
+
+    var res = {
+      distance: function(from, to) {
+        if (is.string(from)) {
+          // from is a selector string
+          var fromId = (cy.filter(from)[0]).id();
+        } else {
+          // from is a node
+          var fromId = from.id();
+        }
+
+        if (is.string(to)) {
+          // to is a selector string
+          var toId = (cy.filter(to)[0]).id();
+        } else {
+          // to is a node
+          var toId = to.id();
+        }
+
+        return dist[id2position[fromId]][id2position[toId]];
+      },
+
+      path: function(from, to) {
+        var reconstructPathAux = function(from, to, next, position2id, edgeNext) {
+          if (from === to) {
+            return cy.getElementById( position2id[from] );
+          }
+          if (next[from][to] === undefined) {
+            return undefined;
+          }
+
+          var path = [ cy.getElementById(position2id[from]) ];
+          var prev = from;
+          while (from !== to) {
+            prev = from;
+            from = next[from][to];
+
+            var edge = edgeNext[prev][from];
+            path.push( edge );
+
+            path.push( cy.getElementById(position2id[from]) );
+          }
+          return path;
+        };
+
+        if (is.string(from)) {
+          // from is a selector string
+          var fromId = (cy.filter(from)[0]).id();
+        } else {
+          // from is a node
+          var fromId = from.id();
+        }
+
+        if (is.string(to)) {
+          // to is a selector string
+          var toId = (cy.filter(to)[0]).id();
+        } else {
+          // to is a node
+          var toId = to.id();
+        }
+
+        var pathArr = reconstructPathAux(id2position[fromId],
+                      id2position[toId],
+                      next,
+                      position2id,
+                      edgeNext);
+
+        return cy.collection( pathArr );
+      }
+    };
+
+    return res;
+
+  } // floydWarshall
+
+}); // elesfn
+
+module.exports = elesfn;
+
+},{"../../is":77}],9:[function(_dereq_,module,exports){
+'use strict';
+
+var util = _dereq_('../../util');
+
+var elesfn = {};
+
+[
+  _dereq_('./bfs-dfs'),
+  _dereq_('./a-star'),
+  _dereq_('./floyd-warshall'),
+  _dereq_('./bellman-ford'),
+  _dereq_('./kerger-stein'),
+  _dereq_('./page-rank'),
+  _dereq_('./degree-centrality'),
+  _dereq_('./closeness-centrality'),
+  _dereq_('./betweenness-centrality')
+].forEach(function( props ){
+  util.extend( elesfn, props );
+});
+
+module.exports = elesfn;
+
+},{"../../util":94,"./a-star":2,"./bellman-ford":3,"./betweenness-centrality":4,"./bfs-dfs":5,"./closeness-centrality":6,"./degree-centrality":7,"./floyd-warshall":8,"./kerger-stein":10,"./page-rank":11}],10:[function(_dereq_,module,exports){
+'use strict';
+
+var util = _dereq_('../../util');
+
+var elesfn = ({
+
+  // Computes the minimum cut of an undirected graph
+  // Returns the correct answer with high probability
+  kargerStein: function(options) {
+    var eles = this;
+
+    options = options || {};
+
+    // Function which colapses 2 (meta) nodes into one
+    // Updates the remaining edge lists
+    // Receives as a paramater the edge which causes the collapse
+    var colapse = function(edgeIndex, nodeMap, remainingEdges) {
+      var edgeInfo = remainingEdges[edgeIndex];
+      var sourceIn = edgeInfo[1];
+      var targetIn = edgeInfo[2];
+      var partition1 = nodeMap[sourceIn];
+      var partition2 = nodeMap[targetIn];
+
+      // Delete all edges between partition1 and partition2
+      var newEdges = remainingEdges.filter(function(edge) {
+        if (nodeMap[edge[1]] === partition1 && nodeMap[edge[2]] === partition2) {
+          return false;
+        }
+        if (nodeMap[edge[1]] === partition2 && nodeMap[edge[2]] === partition1) {
+          return false;
+        }
+        return true;
+      });
+
+      // All edges pointing to partition2 should now point to partition1
+      for (var i = 0; i < newEdges.length; i++) {
+        var edge = newEdges[i];
+        if (edge[1] === partition2) { // Check source
+          newEdges[i] = edge.slice(0);
+          newEdges[i][1] = partition1;
+        } else if (edge[2] === partition2) { // Check target
+          newEdges[i] = edge.slice(0);
+          newEdges[i][2] = partition1;
+        }
+      }
+
+      // Move all nodes from partition2 to partition1
+      for (var i = 0; i < nodeMap.length; i++) {
+        if (nodeMap[i] === partition2) {
+          nodeMap[i] = partition1;
+        }
+      }
+
+      return newEdges;
+    };
+
+
+    // Contracts a graph until we reach a certain number of meta nodes
+    var contractUntil = function(metaNodeMap,
+                   remainingEdges,
+                   size,
+                   sizeLimit) {
+      // Stop condition
+      if (size <= sizeLimit) {
+        return remainingEdges;
+      }
+
+      // Choose an edge randomly
+      var edgeIndex = Math.floor((Math.random() * remainingEdges.length));
+
+      // Colapse graph based on edge
+      var newEdges = colapse(edgeIndex, metaNodeMap, remainingEdges);
+
+      return contractUntil(metaNodeMap,
+                 newEdges,
+                 size - 1,
+                 sizeLimit);
+    };
+
+    var cy = this._private.cy;
+    var edges = this.edges().stdFilter(function(e){ return !e.isLoop(); });
+    var nodes = this.nodes();
+    var numNodes = nodes.length;
+    var numEdges = edges.length;
+    var numIter = Math.ceil(Math.pow(Math.log(numNodes) / Math.LN2, 2));
+    var stopSize = Math.floor(numNodes / Math.sqrt(2));
+
+    if (numNodes < 2) {
+      util.error("At least 2 nodes are required for Karger-Stein algorithm");
+      return undefined;
+    }
+
+    // Create numerical identifiers for each node
+    // mapping: node id -> position in nodes array
+    // for reverse mapping, simply use nodes array
+    var id2position = {};
+    for (var i = 0; i < numNodes; i++) {
+      id2position[nodes[i].id()] = i;
+    }
+
+    // Now store edge destination as indexes
+    // Format for each edge (edge index, source node index, target node index)
+    var edgeIndexes = [];
+    for (var i = 0; i < numEdges; i++) {
+      var e = edges[i];
+      edgeIndexes.push([i, id2position[e.source().id()], id2position[e.target().id()]]);
+    }
+
+    // We will store the best cut found here
+    var minCutSize = Infinity;
+    var minCut;
+
+    // Initial meta node partition
+    var originalMetaNode = [];
+    for (var i = 0; i < numNodes; i++) {
+      originalMetaNode.push(i);
+    }
+
+    // Main loop
+    for (var iter = 0; iter <= numIter; iter++) {
+      // Create new meta node partition
+      var metaNodeMap = originalMetaNode.slice(0);
+
+      // Contract until stop point (stopSize nodes)
+      var edgesState = contractUntil(metaNodeMap, edgeIndexes, numNodes, stopSize);
+
+      // Create a copy of the colapsed nodes state
+      var metaNodeMap2 = metaNodeMap.slice(0);
+
+      // Run 2 iterations starting in the stop state
+      var res1 = contractUntil(metaNodeMap, edgesState, stopSize, 2);
+      var res2 = contractUntil(metaNodeMap2, edgesState, stopSize, 2);
+
+      // Is any of the 2 results the best cut so far?
+      if (res1.length <= res2.length && res1.length < minCutSize) {
+        minCutSize = res1.length;
+        minCut = [res1, metaNodeMap];
+      } else if (res2.length <= res1.length && res2.length < minCutSize) {
+        minCutSize = res2.length;
+        minCut = [res2, metaNodeMap2];
+      }
+    } // end of main loop
+
+
+    // Construct result
+    var resEdges = (minCut[0]).map(function(e){ return edges[e[0]]; });
+    var partition1 = [];
+    var partition2 = [];
+
+    // traverse metaNodeMap for best cut
+    var witnessNodePartition = minCut[1][0];
+    for (var i = 0; i < minCut[1].length; i++) {
+      var partitionId = minCut[1][i];
+      if (partitionId === witnessNodePartition) {
+        partition1.push(nodes[i]);
+      } else {
+        partition2.push(nodes[i]);
+      }
+    }
+
+    var ret = {
+      cut: eles.spawn(cy, resEdges),
+      partition1: eles.spawn(partition1),
+      partition2: eles.spawn(partition2)
+    };
+
+    return ret;
+  }
+}); // elesfn
+
+
+module.exports = elesfn;
+
+},{"../../util":94}],11:[function(_dereq_,module,exports){
+'use strict';
+
+var is = _dereq_('../../is');
+
+var elesfn = ({
+
+  pageRank: function(options) {
+    options = options || {};
+
+    var normalizeVector = function(vector) {
+      var length = vector.length;
+
+      // First, get sum of all elements
+      var total = 0;
+      for (var i = 0; i < length; i++) {
+        total += vector[i];
+      }
+
+      // Now, divide each by the sum of all elements
+      for (var i = 0; i < length; i++) {
+        vector[i] = vector[i] / total;
+      }
+    };
+
+    // dampingFactor - optional
+    if (options != null &&
+      options.dampingFactor != null) {
+      var dampingFactor = options.dampingFactor;
+    } else {
+      var dampingFactor = 0.8; // Default damping factor
+    }
+
+    // desired precision - optional
+    if (options != null &&
+      options.precision != null) {
+      var epsilon = options.precision;
+    } else {
+      var epsilon = 0.000001; // Default precision
+    }
+
+    // Max number of iterations - optional
+    if (options != null &&
+      options.iterations != null) {
+      var numIter = options.iterations;
+    } else {
+      var numIter = 200; // Default number of iterations
+    }
+
+    // Weight function - optional
+    if (options != null &&
+      options.weight != null &&
+      is.fn(options.weight)) {
+      var weightFn = options.weight;
+    } else {
+      // If not specified, assume each edge has equal weight (1)
+      var weightFn = function(e) {return 1;};
+    }
+
+    var cy = this._private.cy;
+    var edges = this.edges().stdFilter(function(e){ return !e.isLoop(); });
+    var nodes = this.nodes();
+    var numNodes = nodes.length;
+    var numEdges = edges.length;
+
+    // Create numerical identifiers for each node
+    // mapping: node id -> position in nodes array
+    // for reverse mapping, simply use nodes array
+    var id2position = {};
+    for (var i = 0; i < numNodes; i++) {
+      id2position[nodes[i].id()] = i;
+    }
+
+    // Construct transposed adjacency matrix
+    // First lets have a zeroed matrix of the right size
+    // We'll also keep track of the sum of each column
+    var matrix = [];
+    var columnSum = [];
+    var additionalProb = (1 - dampingFactor) / numNodes;
+
+    // Create null matric
+    for (var i = 0; i < numNodes; i++) {
+      var newRow = [];
+      for (var j = 0; j < numNodes; j++) {
+        newRow.push(0.0);
+      }
+      matrix.push(newRow);
+      columnSum.push(0.0);
+    }
+
+    // Now, process edges
+    for (var i = 0; i < numEdges; i++) {
+      var edge = edges[i];
+      var s = id2position[edge.source().id()];
+      var t = id2position[edge.target().id()];
+      var w = weightFn.apply(edge, [edge]);
+
+      // Update matrix
+      matrix[t][s] += w;
+
+      // Update column sum
+      columnSum[s] += w;
+    }
+
+    // Add additional probability based on damping factor
+    // Also, take into account columns that have sum = 0
+    var p = 1.0 / numNodes + additionalProb; // Shorthand
+    // Traverse matrix, column by column
+    for (var j = 0; j < numNodes; j++) {
+      if (columnSum[j] === 0) {
+        // No 'links' out from node jth, assume equal probability for each possible node
+        for (var i = 0; i < numNodes; i++) {
+          matrix[i][j] = p;
+        }
+      } else {
+        // Node jth has outgoing link, compute normalized probabilities
+        for (var i = 0; i < numNodes; i++) {
+          matrix[i][j] = matrix[i][j] / columnSum[j] + additionalProb;
+        }
+      }
+    }
+
+    // Compute dominant eigenvector using power method
+    var eigenvector = [];
+    var nullVector = [];
+    var previous;
+
+    // Start with a vector of all 1's
+    // Also, initialize a null vector which will be used as shorthand
+    for (var i = 0; i < numNodes; i++) {
+      eigenvector.push(1.0);
+      nullVector.push(0.0);
+    }
+
+    for (var iter = 0; iter < numIter; iter++) {
+      // New array with all 0's
+      var temp = nullVector.slice(0);
+
+      // Multiply matrix with previous result
+      for (var i = 0; i < numNodes; i++) {
+        for (var j = 0; j < numNodes; j++) {
+          temp[i] += matrix[i][j] * eigenvector[j];
+        }
+      }
+
+      normalizeVector(temp);
+      previous = eigenvector;
+      eigenvector = temp;
+
+      var diff = 0;
+      // Compute difference (squared module) of both vectors
+      for (var i = 0; i < numNodes; i++) {
+        diff += Math.pow(previous[i] - eigenvector[i], 2);
+      }
+
+      // If difference is less than the desired threshold, stop iterating
+      if (diff < epsilon) {
+        break;
+      }
+    }
+
+    // Construct result
+    var res = {
+      rank : function(node) {
+        if (is.string(node)) {
+          // is a selector string
+          var nodeId = (cy.filter(node)[0]).id();
+        } else {
+          // is a node object
+          var nodeId = node.id();
+        }
+        return eigenvector[id2position[nodeId]];
+      }
+    };
+
+
+    return res;
+  } // pageRank
+
+}); // elesfn
+
+module.exports = elesfn;
+
+},{"../../is":77}],12:[function(_dereq_,module,exports){
+'use strict';
+
+var define = _dereq_('../define');
+
+var elesfn = ({
+  animate: define.animate(),
+  animation: define.animation(),
+  animated: define.animated(),
+  clearQueue: define.clearQueue(),
+  delay: define.delay(),
+  delayAnimation: define.delayAnimation(),
+  stop: define.stop()
+});
+
+module.exports = elesfn;
+
+},{"../define":41}],13:[function(_dereq_,module,exports){
+'use strict';
+
+var util = _dereq_('../util');
+
+var elesfn = ({
+  classes: function( classes ){
+    classes = classes.match(/\S+/g) || [];
+    var self = this;
+    var changed = [];
+    var classesMap = {};
+
+    // fill in classes map
+    for( var i = 0; i < classes.length; i++ ){
+      var cls = classes[i];
+
+      classesMap[ cls ] = true;
+    }
+
+    // check and update each ele
+    for( var j = 0; j < self.length; j++ ){
+      var ele = self[j];
+      var _p = ele._private;
+      var eleClasses = _p.classes;
+      var changedEle = false;
+
+      // check if ele has all of the passed classes
+      for( var i = 0; i < classes.length; i++ ){
+        var cls = classes[i];
+        var eleHasClass = eleClasses[ cls ];
+
+        if( !eleHasClass ){
+          changedEle = true;
+          break;
+        }
+      }
+
+      // check if ele has classes outside of those passed
+      if( !changedEle ){ for( var eleCls in eleClasses ){
+        var eleHasClass = eleClasses[ eleCls ];
+        var specdClass = classesMap[ eleCls ]; // i.e. this class is passed to the function
+
+        if( eleHasClass && !specdClass ){
+          changedEle = true;
+          break;
+        }
+      } }
+
+      if( changedEle ){
+        _p.classes = util.copy( classesMap );
+
+        changed.push( ele );
+      }
+    }
+
+    // trigger update style on those eles that had class changes
+    if( changed.length > 0 ){
+      this.spawn(changed)
+        .updateStyle()
+        .trigger('class')
+      ;
+    }
+
+    return self;
+  },
+
+  addClass: function( classes ){
+    return this.toggleClass( classes, true );
+  },
+
+  hasClass: function( className ){
+    var ele = this[0];
+    return ( ele != null && ele._private.classes[className] ) ? true : false;
+  },
+
+  toggleClass: function( classesStr, toggle ){
+    var classes = classesStr.match(/\S+/g) || [];
+    var self = this;
+    var changed = []; // eles who had classes changed
+
+    for( var i = 0, il = self.length; i < il; i++ ){
+      var ele = self[i];
+      var changedEle = false;
+
+      for( var j = 0; j < classes.length; j++ ){
+        var cls = classes[j];
+        var eleClasses = ele._private.classes;
+        var hasClass = eleClasses[cls];
+        var shouldAdd = toggle || (toggle === undefined && !hasClass);
+
+        if( shouldAdd ){
+          eleClasses[cls] = true;
+
+          if( !hasClass && !changedEle ){
+            changed.push(ele);
+            changedEle = true;
+          }
+        } else { // then remove
+          eleClasses[cls] = false;
+
+          if( hasClass && !changedEle ){
+            changed.push(ele);
+            changedEle = true;
+          }
+        }
+
+      } // for j classes
+    } // for i eles
+
+    // trigger update style on those eles that had class changes
+    if( changed.length > 0 ){
+      this.spawn(changed)
+        .updateStyle()
+        .trigger('class')
+      ;
+    }
+
+    return self;
+  },
+
+  removeClass: function( classes ){
+    return this.toggleClass( classes, false );
+  },
+
+  flashClass: function( classes, duration ){
+    var self = this;
+
+    if( duration == null ){
+      duration = 250;
+    } else if( duration === 0 ){
+      return self; // nothing to do really
+    }
+
+    self.addClass( classes );
+    setTimeout(function(){
+      self.removeClass( classes );
+    }, duration);
+
+    return self;
+  }
+});
+
+module.exports = elesfn;
+
+},{"../util":94}],14:[function(_dereq_,module,exports){
+'use strict';
+
+var elesfn = ({
+  allAre: function( selector ){
+    return this.filter(selector).length === this.length;
+  },
+
+  is: function( selector ){
+    return this.filter(selector).length > 0;
+  },
+
+  some: function( fn, thisArg ){
+    for( var i = 0; i < this.length; i++ ){
+      var ret = !thisArg ? fn( this[i], i, this ) : fn.apply( thisArg, [ this[i], i, this ] );
+
+      if( ret ){
+        return true;
+      }
+    }
+
+    return false;
+  },
+
+  every: function( fn, thisArg ){
+    for( var i = 0; i < this.length; i++ ){
+      var ret = !thisArg ? fn( this[i], i, this ) : fn.apply( thisArg, [ this[i], i, this ] );
+
+      if( !ret ){
+        return false;
+      }
+    }
+
+    return true;
+  },
+
+  same: function( collection ){
+    collection = this.cy().collection( collection );
+
+    // cheap extra check
+    if( this.length !== collection.length ){
+      return false;
+    }
+
+    return this.intersect( collection ).length === this.length;
+  },
+
+  anySame: function( collection ){
+    collection = this.cy().collection( collection );
+
+    return this.intersect( collection ).length > 0;
+  },
+
+  allAreNeighbors: function( collection ){
+    collection = this.cy().collection( collection );
+
+    return this.neighborhood().intersect( collection ).length === collection.length;
+  }
+});
+
+elesfn.allAreNeighbours = elesfn.allAreNeighbors;
+
+module.exports = elesfn;
+
+},{}],15:[function(_dereq_,module,exports){
+'use strict';
+
+var elesfn = ({
+  parent: function( selector ){
+    var parents = [];
+    var cy = this._private.cy;
+
+    for( var i = 0; i < this.length; i++ ){
+      var ele = this[i];
+      var parent = cy.getElementById( ele._private.data.parent );
+
+      if( parent.size() > 0 ){
+        parents.push( parent );
+      }
+    }
+
+    return this.spawn( parents, { unique: true } ).filter( selector );
+  },
+
+  parents: function( selector ){
+    var parents = [];
+
+    var eles = this.parent();
+    while( eles.nonempty() ){
+      for( var i = 0; i < eles.length; i++ ){
+        var ele = eles[i];
+        parents.push( ele );
+      }
+
+      eles = eles.parent();
+    }
+
+    return this.spawn( parents, { unique: true } ).filter( selector );
+  },
+
+  commonAncestors: function( selector ){
+    var ancestors;
+
+    for( var i = 0; i < this.length; i++ ){
+      var ele = this[i];
+      var parents = ele.parents();
+
+      ancestors = ancestors || parents;
+
+      ancestors = ancestors.intersect( parents ); // current list must be common with current ele parents set
+    }
+
+    return ancestors.filter( selector );
+  },
+
+  orphans: function( selector ){
+    return this.stdFilter(function( ele ){
+      return ele.isNode() && ele.parent().empty();
+    }).filter( selector );
+  },
+
+  nonorphans: function( selector ){
+    return this.stdFilter(function( ele ){
+      return ele.isNode() && ele.parent().nonempty();
+    }).filter( selector );
+  },
+
+  children: function( selector ){
+    var children = [];
+
+    for( var i = 0; i < this.length; i++ ){
+      var ele = this[i];
+      children = children.concat( ele._private.children );
+    }
+
+    return this.spawn( children, { unique: true } ).filter( selector );
+  },
+
+  siblings: function( selector ){
+    return this.parent().children().not( this ).filter( selector );
+  },
+
+  isParent: function(){
+    var ele = this[0];
+
+    if( ele ){
+      return ele._private.children.length !== 0;
+    }
+  },
+
+  isChild: function(){
+    var ele = this[0];
+
+    if( ele ){
+      return ele._private.data.parent !== undefined && ele.parent().length !== 0;
+    }
+  },
+
+  descendants: function( selector ){
+    var elements = [];
+
+    function add( eles ){
+      for( var i = 0; i < eles.length; i++ ){
+        var ele = eles[i];
+
+        elements.push( ele );
+
+        if( ele.children().nonempty() ){
+          add( ele.children() );
+        }
+      }
+    }
+
+    add( this.children() );
+
+    return this.spawn( elements, { unique: true } ).filter( selector );
+  }
+});
+
+// aliases
+elesfn.ancestors = elesfn.parents;
+
+module.exports = elesfn;
+
+},{}],16:[function(_dereq_,module,exports){
+'use strict';
+
+var define = _dereq_('../define');
+var fn, elesfn;
+
+fn = elesfn = ({
+
+  data: define.data({
+    field: 'data',
+    bindingEvent: 'data',
+    allowBinding: true,
+    allowSetting: true,
+    settingEvent: 'data',
+    settingTriggersEvent: true,
+    triggerFnName: 'trigger',
+    allowGetting: true,
+    immutableKeys: {
+      'id': true,
+      'source': true,
+      'target': true,
+      'parent': true
+    },
+    updateStyle: true
+  }),
+
+  removeData: define.removeData({
+    field: 'data',
+    event: 'data',
+    triggerFnName: 'trigger',
+    triggerEvent: true,
+    immutableKeys: {
+      'id': true,
+      'source': true,
+      'target': true,
+      'parent': true
+    },
+    updateStyle: true
+  }),
+
+  scratch: define.data({
+    field: 'scratch',
+    bindingEvent: 'scratch',
+    allowBinding: true,
+    allowSetting: true,
+    settingEvent: 'scratch',
+    settingTriggersEvent: true,
+    triggerFnName: 'trigger',
+    allowGetting: true,
+    updateStyle: true
+  }),
+
+  removeScratch: define.removeData({
+    field: 'scratch',
+    event: 'scratch',
+    triggerFnName: 'trigger',
+    triggerEvent: true,
+    updateStyle: true
+  }),
+
+  rscratch: define.data({
+    field: 'rscratch',
+    allowBinding: false,
+    allowSetting: true,
+    settingTriggersEvent: false,
+    allowGetting: true
+  }),
+
+  removeRscratch: define.removeData({
+    field: 'rscratch',
+    triggerEvent: false
+  }),
+
+  id: function(){
+    var ele = this[0];
+
+    if( ele ){
+      return ele._private.data.id;
+    }
+  }
+
+});
+
+// aliases
+fn.attr = fn.data;
+fn.removeAttr = fn.removeData;
+
+module.exports = elesfn;
+
+},{"../define":41}],17:[function(_dereq_,module,exports){
+'use strict';
+
+var util = _dereq_('../util');
+
+var elesfn = {};
+
+function defineDegreeFunction(callback){
+  return function( includeLoops ){
+    var self = this;
+
+    if( includeLoops === undefined ){
+      includeLoops = true;
+    }
+
+    if( self.length === 0 ){ return; }
+
+    if( self.isNode() && !self.removed() ){
+      var degree = 0;
+      var node = self[0];
+      var connectedEdges = node._private.edges;
+
+      for( var i = 0; i < connectedEdges.length; i++ ){
+        var edge = connectedEdges[i];
+
+        if( !includeLoops && edge.isLoop() ){
+          continue;
+        }
+
+        degree += callback( node, edge );
+      }
+
+      return degree;
+    } else {
+      return;
+    }
+  };
+}
+
+util.extend(elesfn, {
+  degree: defineDegreeFunction(function(node, edge){
+    if( edge.source().same( edge.target() ) ){
+      return 2;
+    } else {
+      return 1;
+    }
+  }),
+
+  indegree: defineDegreeFunction(function(node, edge){
+    if( edge.target().same(node) ){
+      return 1;
+    } else {
+      return 0;
+    }
+  }),
+
+  outdegree: defineDegreeFunction(function(node, edge){
+    if( edge.source().same(node) ){
+      return 1;
+    } else {
+      return 0;
+    }
+  })
+});
+
+function defineDegreeBoundsFunction(degreeFn, callback){
+  return function( includeLoops ){
+    var ret;
+    var nodes = this.nodes();
+
+    for( var i = 0; i < nodes.length; i++ ){
+      var ele = nodes[i];
+      var degree = ele[degreeFn]( includeLoops );
+      if( degree !== undefined && (ret === undefined || callback(degree, ret)) ){
+        ret = degree;
+      }
+    }
+
+    return ret;
+  };
+}
+
+util.extend(elesfn, {
+  minDegree: defineDegreeBoundsFunction('degree', function(degree, min){
+    return degree < min;
+  }),
+
+  maxDegree: defineDegreeBoundsFunction('degree', function(degree, max){
+    return degree > max;
+  }),
+
+  minIndegree: defineDegreeBoundsFunction('indegree', function(degree, min){
+    return degree < min;
+  }),
+
+  maxIndegree: defineDegreeBoundsFunction('indegree', function(degree, max){
+    return degree > max;
+  }),
+
+  minOutdegree: defineDegreeBoundsFunction('outdegree', function(degree, min){
+    return degree < min;
+  }),
+
+  maxOutdegree: defineDegreeBoundsFunction('outdegree', function(degree, max){
+    return degree > max;
+  })
+});
+
+util.extend(elesfn, {
+  totalDegree: function( includeLoops ){
+    var total = 0;
+    var nodes = this.nodes();
+
+    for( var i = 0; i < nodes.length; i++ ){
+      total += nodes[i].degree( includeLoops );
+    }
+
+    return total;
+  }
+});
+
+module.exports = elesfn;
+
+},{"../util":94}],18:[function(_dereq_,module,exports){
+'use strict';
+
+var define = _dereq_('../define');
+var is = _dereq_('../is');
+var util = _dereq_('../util');
+var fn, elesfn;
+
+fn = elesfn = ({
+
+  position: define.data({
+    field: 'position',
+    bindingEvent: 'position',
+    allowBinding: true,
+    allowSetting: true,
+    settingEvent: 'position',
+    settingTriggersEvent: true,
+    triggerFnName: 'rtrigger',
+    allowGetting: true,
+    validKeys: ['x', 'y'],
+    onSet: function( eles ){
+      var updatedEles = eles.updateCompoundBounds();
+      updatedEles.rtrigger('position');
+    },
+    canSet: function( ele ){
+      return !ele.locked() && !ele.isParent();
+    }
+  }),
+
+  // position but no notification to renderer
+  silentPosition: define.data({
+    field: 'position',
+    bindingEvent: 'position',
+    allowBinding: false,
+    allowSetting: true,
+    settingEvent: 'position',
+    settingTriggersEvent: false,
+    triggerFnName: 'trigger',
+    allowGetting: true,
+    validKeys: ['x', 'y'],
+    onSet: function( eles ){
+      eles.updateCompoundBounds();
+    },
+    canSet: function( ele ){
+      return !ele.locked() && !ele.isParent();
+    }
+  }),
+
+  positions: function( pos, silent ){
+    if( is.plainObject(pos) ){
+      this.position(pos);
+
+    } else if( is.fn(pos) ){
+      var fn = pos;
+
+      for( var i = 0; i < this.length; i++ ){
+        var ele = this[i];
+
+        var pos = fn.apply(ele, [i, ele]);
+
+        if( pos && !ele.locked() && !ele.isParent() ){
+          var elePos = ele._private.position;
+          elePos.x = pos.x;
+          elePos.y = pos.y;
+        }
+      }
+
+      var updatedEles = this.updateCompoundBounds();
+      var toTrigger = updatedEles.length > 0 ? this.add( updatedEles ) : this;
+
+      if( silent ){
+        toTrigger.trigger('position');
+      } else {
+        toTrigger.rtrigger('position');
+      }
+    }
+
+    return this; // chaining
+  },
+
+  silentPositions: function( pos ){
+    return this.positions( pos, true );
+  },
+
+  // get/set the rendered (i.e. on screen) positon of the element
+  renderedPosition: function( dim, val ){
+    var ele = this[0];
+    var cy = this.cy();
+    var zoom = cy.zoom();
+    var pan = cy.pan();
+    var rpos = is.plainObject( dim ) ? dim : undefined;
+    var setting = rpos !== undefined || ( val !== undefined && is.string(dim) );
+
+    if( ele && ele.isNode() ){ // must have an element and must be a node to return position
+      if( setting ){
+        for( var i = 0; i < this.length; i++ ){
+          var ele = this[i];
+
+          if( val !== undefined ){ // set one dimension
+            ele._private.position[dim] = ( val - pan[dim] )/zoom;
+          } else if( rpos !== undefined ){ // set whole position
+            ele._private.position = {
+              x: ( rpos.x - pan.x ) /zoom,
+              y: ( rpos.y - pan.y ) /zoom
+            };
+          }
+        }
+
+        this.rtrigger('position');
+      } else { // getting
+        var pos = ele._private.position;
+        rpos = {
+          x: pos.x * zoom + pan.x,
+          y: pos.y * zoom + pan.y
+        };
+
+        if( dim === undefined ){ // then return the whole rendered position
+          return rpos;
+        } else { // then return the specified dimension
+          return rpos[ dim ];
+        }
+      }
+    } else if( !setting ){
+      return undefined; // for empty collection case
+    }
+
+    return this; // chaining
+  },
+
+  // get/set the position relative to the parent
+  relativePosition: function( dim, val ){
+    var ele = this[0];
+    var cy = this.cy();
+    var ppos = is.plainObject( dim ) ? dim : undefined;
+    var setting = ppos !== undefined || ( val !== undefined && is.string(dim) );
+    var hasCompoundNodes = cy.hasCompoundNodes();
+
+    if( ele && ele.isNode() ){ // must have an element and must be a node to return position
+      if( setting ){
+        for( var i = 0; i < this.length; i++ ){
+          var ele = this[i];
+          var parent = hasCompoundNodes ? ele.parent() : null;
+          var hasParent = parent && parent.length > 0;
+          var relativeToParent = hasParent;
+
+          if( hasParent ){
+            parent = parent[0];
+          }
+
+          var origin = relativeToParent ? parent._private.position : { x: 0, y: 0 };
+
+          if( val !== undefined ){ // set one dimension
+            ele._private.position[dim] = val + origin[dim];
+          } else if( ppos !== undefined ){ // set whole position
+            ele._private.position = {
+              x: ppos.x + origin.x,
+              y: ppos.y + origin.y
+            };
+          }
+        }
+
+        this.rtrigger('position');
+
+      } else { // getting
+        var pos = ele._private.position;
+        var parent = hasCompoundNodes ? ele.parent() : null;
+        var hasParent = parent && parent.length > 0;
+        var relativeToParent = hasParent;
+
+        if( hasParent ){
+          parent = parent[0];
+        }
+
+        var origin = relativeToParent ? parent._private.position : { x: 0, y: 0 };
+
+        ppos = {
+          x: pos.x - origin.x,
+          y: pos.y - origin.y
+        };
+
+        if( dim === undefined ){ // then return the whole rendered position
+          return ppos;
+        } else { // then return the specified dimension
+          return ppos[ dim ];
+        }
+      }
+    } else if( !setting ){
+      return undefined; // for empty collection case
+    }
+
+    return this; // chaining
+  },
+
+  renderedBoundingBox: function( options ){
+    var bb = this.boundingBox( options );
+    var cy = this.cy();
+    var zoom = cy.zoom();
+    var pan = cy.pan();
+
+    var x1 = bb.x1 * zoom + pan.x;
+    var x2 = bb.x2 * zoom + pan.x;
+    var y1 = bb.y1 * zoom + pan.y;
+    var y2 = bb.y2 * zoom + pan.y;
+
+    return {
+      x1: x1,
+      x2: x2,
+      y1: y1,
+      y2: y2,
+      w: x2 - x1,
+      h: y2 - y1
+    };
+  },
+
+  updateCompoundBounds: function(){
+    var cy = this.cy();
+
+    if( !cy.styleEnabled() || !cy.hasCompoundNodes() ){ return cy.collection(); } // save cycles for non compound graphs or when style disabled
+
+    var updated = [];
+
+    function update( parent ){
+      var children = parent.children();
+      var style = parent._private.style;
+      var includeLabels = style['compound-sizing-wrt-labels'].value === 'include';
+      var bb = children.boundingBox({ includeLabels: includeLabels, includeEdges: true });
+      var padding = {
+        top: style['padding-top'].pfValue,
+        bottom: style['padding-bottom'].pfValue,
+        left: style['padding-left'].pfValue,
+        right: style['padding-right'].pfValue
+      };
+      var pos = parent._private.position;
+      var didUpdate = false;
+
+      if( style['width'].value === 'auto' ){
+        parent._private.autoWidth = bb.w;
+        pos.x = (bb.x1 + bb.x2 - padding.left + padding.right)/2;
+        didUpdate = true;
+      }
+
+      if( style['height'].value === 'auto' ){
+        parent._private.autoHeight = bb.h;
+        pos.y = (bb.y1 + bb.y2 - padding.top + padding.bottom)/2;
+        didUpdate = true;
+      }
+
+      if( didUpdate ){
+        updated.push( parent );
+      }
+    }
+
+    // go up, level by level
+    var eles = this.parent();
+    while( eles.nonempty() ){
+
+      // update each parent node in this level
+      for( var i = 0; i < eles.length; i++ ){
+        var ele = eles[i];
+
+        update( ele );
+      }
+
+      // next level
+      eles = eles.parent();
+    }
+
+    // return changed
+    return this.spawn( updated );
+  },
+
+  // get the bounding box of the elements (in raw model position)
+  boundingBox: function( options ){
+    var eles = this;
+    var cy = eles._private.cy;
+    var cy_p = cy._private;
+    var styleEnabled = cy_p.styleEnabled;
+
+    options = options || util.staticEmptyObject();
+
+    var includeNodes = options.includeNodes === undefined ? true : options.includeNodes;
+    var includeEdges = options.includeEdges === undefined ? true : options.includeEdges;
+    var includeLabels = options.includeLabels === undefined ? true : options.includeLabels;
+
+    // recalculate projections etc
+    if( styleEnabled ){
+      cy_p.renderer.recalculateRenderedStyle( this );
+    }
+
+    var x1 = Infinity;
+    var x2 = -Infinity;
+    var y1 = Infinity;
+    var y2 = -Infinity;
+
+    // find bounds of elements
+    for( var i = 0; i < eles.length; i++ ){
+      var ele = eles[i];
+      var _p = ele._private;
+      var style = _p.style;
+      var display = styleEnabled ? _p.style['display'].value : 'element';
+      var isNode = _p.group === 'nodes';
+      var ex1, ex2, ey1, ey2, x, y;
+      var includedEle = false;
+
+      if( display === 'none' ){ continue; } // then ele doesn't take up space
+
+      if( isNode && includeNodes ){
+        includedEle = true;
+
+        var pos = _p.position;
+        x = pos.x;
+        y = pos.y;
+        var w = ele.outerWidth();
+        var halfW = w/2;
+        var h = ele.outerHeight();
+        var halfH = h/2;
+
+        // handle node dimensions
+        /////////////////////////
+
+        ex1 = x - halfW;
+        ex2 = x + halfW;
+        ey1 = y - halfH;
+        ey2 = y + halfH;
+
+        x1 = ex1 < x1 ? ex1 : x1;
+        x2 = ex2 > x2 ? ex2 : x2;
+        y1 = ey1 < y1 ? ey1 : y1;
+        y2 = ey2 > y2 ? ey2 : y2;
+
+      } else if( ele.isEdge() && includeEdges ){
+        includedEle = true;
+
+        var n1 = _p.source;
+        var n1_p = n1._private;
+        var n1pos = n1_p.position;
+
+        var n2 = _p.target;
+        var n2_p = n2._private;
+        var n2pos = n2_p.position;
+
+
+        // handle edge dimensions (rough box estimate)
+        //////////////////////////////////////////////
+
+        var rstyle = _p.rstyle || {};
+        var w = 0;
+        var wHalf = 0;
+
+        if( styleEnabled ){
+          w = style['width'].pfValue;
+          wHalf = w/2;
+        }
+
+        ex1 = n1pos.x;
+        ex2 = n2pos.x;
+        ey1 = n1pos.y;
+        ey2 = n2pos.y;
+
+        if( ex1 > ex2 ){
+          var temp = ex1;
+          ex1 = ex2;
+          ex2 = temp;
+        }
+
+        if( ey1 > ey2 ){
+          var temp = ey1;
+          ey1 = ey2;
+          ey2 = temp;
+        }
+
+        // take into account edge width
+        ex1 -= wHalf;
+        ex2 += wHalf;
+        ey1 -= wHalf;
+        ey2 += wHalf;
+
+        x1 = ex1 < x1 ? ex1 : x1;
+        x2 = ex2 > x2 ? ex2 : x2;
+        y1 = ey1 < y1 ? ey1 : y1;
+        y2 = ey2 > y2 ? ey2 : y2;
+
+        // handle points along edge (sanity check)
+        //////////////////////////////////////////
+
+        if( styleEnabled ){
+          var pts = rstyle.bezierPts || rstyle.linePts || [];
+
+          for( var j = 0; j < pts.length; j++ ){
+            var pt = pts[j];
+
+            ex1 = pt.x - wHalf;
+            ex2 = pt.x + wHalf;
+            ey1 = pt.y - wHalf;
+            ey2 = pt.y + wHalf;
+
+            x1 = ex1 < x1 ? ex1 : x1;
+            x2 = ex2 > x2 ? ex2 : x2;
+            y1 = ey1 < y1 ? ey1 : y1;
+            y2 = ey2 > y2 ? ey2 : y2;
+          }
+        }
+
+        // precise haystacks (sanity check)
+        ///////////////////////////////////
+
+        if( styleEnabled && style['curve-style'].strValue === 'haystack' ){
+          var hpts = rstyle.haystackPts;
+
+          ex1 = hpts[0].x;
+          ey1 = hpts[0].y;
+          ex2 = hpts[1].x;
+          ey2 = hpts[1].y;
+
+          if( ex1 > ex2 ){
+            var temp = ex1;
+            ex1 = ex2;
+            ex2 = temp;
+          }
+
+          if( ey1 > ey2 ){
+            var temp = ey1;
+            ey1 = ey2;
+            ey2 = temp;
+          }
+
+          x1 = ex1 < x1 ? ex1 : x1;
+          x2 = ex2 > x2 ? ex2 : x2;
+          y1 = ey1 < y1 ? ey1 : y1;
+          y2 = ey2 > y2 ? ey2 : y2;
+        }
+
+      } // edges
+
+
+      // handle label dimensions
+      //////////////////////////
+
+      if( styleEnabled ){
+
+        var _p = ele._private;
+        var style = _p.style;
+        var rstyle = _p.rstyle;
+        var label = style['label'].strValue;
+        var fontSize = style['font-size'];
+        var halign = style['text-halign'];
+        var valign = style['text-valign'];
+        var labelWidth = rstyle.labelWidth;
+        var labelHeight = rstyle.labelHeight;
+        var labelX = rstyle.labelX;
+        var labelY = rstyle.labelY;
+        var isEdge = ele.isEdge();
+        var autorotate = style['edge-text-rotation'].strValue === 'autorotate';
+
+        if( includeLabels && label && fontSize && labelHeight != null && labelWidth != null && labelX != null && labelY != null && halign && valign ){
+          var lh = labelHeight;
+          var lw = labelWidth;
+          var lx1, lx2, ly1, ly2;
+
+          if( isEdge ){
+            lx1 = labelX - lw/2;
+            lx2 = labelX + lw/2;
+            ly1 = labelY - lh/2;
+            ly2 = labelY + lh/2;
+
+            if( autorotate ){
+              var theta = _p.rscratch.labelAngle;
+              var cos = Math.cos( theta );
+              var sin = Math.sin( theta );
+
+              var rotate = function( x, y ){
+                x = x - labelX;
+                y = y - labelY;
+
+                return {
+                  x: x*cos - y*sin + labelX,
+                  y: x*sin + y*cos + labelY
+                };
+              };
+
+              var px1y1 = rotate( lx1, ly1 );
+              var px1y2 = rotate( lx1, ly2 );
+              var px2y1 = rotate( lx2, ly1 );
+              var px2y2 = rotate( lx2, ly2 );
+
+              lx1 = Math.min( px1y1.x, px1y2.x, px2y1.x, px2y2.x );
+              lx2 = Math.max( px1y1.x, px1y2.x, px2y1.x, px2y2.x );
+              ly1 = Math.min( px1y1.y, px1y2.y, px2y1.y, px2y2.y );
+              ly2 = Math.max( px1y1.y, px1y2.y, px2y1.y, px2y2.y );
+            }
+          } else {
+            switch( halign.value ){
+              case 'left':
+                lx1 = labelX - lw;
+                lx2 = labelX;
+                break;
+
+              case 'center':
+                lx1 = labelX - lw/2;
+                lx2 = labelX + lw/2;
+                break;
+
+              case 'right':
+                lx1 = labelX;
+                lx2 = labelX + lw;
+                break;
+            }
+
+            switch( valign.value ){
+              case 'top':
+                ly1 = labelY - lh;
+                ly2 = labelY;
+                break;
+
+              case 'center':
+                ly1 = labelY - lh/2;
+                ly2 = labelY + lh/2;
+                break;
+
+              case 'bottom':
+                ly1 = labelY;
+                ly2 = labelY + lh;
+                break;
+            }
+          }
+
+          x1 = lx1 < x1 ? lx1 : x1;
+          x2 = lx2 > x2 ? lx2 : x2;
+          y1 = ly1 < y1 ? ly1 : y1;
+          y2 = ly2 > y2 ? ly2 : y2;
+        }
+      } // style enabled for labels
+    } // for
+
+    var noninf = function(x){
+      if( x === Infinity || x === -Infinity ){
+        return 0;
+      }
+
+      return x;
+    };
+
+    x1 = noninf(x1);
+    x2 = noninf(x2);
+    y1 = noninf(y1);
+    y2 = noninf(y2);
+
+    return {
+      x1: x1,
+      x2: x2,
+      y1: y1,
+      y2: y2,
+      w: x2 - x1,
+      h: y2 - y1
+    };
+  }
+});
+
+var defineDimFns = function( opts ){
+  opts.uppercaseName = util.capitalize( opts.name );
+  opts.autoName = 'auto' + opts.uppercaseName;
+  opts.labelName = 'label' + opts.uppercaseName;
+  opts.outerName = 'outer' + opts.uppercaseName;
+  opts.uppercaseOuterName = util.capitalize( opts.outerName );
+
+  fn[ opts.name ] = function dimImpl(){
+    var ele = this[0];
+    var _p = ele._private;
+    var cy = _p.cy;
+    var styleEnabled = cy._private.styleEnabled;
+
+    if( ele ){
+      if( styleEnabled ){
+        var d = _p.style[ opts.name ];
+
+        switch( d.strValue ){
+          case 'auto':
+            return _p[ opts.autoName ] || 0;
+          case 'label':
+            return _p.rstyle[ opts.labelName ] || 0;
+          default:
+            return d.pfValue;
+        }
+      } else {
+        return 1;
+      }
+    }
+  };
+
+  fn[ 'outer' + opts.uppercaseName ] = function outerDimImpl(){
+    var ele = this[0];
+    var _p = ele._private;
+    var cy = _p.cy;
+    var styleEnabled = cy._private.styleEnabled;
+
+    if( ele ){
+      if( styleEnabled ){
+        var style = _p.style;
+        var dim = ele[ opts.name ]();
+        var border = style['border-width'].pfValue;
+        var padding = style[ opts.paddings[0] ].pfValue + style[ opts.paddings[1] ].pfValue;
+
+        return dim + border + padding;
+      } else {
+        return 1;
+      }
+    }
+  };
+
+  fn[ 'rendered' + opts.uppercaseName ] = function renderedDimImpl(){
+    var ele = this[0];
+
+    if( ele ){
+      var d = ele[ opts.name ]();
+      return d * this.cy().zoom();
+    }
+  };
+
+  fn[ 'rendered' + opts.uppercaseOuterName ] = function renderedOuterDimImpl(){
+    var ele = this[0];
+
+    if( ele ){
+      var od = ele[ opts.outerName ]();
+      return od * this.cy().zoom();
+    }
+  };
+};
+
+defineDimFns({
+  name: 'width',
+  paddings: ['padding-left', 'padding-right']
+});
+
+defineDimFns({
+  name: 'height',
+  paddings: ['padding-top', 'padding-bottom']
+});
+
+// aliases
+fn.modelPosition = fn.point = fn.position;
+fn.modelPositions = fn.points = fn.positions;
+fn.renderedPoint = fn.renderedPosition;
+fn.relativePoint = fn.relativePosition;
+fn.boundingbox = fn.boundingBox;
+fn.renderedBoundingbox = fn.renderedBoundingBox;
+
+module.exports = elesfn;
+
+},{"../define":41,"../is":77,"../util":94}],19:[function(_dereq_,module,exports){
+'use strict';
+
+var util = _dereq_('../util');
+var is = _dereq_('../is');
+
+// represents a node or an edge
+var Element = function(cy, params, restore){
+  if( !(this instanceof Element) ){
+    return new Element(cy, params, restore);
+  }
+
+  var self = this;
+  restore = (restore === undefined || restore ? true : false);
+
+  if( cy === undefined || params === undefined || !is.core(cy) ){
+    util.error('An element must have a core reference and parameters set');
+    return;
+  }
+
+  var group = params.group;
+
+  // try to automatically infer the group if unspecified
+  if( group == null ){
+    if( params.data.source != null && params.data.target != null ){
+      group = 'edges';
+    } else {
+      group = 'nodes';
+    }
+  }
+
+  // validate group
+  if( group !== 'nodes' && group !== 'edges' ){
+    util.error('An element must be of type `nodes` or `edges`; you specified `' + group + '`');
+    return;
+  }
+
+  // make the element array-like, just like a collection
+  this.length = 1;
+  this[0] = this;
+
+  // NOTE: when something is added here, add also to ele.json()
+  this._private = {
+    cy: cy,
+    single: true, // indicates this is an element
+    data: params.data || {}, // data object
+    position: params.position || {}, // (x, y) position pair
+    autoWidth: undefined, // width and height of nodes calculated by the renderer when set to special 'auto' value
+    autoHeight: undefined,
+    listeners: [], // array of bound listeners
+    group: group, // string; 'nodes' or 'edges'
+    style: {}, // properties as set by the style
+    rstyle: {}, // properties for style sent from the renderer to the core
+    styleCxts: [], // applied style contexts from the styler
+    removed: true, // whether it's inside the vis; true if removed (set true here since we call restore)
+    selected: params.selected ? true : false, // whether it's selected
+    selectable: params.selectable === undefined ? true : ( params.selectable ? true : false ), // whether it's selectable
+    locked: params.locked ? true : false, // whether the element is locked (cannot be moved)
+    grabbed: false, // whether the element is grabbed by the mouse; renderer sets this privately
+    grabbable: params.grabbable === undefined ? true : ( params.grabbable ? true : false ), // whether the element can be grabbed
+    active: false, // whether the element is active from user interaction
+    classes: {}, // map ( className => true )
+    animation: { // object for currently-running animations
+      current: [],
+      queue: []
+    },
+    rscratch: {}, // object in which the renderer can store information
+    scratch: params.scratch || {}, // scratch objects
+    edges: [], // array of connected edges
+    children: [] // array of children
+  };
+
+  // renderedPosition overrides if specified
+  if( params.renderedPosition ){
+    var rpos = params.renderedPosition;
+    var pan = cy.pan();
+    var zoom = cy.zoom();
+
+    this._private.position = {
+      x: (rpos.x - pan.x)/zoom,
+      y: (rpos.y - pan.y)/zoom
+    };
+  }
+
+  if( is.string(params.classes) ){
+    var classes = params.classes.split(/\s+/);
+    for( var i = 0, l = classes.length; i < l; i++ ){
+      var cls = classes[i];
+      if( !cls || cls === '' ){ continue; }
+
+      self._private.classes[cls] = true;
+    }
+  }
+
+  if( params.style || params.css ){
+    cy.style().applyBypass( this, params.style || params.css );
+  }
+
+  if( restore === undefined || restore ){
+    this.restore();
+  }
+
+};
+
+module.exports = Element;
+
+},{"../is":77,"../util":94}],20:[function(_dereq_,module,exports){
+'use strict';
+
+var define = _dereq_('../define');
+
+var elesfn = ({
+  on: define.on(), // .on( events [, selector] [, data], handler)
+  one: define.on({ unbindSelfOnTrigger: true }),
+  once: define.on({ unbindAllBindersOnTrigger: true }),
+  off: define.off(), // .off( events [, selector] [, handler] )
+  trigger: define.trigger(), // .trigger( events [, extraParams] )
+
+  rtrigger: function(event, extraParams){ // for internal use only
+    if( this.length === 0 ){ return; } // empty collections don't need to notify anything
+
+    // notify renderer
+    this.cy().notify({
+      type: event,
+      collection: this
+    });
+
+    this.trigger(event, extraParams);
+    return this;
+  }
+});
+
+// aliases:
+define.eventAliasesOn( elesfn );
+
+module.exports = elesfn;
+
+},{"../define":41}],21:[function(_dereq_,module,exports){
+'use strict';
+
+var is = _dereq_('../is');
+var Selector = _dereq_('../selector');
+
+var elesfn = ({
+  nodes: function( selector ){
+    return this.filter(function(i, element){
+      return element.isNode();
+    }).filter(selector);
+  },
+
+  edges: function( selector ){
+    return this.filter(function(i, element){
+      return element.isEdge();
+    }).filter(selector);
+  },
+
+  filter: function( filter ){
+    if( is.fn(filter) ){
+      var elements = [];
+
+      for( var i = 0; i < this.length; i++ ){
+        var ele = this[i];
+
+        if( filter.apply(ele, [i, ele]) ){
+          elements.push(ele);
+        }
+      }
+
+      return this.spawn(elements);
+
+    } else if( is.string(filter) || is.elementOrCollection(filter) ){
+      return Selector(filter).filter(this);
+
+    } else if( filter === undefined ){
+      return this;
+    }
+
+    return this.spawn(); // if not handled by above, give 'em an empty collection
+  },
+
+  not: function( toRemove ){
+    if( !toRemove ){
+      return this;
+    } else {
+
+      if( is.string( toRemove ) ){
+        toRemove = this.filter( toRemove );
+      }
+
+      var elements = [];
+
+      for( var i = 0; i < this.length; i++ ){
+        var element = this[i];
+
+        var remove = toRemove._private.ids[ element.id() ];
+        if( !remove ){
+          elements.push( element );
+        }
+      }
+
+      return this.spawn( elements );
+    }
+
+  },
+
+  absoluteComplement: function(){
+    var cy = this._private.cy;
+
+    return cy.elements().not( this );
+  },
+
+  intersect: function( other ){
+    // if a selector is specified, then filter by it instead
+    if( is.string(other) ){
+      var selector = other;
+      return this.filter( selector );
+    }
+
+    var elements = [];
+    var col1 = this;
+    var col2 = other;
+    var col1Smaller = this.length < other.length;
+    // var ids1 = col1Smaller ? col1._private.ids : col2._private.ids;
+    var ids2 = col1Smaller ? col2._private.ids : col1._private.ids;
+    var col = col1Smaller ? col1 : col2;
+
+    for( var i = 0; i < col.length; i++ ){
+      var id = col[i]._private.data.id;
+      var ele = ids2[ id ];
+
+      if( ele ){
+        elements.push( ele );
+      }
+    }
+
+    return this.spawn( elements );
+  },
+
+  xor: function( other ){
+    var cy = this._private.cy;
+
+    if( is.string(other) ){
+      other = cy.$( other );
+    }
+
+    var elements = [];
+    var col1 = this;
+    var col2 = other;
+
+    var add = function( col, other ){
+
+      for( var i = 0; i < col.length; i++ ){
+        var ele = col[i];
+        var id = ele._private.data.id;
+        var inOther = other._private.ids[ id ];
+
+        if( !inOther ){
+          elements.push( ele );
+        }
+      }
+
+    };
+
+    add( col1, col2 );
+    add( col2, col1 );
+
+    return this.spawn( elements );
+  },
+
+  diff: function( other ){
+    var cy = this._private.cy;
+
+    if( is.string(other) ){
+      other = cy.$( other );
+    }
+
+    var left = [];
+    var right = [];
+    var both = [];
+    var col1 = this;
+    var col2 = other;
+
+    var add = function( col, other, retEles ){
+
+      for( var i = 0; i < col.length; i++ ){
+        var ele = col[i];
+        var id = ele._private.data.id;
+        var inOther = other._private.ids[ id ];
+
+        if( inOther ){
+          both.push( ele );
+        } else {
+          retEles.push( ele );
+        }
+      }
+
+    };
+
+    add( col1, col2, left );
+    add( col2, col1, right );
+
+    return {
+      left: this.spawn( left, { unique: true } ),
+      right: this.spawn( right, { unique: true } ),
+      both: this.spawn( both, { unique: true } )
+    };
+  },
+
+  add: function( toAdd ){
+    var cy = this._private.cy;
+
+    if( !toAdd ){
+      return this;
+    }
+
+    if( is.string(toAdd) ){
+      var selector = toAdd;
+      toAdd = cy.elements(selector);
+    }
+
+    var elements = [];
+
+    for( var i = 0; i < this.length; i++ ){
+      elements.push( this[i] );
+    }
+
+    for( var i = 0; i < toAdd.length; i++ ){
+
+      var add = !this._private.ids[ toAdd[i].id() ];
+      if( add ){
+        elements.push( toAdd[i] );
+      }
+    }
+
+    return this.spawn(elements);
+  },
+
+  // in place merge on calling collection
+  merge: function( toAdd ){
+    var _p = this._private;
+    var cy = _p.cy;
+
+    if( !toAdd ){
+      return this;
+    }
+
+    if( is.string(toAdd) ){
+      var selector = toAdd;
+      toAdd = cy.elements(selector);
+    }
+
+    for( var i = 0; i < toAdd.length; i++ ){
+      var toAddEle = toAdd[i];
+      var id = toAddEle.id();
+      var add = !_p.ids[ id ];
+
+      if( add ){
+        var index = this.length++;
+
+        this[ index ] = toAddEle;
+        _p.ids[ id ] = toAddEle;
+        _p.indexes[ id ] = index;
+      }
+    }
+
+    return this; // chaining
+  },
+
+  // remove single ele in place in calling collection
+  unmergeOne: function( ele ){
+    ele = ele[0];
+
+    var _p = this._private;
+    var id = ele.id();
+    var i = _p.indexes[ id ];
+
+    if( i == null ){
+      return this; // no need to remove
+    }
+
+    // remove ele
+    this[i] = undefined;
+    _p.ids[ id ] = undefined;
+    _p.indexes[ id ] = undefined;
+
+    var unmergedLastEle = i === this.length - 1;
+
+    // replace empty spot with last ele in collection
+    if( this.length > 1 && !unmergedLastEle ){
+      var lastEleI = this.length - 1;
+      var lastEle = this[ lastEleI ];
+
+      this[ lastEleI ] = undefined;
+      this[i] = lastEle;
+      _p.indexes[ lastEle.id() ] = i;
+    }
+
+    // the collection is now 1 ele smaller
+    this.length--;
+
+    return this;
+  },
+
+  // remove eles in place on calling collection
+  unmerge: function( toRemove ){
+    var cy = this._private.cy;
+
+    if( !toRemove ){
+      return this;
+    }
+
+    if( is.string(toRemove) ){
+      var selector = toRemove;
+      toRemove = cy.elements(selector);
+    }
+
+    for( var i = 0; i < toRemove.length; i++ ){
+      this.unmergeOne( toRemove[i] );
+    }
+
+    return this; // chaining
+  },
+
+  map: function( mapFn, thisArg ){
+    var arr = [];
+    var eles = this;
+
+    for( var i = 0; i < eles.length; i++ ){
+      var ele = eles[i];
+      var ret = thisArg ? mapFn.apply( thisArg, [ele, i, eles] ) : mapFn( ele, i, eles );
+
+      arr.push( ret );
+    }
+
+    return arr;
+  },
+
+  stdFilter: function( fn, thisArg ){
+    var filterEles = [];
+    var eles = this;
+
+    for( var i = 0; i < eles.length; i++ ){
+      var ele = eles[i];
+      var include = thisArg ? fn.apply( thisArg, [ele, i, eles] ) : fn( ele, i, eles );
+
+      if( include ){
+        filterEles.push( ele );
+      }
+    }
+
+    return this.spawn( filterEles );
+  },
+
+  max: function( valFn, thisArg ){
+    var max = -Infinity;
+    var maxEle;
+    var eles = this;
+
+    for( var i = 0; i < eles.length; i++ ){
+      var ele = eles[i];
+      var val = thisArg ? valFn.apply( thisArg, [ ele, i, eles ] ) : valFn( ele, i, eles );
+
+      if( val > max ){
+        max = val;
+        maxEle = ele;
+      }
+    }
+
+    return {
+      value: max,
+      ele: maxEle
+    };
+  },
+
+  min: function( valFn, thisArg ){
+    var min = Infinity;
+    var minEle;
+    var eles = this;
+
+    for( var i = 0; i < eles.length; i++ ){
+      var ele = eles[i];
+      var val = thisArg ? valFn.apply( thisArg, [ ele, i, eles ] ) : valFn( ele, i, eles );
+
+      if( val < min ){
+        min = val;
+        minEle = ele;
+      }
+    }
+
+    return {
+      value: min,
+      ele: minEle
+    };
+  }
+});
+
+// aliases
+var fn = elesfn;
+fn['u'] = fn['|'] = fn['+'] = fn.union = fn.or = fn.add;
+fn['\\'] = fn['!'] = fn['-'] = fn.difference = fn.relativeComplement = fn.subtract = fn.not;
+fn['n'] = fn['&'] = fn['.'] = fn.and = fn.intersection = fn.intersect;
+fn['^'] = fn['(+)'] = fn['(-)'] = fn.symmetricDifference = fn.symdiff = fn.xor;
+fn.fnFilter = fn.filterFn = fn.stdFilter;
+fn.complement = fn.abscomp = fn.absoluteComplement;
+
+module.exports = elesfn;
+
+},{"../is":77,"../selector":81}],22:[function(_dereq_,module,exports){
+'use strict';
+
+var elesfn = ({
+  isNode: function(){
+    return this.group() === 'nodes';
+  },
+
+  isEdge: function(){
+    return this.group() === 'edges';
+  },
+
+  isLoop: function(){
+    return this.isEdge() && this.source().id() === this.target().id();
+  },
+
+  isSimple: function(){
+    return this.isEdge() && this.source().id() !== this.target().id();
+  },
+
+  group: function(){
+    var ele = this[0];
+
+    if( ele ){
+      return ele._private.group;
+    }
+  }
+});
+
+
+module.exports = elesfn;
+
+},{}],23:[function(_dereq_,module,exports){
+'use strict';
+
+var util = _dereq_('../util');
+var is = _dereq_('../is');
+
+var Element = _dereq_('./element');
+
+// factory for generating edge ids when no id is specified for a new element
+var idFactory = {
+  prefix: 'ele',
+  id: 0,
+  generate: function(cy, element, tryThisId){
+    var json = is.element( element ) ? element._private : element;
+    var id = tryThisId != null ? tryThisId : this.prefix + this.id;
+
+    if( cy.getElementById(id).empty() ){
+      this.id++; // we've used the current id, so move it up
+    } else { // otherwise keep trying successive unused ids
+      while( !cy.getElementById(id).empty() ){
+        id = this.prefix + ( ++this.id );
+      }
+    }
+
+    return id;
+  }
+};
+
+// represents a set of nodes, edges, or both together
+var Collection = function(cy, elements, options){
+  if( !(this instanceof Collection) ){
+    return new Collection(cy, elements, options);
+  }
+
+  if( cy === undefined || !is.core(cy) ){
+    util.error('A collection must have a reference to the core');
+    return;
+  }
+
+  var ids = {};
+  var indexes = {};
+  var createdElements = false;
+
+  if( !elements ){
+    elements = [];
+  } else if( elements.length > 0 && is.plainObject( elements[0] ) && !is.element( elements[0] ) ){
+    createdElements = true;
+
+    // make elements from json and restore all at once later
+    var eles = [];
+    var elesIds = {};
+
+    for( var i = 0, l = elements.length; i < l; i++ ){
+      var json = elements[i];
+
+      if( json.data == null ){
+        json.data = {};
+      }
+
+      var data = json.data;
+
+      // make sure newly created elements have valid ids
+      if( data.id == null ){
+        data.id = idFactory.generate( cy, json );
+      } else if( cy.getElementById( data.id ).length !== 0 || elesIds[ data.id ] ){
+        continue; // can't create element if prior id already exists
+      }
+
+      var ele = new Element( cy, json, false );
+      eles.push( ele );
+      elesIds[ data.id ] = true;
+    }
+
+    elements = eles;
+  }
+
+  this.length = 0;
+
+  for( var i = 0, l = elements.length; i < l; i++ ){
+    var element = elements[i];
+    if( !element ){  continue; }
+
+    var id = element._private.data.id;
+
+    if( !options || (options.unique && !ids[ id ] ) ){
+      ids[ id ] = element;
+      indexes[ id ] = this.length;
+
+      this[ this.length ] = element;
+      this.length++;
+    }
+  }
+
+  this._private = {
+    cy: cy,
+    ids: ids,
+    indexes: indexes
+  };
+
+  // restore the elements if we created them from json
+  if( createdElements ){
+    this.restore();
+  }
+};
+
+// Functions
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// keep the prototypes in sync (an element has the same functions as a collection)
+// and use elefn and elesfn as shorthands to the prototypes
+var elesfn = Element.prototype = Collection.prototype;
+
+elesfn.instanceString = function(){
+  return 'collection';
+};
+
+elesfn.spawn = function( cy, eles, opts ){
+  if( !is.core(cy) ){ // cy is optional
+    opts = eles;
+    eles = cy;
+    cy = this.cy();
+  }
+
+  return new Collection( cy, eles, opts );
+};
+
+elesfn.cy = function(){
+  return this._private.cy;
+};
+
+elesfn.element = function(){
+  return this[0];
+};
+
+elesfn.collection = function(){
+  if( is.collection(this) ){
+    return this;
+  } else { // an element
+    return new Collection( this._private.cy, [this] );
+  }
+};
+
+elesfn.unique = function(){
+  return new Collection( this._private.cy, this, { unique: true } );
+};
+
+elesfn.getElementById = function( id ){
+  var cy = this._private.cy;
+  var ele = this._private.ids[ id ];
+
+  return ele ? ele : new Collection(cy); // get ele or empty collection
+};
+
+elesfn.json = function( obj ){
+  var ele = this.element();
+  var cy = this.cy();
+
+  if( ele == null && obj ){ return this; } // can't set to no eles
+
+  if( ele == null ){ return undefined; } // can't get from no eles
+
+  var p = ele._private;
+
+  if( is.plainObject(obj) ){ // set
+
+    cy.startBatch();
+
+    if( obj.data ){
+      ele.data( obj.data );
+    }
+
+    if( obj.position ){
+      ele.position( obj.position );
+    }
+
+    // ignore group -- immutable
+
+    var checkSwitch = function( k, trueFnName, falseFnName ){
+      var obj_k = obj[k];
+
+      if( obj_k != null && obj_k !== p[k] ){
+        if( obj_k ){
+          ele[ trueFnName ]();
+        } else {
+          ele[ falseFnName ]();
+        }
+      }
+    };
+
+    checkSwitch( 'removed', 'remove', 'restore' );
+
+    checkSwitch( 'selected', 'select', 'unselect' );
+
+    checkSwitch( 'selectable', 'selectify', 'unselectify' );
+
+    checkSwitch( 'locked', 'lock', 'unlock' );
+
+    checkSwitch( 'grabbable', 'grabify', 'ungrabify' );
+
+    if( obj.classes != null ){
+      ele.classes( obj.classes );
+    }
+
+    cy.endBatch();
+
+    return this;
+
+  } else if( obj === undefined ){ // get
+
+    var json = {
+      data: util.copy( p.data ),
+      position: util.copy( p.position ),
+      group: p.group,
+      removed: p.removed,
+      selected: p.selected,
+      selectable: p.selectable,
+      locked: p.locked,
+      grabbable: p.grabbable,
+      classes: null
+    };
+
+    var classes = [];
+    for( var cls in p.classes ){
+      if( p.classes[cls] ){
+        classes.push(cls);
+      }
+    }
+    json.classes = classes.join(' ');
+
+    return json;
+  }
+};
+
+elesfn.jsons = function(){
+  var jsons = [];
+
+  for( var i = 0; i < this.length; i++ ){
+    var ele = this[i];
+    var json = ele.json();
+
+    jsons.push( json );
+  }
+
+  return jsons;
+};
+
+elesfn.clone = function(){
+  var cy = this.cy();
+  var elesArr = [];
+
+  for( var i = 0; i < this.length; i++ ){
+    var ele = this[i];
+    var json = ele.json();
+    var clone = new Element(cy, json, false); // NB no restore
+
+    elesArr.push( clone );
+  }
+
+  return new Collection( cy, elesArr );
+};
+elesfn.copy = elesfn.clone;
+
+elesfn.restore = function( notifyRenderer ){
+  var self = this;
+  var restored = [];
+  var cy = self.cy();
+
+  if( notifyRenderer === undefined ){
+    notifyRenderer = true;
+  }
+
+  // create arrays of nodes and edges, since we need to
+  // restore the nodes first
+  var elements = [];
+  var nodes = [], edges = [];
+  var numNodes = 0;
+  var numEdges = 0;
+  for( var i = 0, l = self.length; i < l; i++ ){
+    var ele = self[i];
+
+    // keep nodes first in the array and edges after
+    if( ele.isNode() ){ // put to front of array if node
+      nodes.push( ele );
+      numNodes++;
+    } else { // put to end of array if edge
+      edges.push( ele );
+      numEdges++;
+    }
+  }
+
+  elements = nodes.concat( edges );
+
+  // now, restore each element
+  for( var i = 0, l = elements.length; i < l; i++ ){
+    var ele = elements[i];
+
+    if( !ele.removed() ){
+      // don't need to do anything
+      continue;
+    }
+
+    var _private = ele._private;
+    var data = _private.data;
+
+    // set id and validate
+    if( data.id === undefined ){
+      data.id = idFactory.generate( cy, ele );
+
+    } else if( is.number(data.id) ){
+      data.id = '' + data.id; // now it's a string
+
+    } else if( is.emptyString(data.id) || !is.string(data.id) ){
+      util.error('Can not create element with invalid string ID `' + data.id + '`');
+
+      // can't create element if it has empty string as id or non-string id
+      continue;
+    } else if( cy.getElementById( data.id ).length !== 0 ){
+      util.error('Can not create second element with ID `' + data.id + '`');
+
+      // can't create element if one already has that id
+      continue;
+    }
+
+    var id = data.id; // id is finalised, now let's keep a ref
+
+    if( ele.isNode() ){ // extra checks for nodes
+      var node = ele;
+      var pos = _private.position;
+
+      // make sure the nodes have a defined position
+
+      if( pos.x == null ){
+        pos.x = 0;
+      }
+
+      if( pos.y == null ){
+        pos.y = 0;
+      }
+    }
+
+    if( ele.isEdge() ){ // extra checks for edges
+
+      var edge = ele;
+      var fields = ['source', 'target'];
+      var fieldsLength = fields.length;
+      var badSourceOrTarget = false;
+      for(var j = 0; j < fieldsLength; j++){
+
+        var field = fields[j];
+        var val = data[field];
+
+        if( is.number(val) ){
+          val = data[field] = '' + data[field]; // now string
+        }
+
+        if( val == null || val === '' ){
+          // can't create if source or target is not defined properly
+          util.error('Can not create edge `' + id + '` with unspecified ' + field);
+          badSourceOrTarget = true;
+        } else if( cy.getElementById(val).empty() ){
+          // can't create edge if one of its nodes doesn't exist
+          util.error('Can not create edge `' + id + '` with nonexistant ' + field + ' `' + val + '`');
+          badSourceOrTarget = true;
+        }
+      }
+
+      if( badSourceOrTarget ){ continue; } // can't create this
+
+      var src = cy.getElementById( data.source );
+      var tgt = cy.getElementById( data.target );
+
+      src._private.edges.push( edge );
+      tgt._private.edges.push( edge );
+
+      edge._private.source = src;
+      edge._private.target = tgt;
+
+    } // if is edge
+
+    // create mock ids map for element so it can be used like collections
+    _private.ids = {};
+    _private.ids[ id ] = ele;
+
+    _private.removed = false;
+    cy.addToPool( ele );
+
+    restored.push( ele );
+  } // for each element
+
+  // do compound node sanity checks
+  for( var i = 0; i < numNodes; i++ ){ // each node
+    var node = elements[i];
+    var data = node._private.data;
+
+    if( is.number(data.parent) ){ // then automake string
+      data.parent = '' + data.parent;
+    }
+
+    var parentId = data.parent;
+
+    var specifiedParent = parentId != null;
+
+    if( specifiedParent ){
+      var parent = cy.getElementById( parentId );
+
+      if( parent.empty() ){
+        // non-existant parent; just remove it
+        data.parent = undefined;
+      } else {
+        var selfAsParent = false;
+        var ancestor = parent;
+        while( !ancestor.empty() ){
+          if( node.same(ancestor) ){
+            // mark self as parent and remove from data
+            selfAsParent = true;
+            data.parent = undefined; // remove parent reference
+
+            // exit or we loop forever
+            break;
+          }
+
+          ancestor = ancestor.parent();
+        }
+
+        if( !selfAsParent ){
+          // connect with children
+          parent[0]._private.children.push( node );
+          node._private.parent = parent[0];
+
+          // let the core know we have a compound graph
+          cy._private.hasCompoundNodes = true;
+        }
+      } // else
+    } // if specified parent
+  } // for each node
+
+  restored = new Collection( cy, restored );
+  if( restored.length > 0 ){
+
+    var toUpdateStyle = restored.add( restored.connectedNodes() ).add( restored.parent() );
+    toUpdateStyle.updateStyle( notifyRenderer );
+
+    if( notifyRenderer ){
+      restored.rtrigger('add');
+    } else {
+      restored.trigger('add');
+    }
+  }
+
+  return self; // chainability
+};
+
+elesfn.removed = function(){
+  var ele = this[0];
+  return ele && ele._private.removed;
+};
+
+elesfn.inside = function(){
+  var ele = this[0];
+  return ele && !ele._private.removed;
+};
+
+elesfn.remove = function( notifyRenderer ){
+  var self = this;
+  var removed = [];
+  var elesToRemove = [];
+  var elesToRemoveIds = {};
+  var cy = self._private.cy;
+
+  if( notifyRenderer === undefined ){
+    notifyRenderer = true;
+  }
+
+  // add connected edges
+  function addConnectedEdges(node){
+    var edges = node._private.edges;
+    for( var i = 0; i < edges.length; i++ ){
+      add( edges[i] );
+    }
+  }
+
+
+  // add descendant nodes
+  function addChildren(node){
+    var children = node._private.children;
+
+    for( var i = 0; i < children.length; i++ ){
+      add( children[i] );
+    }
+  }
+
+  function add( ele ){
+    var alreadyAdded =  elesToRemoveIds[ ele.id() ];
+    if( alreadyAdded ){
+      return;
+    } else {
+      elesToRemoveIds[ ele.id() ] = true;
+    }
+
+    if( ele.isNode() ){
+      elesToRemove.push( ele ); // nodes are removed last
+
+      addConnectedEdges( ele );
+      addChildren( ele );
+    } else {
+      elesToRemove.unshift( ele ); // edges are removed first
+    }
+  }
+
+  // make the list of elements to remove
+  // (may be removing more than specified due to connected edges etc)
+
+  for( var i = 0, l = self.length; i < l; i++ ){
+    var ele = self[i];
+
+    add( ele );
+  }
+
+  function removeEdgeRef(node, edge){
+    var connectedEdges = node._private.edges;
+    for( var j = 0; j < connectedEdges.length; j++ ){
+      var connectedEdge = connectedEdges[j];
+
+      if( edge === connectedEdge ){
+        connectedEdges.splice( j, 1 );
+        break;
+      }
+    }
+  }
+
+  function removeChildRef(parent, ele){
+    ele = ele[0];
+    parent = parent[0];
+    var children = parent._private.children;
+
+    for( var j = 0; j < children.length; j++ ){
+      if( children[j][0] === ele[0] ){
+        children.splice(j, 1);
+        break;
+      }
+    }
+  }
+
+  for( var i = 0; i < elesToRemove.length; i++ ){
+    var ele = elesToRemove[i];
+
+    // mark as removed
+    ele._private.removed = true;
+
+    // remove from core pool
+    cy.removeFromPool( ele );
+
+    // add to list of removed elements
+    removed.push( ele );
+
+    if( ele.isEdge() ){ // remove references to this edge in its connected nodes
+      var src = ele.source()[0];
+      var tgt = ele.target()[0];
+
+      removeEdgeRef( src, ele );
+      removeEdgeRef( tgt, ele );
+
+    } else { // remove reference to parent
+      var parent = ele.parent();
+
+      if( parent.length !== 0 ){
+        removeChildRef(parent, ele);
+      }
+    }
+  }
+
+  // check to see if we have a compound graph or not
+  var elesStillInside = cy._private.elements;
+  cy._private.hasCompoundNodes = false;
+  for( var i = 0; i < elesStillInside.length; i++ ){
+    var ele = elesStillInside[i];
+
+    if( ele.isParent() ){
+      cy._private.hasCompoundNodes = true;
+      break;
+    }
+  }
+
+  var removedElements = new Collection( this.cy(), removed );
+  if( removedElements.size() > 0 ){
+    // must manually notify since trigger won't do this automatically once removed
+
+    if( notifyRenderer ){
+      this.cy().notify({
+        type: 'remove',
+        collection: removedElements
+      });
+    }
+
+    removedElements.trigger('remove');
+  }
+
+  // check for empty remaining parent nodes
+  var checkedParentId = {};
+  for( var i = 0; i < elesToRemove.length; i++ ){
+    var ele = elesToRemove[i];
+    var isNode = ele._private.group === 'nodes';
+    var parentId = ele._private.data.parent;
+
+    if( isNode && parentId !== undefined && !checkedParentId[ parentId ] ){
+      checkedParentId[ parentId ] = true;
+      var parent = cy.getElementById( parentId );
+
+      if( parent && parent.length !== 0 && !parent._private.removed && parent.children().length === 0 ){
+        parent.updateStyle();
+      }
+    }
+  }
+
+  return new Collection( cy, removed );
+};
+
+elesfn.move = function( struct ){
+  var cy = this._private.cy;
+
+  if( struct.source !== undefined || struct.target !== undefined ){
+    var srcId = struct.source;
+    var tgtId = struct.target;
+    var srcExists = cy.getElementById( srcId ).length > 0;
+    var tgtExists = cy.getElementById( tgtId ).length > 0;
+
+    if( srcExists || tgtExists ){
+      var jsons = this.jsons();
+
+      this.remove();
+
+      for( var i = 0; i < jsons.length; i++ ){
+        var json = jsons[i];
+
+        if( json.group === 'edges' ){
+          if( srcExists ){ json.data.source = srcId; }
+          if( tgtExists ){ json.data.target = tgtId; }
+        }
+      }
+
+      return cy.add( jsons );
+    }
+
+  } else if( struct.parent !== undefined ){ // move node to new parent
+    var parentId = struct.parent;
+    var parentExists = parentId === null || cy.getElementById( parentId ).length > 0;
+
+    if( parentExists ){
+      var jsons = this.jsons();
+      var descs = this.descendants();
+      var descsEtc = descs.merge( descs.add(this).connectedEdges() );
+
+      this.remove(); // NB: also removes descendants and their connected edges
+
+      for( var i = 0; i < this.length; i++ ){
+        var json = jsons[i];
+
+        if( json.group === 'nodes' ){
+          json.data.parent = parentId === null ? undefined : parentId;
+        }
+      }
+    }
+
+    return cy.add( jsons ).merge( descsEtc.restore() );
+  }
+
+  return this; // if nothing done
+};
+
+[
+  _dereq_('./algorithms'),
+  _dereq_('./animation'),
+  _dereq_('./class'),
+  _dereq_('./comparators'),
+  _dereq_('./compounds'),
+  _dereq_('./data'),
+  _dereq_('./degree'),
+  _dereq_('./dimensions'),
+  _dereq_('./events'),
+  _dereq_('./filter'),
+  _dereq_('./group'),
+  _dereq_('./index'),
+  _dereq_('./iteration'),
+  _dereq_('./layout'),
+  _dereq_('./style'),
+  _dereq_('./switch-functions'),
+  _dereq_('./traversing')
+].forEach(function( props ){
+  util.extend( elesfn, props );
+});
+
+module.exports = Collection;
+
+},{"../is":77,"../util":94,"./algorithms":9,"./animation":12,"./class":13,"./comparators":14,"./compounds":15,"./data":16,"./degree":17,"./dimensions":18,"./element":19,"./events":20,"./filter":21,"./group":22,"./index":23,"./iteration":24,"./layout":25,"./style":26,"./switch-functions":27,"./traversing":28}],24:[function(_dereq_,module,exports){
+'use strict';
+
+var is = _dereq_('../is');
+var zIndexSort = _dereq_('./zsort');
+
+var elesfn = ({
+  each: function(fn){
+    if( is.fn(fn) ){
+      for(var i = 0; i < this.length; i++){
+        var ele = this[i];
+        var ret = fn.apply( ele, [ i, ele ] );
+
+        if( ret === false ){ break; } // exit each early on return false
+      }
+    }
+    return this;
+  },
+
+  forEach: function(fn, thisArg){
+    if( is.fn(fn) ){
+
+      for(var i = 0; i < this.length; i++){
+        var ele = this[i];
+        var ret = thisArg ? fn.apply( thisArg, [ ele, i, this ] ) : fn( ele, i, this );
+
+        if( ret === false ){ break; } // exit each early on return false
+      }
+    }
+
+    return this;
+  },
+
+  toArray: function(){
+    var array = [];
+
+    for(var i = 0; i < this.length; i++){
+      array.push( this[i] );
+    }
+
+    return array;
+  },
+
+  slice: function(start, end){
+    var array = [];
+    var thisSize = this.length;
+
+    if( end == null ){
+      end = thisSize;
+    }
+
+    if( start == null ){
+      start = 0;
+    }
+
+    if( start < 0 ){
+      start = thisSize + start;
+    }
+
+    if( end < 0 ){
+      end = thisSize + end;
+    }
+
+    for(var i = start; i >= 0 && i < end && i < thisSize; i++){
+      array.push( this[i] );
+    }
+
+    return this.spawn(array);
+  },
+
+  size: function(){
+    return this.length;
+  },
+
+  eq: function(i){
+    return this[i] || this.spawn();
+  },
+
+  first: function(){
+    return this[0] || this.spawn();
+  },
+
+  last: function(){
+    return this[ this.length - 1 ] || this.spawn();
+  },
+
+  empty: function(){
+    return this.length === 0;
+  },
+
+  nonempty: function(){
+    return !this.empty();
+  },
+
+  sort: function( sortFn ){
+    if( !is.fn( sortFn ) ){
+      return this;
+    }
+
+    var sorted = this.toArray().sort( sortFn );
+
+    return this.spawn(sorted);
+  },
+
+  sortByZIndex: function(){
+    return this.sort( zIndexSort );
+  },
+
+  zDepth: function(){
+    var ele = this[0];
+    if( !ele ){ return undefined; }
+
+    // var cy = ele.cy();
+    var _p = ele._private;
+    var group = _p.group;
+
+    if( group === 'nodes' ){
+      var depth = _p.data.parent ? ele.parents().size() : 0;
+
+      if( !ele.isParent() ){
+        return Number.MAX_VALUE; // childless nodes always on top
+      }
+
+      return depth;
+    } else {
+      var src = _p.source;
+      var tgt = _p.target;
+      var srcDepth = src.zDepth();
+      var tgtDepth = tgt.zDepth();
+
+      return Math.max( srcDepth, tgtDepth, 0 ); // depth of deepest parent
+    }
+  }
+});
+
+module.exports = elesfn;
+
+},{"../is":77,"./zsort":29}],25:[function(_dereq_,module,exports){
+'use strict';
+
+var is = _dereq_('../is');
+var util = _dereq_('../util');
+
+var elesfn = ({
+
+  // using standard layout options, apply position function (w/ or w/o animation)
+  layoutPositions: function( layout, options, fn ){
+    var nodes = this.nodes();
+    var cy = this.cy();
+
+    layout.trigger({ type: 'layoutstart', layout: layout });
+
+    layout.animations = [];
+
+    if( options.animate ){
+      for( var i = 0; i < nodes.length; i++ ){
+        var node = nodes[i];
+        var lastNode = i === nodes.length - 1;
+
+        var newPos = fn.call( node, i, node );
+        var pos = node.position();
+
+        if( !is.number(pos.x) || !is.number(pos.y) ){
+          node.silentPosition({ x: 0, y: 0 });
+        }
+
+        var ani = node.animation({
+          position: newPos,
+          duration: options.animationDuration,
+          easing: options.animationEasing,
+          step: !lastNode ? undefined : function(){
+            if( options.fit ){
+              cy.fit( options.eles, options.padding );
+            }
+          },
+          complete: !lastNode ? undefined : function(){
+            if( options.zoom != null ){
+              cy.zoom( options.zoom );
+            }
+
+            if( options.pan ){
+              cy.pan( options.pan );
+            }
+
+            if( options.fit ){
+              cy.fit( options.eles, options.padding );
+            }
+
+            layout.one('layoutstop', options.stop);
+            layout.trigger({ type: 'layoutstop', layout: layout });
+          }
+        });
+
+        layout.animations.push( ani );
+
+        ani.play();
+      }
+
+      layout.one('layoutready', options.ready);
+      layout.trigger({ type: 'layoutready', layout: layout });
+    } else {
+      nodes.positions( fn );
+
+      if( options.fit ){
+        cy.fit( options.eles, options.padding );
+      }
+
+      if( options.zoom != null ){
+        cy.zoom( options.zoom );
+      }
+
+      if( options.pan ){
+        cy.pan( options.pan );
+      }
+
+      layout.one('layoutready', options.ready);
+      layout.trigger({ type: 'layoutready', layout: layout });
+
+      layout.one('layoutstop', options.stop);
+      layout.trigger({ type: 'layoutstop', layout: layout });
+    }
+
+    return this; // chaining
+  },
+
+  layout: function( options ){
+    var cy = this.cy();
+
+    cy.layout( util.extend({}, options, {
+      eles: this
+    }) );
+
+    return this;
+  },
+
+  makeLayout: function( options ){
+    var cy = this.cy();
+
+    return cy.makeLayout( util.extend({}, options, {
+      eles: this
+    }) );
+  }
+
+});
+
+// aliases:
+elesfn.createLayout = elesfn.makeLayout;
+
+module.exports = elesfn;
+
+},{"../is":77,"../util":94}],26:[function(_dereq_,module,exports){
+'use strict';
+
+var is = _dereq_('../is');
+
+var elesfn = ({
+
+  // fully updates (recalculates) the style for the elements
+  updateStyle: function( notifyRenderer ){
+    var cy = this._private.cy;
+
+    if( !cy.styleEnabled() ){ return this; }
+
+    if( cy._private.batchingStyle ){
+      var bEles = cy._private.batchStyleEles;
+
+      bEles.merge( this );
+
+      return this; // chaining and exit early when batching
+    }
+
+    var style = cy.style();
+    notifyRenderer = notifyRenderer || notifyRenderer === undefined ? true : false;
+
+    style.apply( this );
+
+    var updatedCompounds = this.updateCompoundBounds();
+    var toNotify = updatedCompounds.length > 0 ? this.add( updatedCompounds ) : this;
+
+    if( notifyRenderer ){
+      toNotify.rtrigger('style'); // let renderer know we changed style
+    } else {
+      toNotify.trigger('style'); // just fire the event
+    }
+    return this; // chaining
+  },
+
+  // just update the mappers in the elements' styles; cheaper than eles.updateStyle()
+  updateMappers: function( notifyRenderer ){
+    var cy = this._private.cy;
+    var style = cy.style();
+    notifyRenderer = notifyRenderer || notifyRenderer === undefined ? true : false;
+
+    if( !cy.styleEnabled() ){ return this; }
+
+    style.updateMappers( this );
+
+    var updatedCompounds = this.updateCompoundBounds();
+    var toNotify = updatedCompounds.length > 0 ? this.add( updatedCompounds ) : this;
+
+    if( notifyRenderer ){
+      toNotify.rtrigger('style'); // let renderer know we changed style
+    } else {
+      toNotify.trigger('style'); // just fire the event
+    }
+    return this; // chaining
+  },
+
+  // get the specified css property as a rendered value (i.e. on-screen value)
+  // or get the whole rendered style if no property specified (NB doesn't allow setting)
+  renderedCss: function( property ){
+    var cy = this.cy();
+    if( !cy.styleEnabled() ){ return this; }
+
+    var ele = this[0];
+
+    if( ele ){
+      var renstyle = ele.cy().style().getRenderedStyle( ele );
+
+      if( property === undefined ){
+        return renstyle;
+      } else {
+        return renstyle[ property ];
+      }
+    }
+  },
+
+  // read the calculated css style of the element or override the style (via a bypass)
+  css: function( name, value ){
+    var cy = this.cy();
+
+    if( !cy.styleEnabled() ){ return this; }
+
+    var updateTransitions = false;
+    var style = cy.style();
+
+    if( is.plainObject(name) ){ // then extend the bypass
+      var props = name;
+      style.applyBypass( this, props, updateTransitions );
+
+      var updatedCompounds = this.updateCompoundBounds();
+      var toNotify = updatedCompounds.length > 0 ? this.add( updatedCompounds ) : this;
+      toNotify.rtrigger('style'); // let the renderer know we've updated style
+
+    } else if( is.string(name) ){
+
+      if( value === undefined ){ // then get the property from the style
+        var ele = this[0];
+
+        if( ele ){
+          return style.getStylePropertyValue( ele, name );
+        } else { // empty collection => can't get any value
+          return;
+        }
+
+      } else { // then set the bypass with the property value
+        style.applyBypass( this, name, value, updateTransitions );
+
+        var updatedCompounds = this.updateCompoundBounds();
+        var toNotify = updatedCompounds.length > 0 ? this.add( updatedCompounds ) : this;
+        toNotify.rtrigger('style'); // let the renderer know we've updated style
+      }
+
+    } else if( name === undefined ){
+      var ele = this[0];
+
+      if( ele ){
+        return style.getRawStyle( ele );
+      } else { // empty collection => can't get any value
+        return;
+      }
+    }
+
+    return this; // chaining
+  },
+
+  removeCss: function( names ){
+    var cy = this.cy();
+
+    if( !cy.styleEnabled() ){ return this; }
+
+    var updateTransitions = false;
+    var style = cy.style();
+    var eles = this;
+
+    if( names === undefined ){
+      for( var i = 0; i < eles.length; i++ ){
+        var ele = eles[i];
+
+        style.removeAllBypasses( ele, updateTransitions );
+      }
+    } else {
+      names = names.split(/\s+/);
+
+      for( var i = 0; i < eles.length; i++ ){
+        var ele = eles[i];
+
+        style.removeBypasses( ele, names, updateTransitions );
+      }
+    }
+
+    var updatedCompounds = this.updateCompoundBounds();
+    var toNotify = updatedCompounds.length > 0 ? this.add( updatedCompounds ) : this;
+    toNotify.rtrigger('style'); // let the renderer know we've updated style
+
+    return this; // chaining
+  },
+
+  show: function(){
+    this.css('display', 'element');
+    return this; // chaining
+  },
+
+  hide: function(){
+    this.css('display', 'none');
+    return this; // chaining
+  },
+
+  visible: function(){
+    var cy = this.cy();
+    if( !cy.styleEnabled() ){ return true; }
+
+    var ele = this[0];
+    var hasCompoundNodes = cy.hasCompoundNodes();
+
+    if( ele ){
+      var style = ele._private.style;
+
+      if(
+        style['visibility'].value !== 'visible'
+        || style['display'].value !== 'element'
+      ){
+        return false;
+      }
+
+      if( ele._private.group === 'nodes' ){
+        if( !hasCompoundNodes ){ return true; }
+
+        var parents = ele._private.data.parent ? ele.parents() : null;
+
+        if( parents ){
+          for( var i = 0; i < parents.length; i++ ){
+            var parent = parents[i];
+            var pStyle = parent._private.style;
+            var pVis = pStyle['visibility'].value;
+            var pDis = pStyle['display'].value;
+
+            if( pVis !== 'visible' || pDis !== 'element' ){
+              return false;
+            }
+          }
+        }
+
+        return true;
+      } else {
+        var src = ele._private.source;
+        var tgt = ele._private.target;
+
+        return src.visible() && tgt.visible();
+      }
+
+    }
+  },
+
+  hidden: function(){
+    var ele = this[0];
+
+    if( ele ){
+      return !ele.visible();
+    }
+  },
+
+  effectiveOpacity: function(){
+    var cy = this.cy();
+    if( !cy.styleEnabled() ){ return 1; }
+
+    var hasCompoundNodes = cy.hasCompoundNodes();
+    var ele = this[0];
+
+    if( ele ){
+      var _p = ele._private;
+      var parentOpacity = _p.style.opacity.value;
+
+      if( !hasCompoundNodes ){ return parentOpacity; }
+
+      var parents = !_p.data.parent ? null : ele.parents();
+
+      if( parents ){
+        for( var i = 0; i < parents.length; i++ ){
+          var parent = parents[i];
+          var opacity = parent._private.style.opacity.value;
+
+          parentOpacity = opacity * parentOpacity;
+        }
+      }
+
+      return parentOpacity;
+    }
+  },
+
+  transparent: function(){
+    var cy = this.cy();
+    if( !cy.styleEnabled() ){ return false; }
+
+    var ele = this[0];
+    var hasCompoundNodes = ele.cy().hasCompoundNodes();
+
+    if( ele ){
+      if( !hasCompoundNodes ){
+        return ele._private.style.opacity.value === 0;
+      } else {
+        return ele.effectiveOpacity() === 0;
+      }
+    }
+  },
+
+  isFullAutoParent: function(){
+    var cy = this.cy();
+    if( !cy.styleEnabled() ){ return false; }
+
+    var ele = this[0];
+
+    if( ele ){
+      var autoW = ele._private.style['width'].value === 'auto';
+      var autoH = ele._private.style['height'].value === 'auto';
+
+      return ele.isParent() && autoW && autoH;
+    }
+  },
+
+  backgrounding: function(){
+    var cy = this.cy();
+    if( !cy.styleEnabled() ){ return false; }
+
+    var ele = this[0];
+
+    return ele._private.backgrounding ? true : false;
+  }
+
+});
+
+
+elesfn.bypass = elesfn.style = elesfn.css;
+elesfn.renderedStyle = elesfn.renderedCss;
+elesfn.removeBypass = elesfn.removeStyle = elesfn.removeCss;
+
+module.exports = elesfn;
+
+},{"../is":77}],27:[function(_dereq_,module,exports){
+'use strict';
+
+var elesfn = {};
+
+function defineSwitchFunction(params){
+  return function(){
+    var args = arguments;
+    var changedEles = [];
+
+    // e.g. cy.nodes().select( data, handler )
+    if( args.length === 2 ){
+      var data = args[0];
+      var handler = args[1];
+      this.bind( params.event, data, handler );
+    }
+
+    // e.g. cy.nodes().select( handler )
+    else if( args.length === 1 ){
+      var handler = args[0];
+      this.bind( params.event, handler );
+    }
+
+    // e.g. cy.nodes().select()
+    else if( args.length === 0 ){
+      for( var i = 0; i < this.length; i++ ){
+        var ele = this[i];
+        var able = !params.ableField || ele._private[params.ableField];
+        var changed = ele._private[params.field] != params.value;
+
+        if( params.overrideAble ){
+          var overrideAble = params.overrideAble(ele);
+
+          if( overrideAble !== undefined ){
+            able = overrideAble;
+
+            if( !overrideAble ){ return this; } // to save cycles assume not able for all on override
+          }
+        }
+
+        if( able ){
+          ele._private[params.field] = params.value;
+
+          if( changed ){
+            changedEles.push( ele );
+          }
+        }
+      }
+
+      var changedColl = this.spawn( changedEles );
+      changedColl.updateStyle(); // change of state => possible change of style
+      changedColl.trigger( params.event );
+    }
+
+    return this;
+  };
+}
+
+function defineSwitchSet( params ){
+  elesfn[ params.field ] = function(){
+    var ele = this[0];
+
+    if( ele ){
+      if( params.overrideField ){
+        var val = params.overrideField(ele);
+
+        if( val !== undefined ){
+          return val;
+        }
+      }
+
+      return ele._private[ params.field ];
+    }
+  };
+
+  elesfn[ params.on ] = defineSwitchFunction({
+    event: params.on,
+    field: params.field,
+    ableField: params.ableField,
+    overrideAble: params.overrideAble,
+    value: true
+  });
+
+  elesfn[ params.off ] = defineSwitchFunction({
+    event: params.off,
+    field: params.field,
+    ableField: params.ableField,
+    overrideAble: params.overrideAble,
+    value: false
+  });
+}
+
+defineSwitchSet({
+  field: 'locked',
+  overrideField: function(ele){
+    return ele.cy().autolock() ? true : undefined;
+  },
+  on: 'lock',
+  off: 'unlock'
+});
+
+defineSwitchSet({
+  field: 'grabbable',
+  overrideField: function(ele){
+    return ele.cy().autoungrabify() ? false : undefined;
+  },
+  on: 'grabify',
+  off: 'ungrabify'
+});
+
+defineSwitchSet({
+  field: 'selected',
+  ableField: 'selectable',
+  overrideAble: function(ele){
+    return ele.cy().autounselectify() ? false : undefined;
+  },
+  on: 'select',
+  off: 'unselect'
+});
+
+defineSwitchSet({
+  field: 'selectable',
+  overrideField: function(ele){
+    return ele.cy().autounselectify() ? false : undefined;
+  },
+  on: 'selectify',
+  off: 'unselectify'
+});
+
+elesfn.deselect = elesfn.unselect;
+
+elesfn.grabbed = function(){
+  var ele = this[0];
+  if( ele ){
+    return ele._private.grabbed;
+  }
+};
+
+defineSwitchSet({
+  field: 'active',
+  on: 'activate',
+  off: 'unactivate'
+});
+
+elesfn.inactive = function(){
+  var ele = this[0];
+  if( ele ){
+    return !ele._private.active;
+  }
+};
+
+module.exports = elesfn;
+
+},{}],28:[function(_dereq_,module,exports){
+'use strict';
+
+var util = _dereq_('../util');
+var is = _dereq_('../is');
+
+var elesfn = {};
+
+util.extend(elesfn, {
+  // get the root nodes in the DAG
+  roots: function( selector ){
+    var eles = this;
+    var roots = [];
+
+    for( var i = 0; i < eles.length; i++ ){
+      var ele = eles[i];
+      if( !ele.isNode() ){
+        continue;
+      }
+
+      var hasEdgesPointingIn = ele.connectedEdges(function(){
+        return this.data('target') === ele.id() && this.data('source') !== ele.id();
+      }).length > 0;
+
+      if( !hasEdgesPointingIn ){
+        roots.push( ele );
+      }
+    }
+
+    return this.spawn( roots, { unique: true } ).filter( selector );
+  },
+
+  // get the leaf nodes in the DAG
+  leaves: function( selector ){
+    var eles = this;
+    var leaves = [];
+
+    for( var i = 0; i < eles.length; i++ ){
+      var ele = eles[i];
+      if( !ele.isNode() ){
+        continue;
+      }
+
+      var hasEdgesPointingOut = ele.connectedEdges(function(){
+        return this.data('source') === ele.id() && this.data('target') !== ele.id();
+      }).length > 0;
+
+      if( !hasEdgesPointingOut ){
+        leaves.push( ele );
+      }
+    }
+
+    return this.spawn( leaves, { unique: true } ).filter( selector );
+  },
+
+  // normally called children in graph theory
+  // these nodes =edges=> outgoing nodes
+  outgoers: function( selector ){
+    var eles = this;
+    var oEles = [];
+
+    for( var i = 0; i < eles.length; i++ ){
+      var ele = eles[i];
+      var eleId = ele.id();
+
+      if( !ele.isNode() ){ continue; }
+
+      var edges = ele._private.edges;
+      for( var j = 0; j < edges.length; j++ ){
+        var edge = edges[j];
+        var srcId = edge._private.data.source;
+        var tgtId = edge._private.data.target;
+
+        if( srcId === eleId && tgtId !== eleId ){
+          oEles.push( edge );
+          oEles.push( edge.target()[0] );
+        }
+      }
+    }
+
+    return this.spawn( oEles, { unique: true } ).filter( selector );
+  },
+
+  // aka DAG descendants
+  successors: function( selector ){
+    var eles = this;
+    var sEles = [];
+    var sElesIds = {};
+
+    for(;;){
+      var outgoers = eles.outgoers();
+
+      if( outgoers.length === 0 ){ break; } // done if no outgoers left
+
+      var newOutgoers = false;
+      for( var i = 0; i < outgoers.length; i++ ){
+        var outgoer = outgoers[i];
+        var outgoerId = outgoer.id();
+
+        if( !sElesIds[ outgoerId ] ){
+          sElesIds[ outgoerId ] = true;
+          sEles.push( outgoer );
+          newOutgoers = true;
+        }
+      }
+
+      if( !newOutgoers ){ break; } // done if touched all outgoers already
+
+      eles = outgoers;
+    }
+
+    return this.spawn( sEles, { unique: true } ).filter( selector );
+  },
+
+  // normally called parents in graph theory
+  // these nodes <=edges= incoming nodes
+  incomers: function( selector ){
+    var eles = this;
+    var oEles = [];
+
+    for( var i = 0; i < eles.length; i++ ){
+      var ele = eles[i];
+      var eleId = ele.id();
+
+      if( !ele.isNode() ){ continue; }
+
+      var edges = ele._private.edges;
+      for( var j = 0; j < edges.length; j++ ){
+        var edge = edges[j];
+        var srcId = edge._private.data.source;
+        var tgtId = edge._private.data.target;
+
+        if( tgtId === eleId && srcId !== eleId ){
+          oEles.push( edge );
+          oEles.push( edge.source()[0] );
+        }
+      }
+    }
+
+    return this.spawn( oEles, { unique: true } ).filter( selector );
+  },
+
+  // aka DAG ancestors
+  predecessors: function( selector ){
+    var eles = this;
+    var pEles = [];
+    var pElesIds = {};
+
+    for(;;){
+      var incomers = eles.incomers();
+
+      if( incomers.length === 0 ){ break; } // done if no incomers left
+
+      var newIncomers = false;
+      for( var i = 0; i < incomers.length; i++ ){
+        var incomer = incomers[i];
+        var incomerId = incomer.id();
+
+        if( !pElesIds[ incomerId ] ){
+          pElesIds[ incomerId ] = true;
+          pEles.push( incomer );
+          newIncomers = true;
+        }
+      }
+
+      if( !newIncomers ){ break; } // done if touched all incomers already
+
+      eles = incomers;
+    }
+
+    return this.spawn( pEles, { unique: true } ).filter( selector );
+  }
+});
+
+
+// Neighbourhood functions
+//////////////////////////
+
+util.extend(elesfn, {
+  neighborhood: function(selector){
+    var elements = [];
+    var nodes = this.nodes();
+
+    for( var i = 0; i < nodes.length; i++ ){ // for all nodes
+      var node = nodes[i];
+      var connectedEdges = node.connectedEdges();
+
+      // for each connected edge, add the edge and the other node
+      for( var j = 0; j < connectedEdges.length; j++ ){
+        var edge = connectedEdges[j];
+        var src = edge._private.source;
+        var tgt = edge._private.target;
+        var otherNode = node === src ? tgt : src;
+
+        // need check in case of loop
+        if( otherNode.length > 0 ){
+          elements.push( otherNode[0] ); // add node 1 hop away
+        }
+
+        // add connected edge
+        elements.push( edge[0] );
+      }
+
+    }
+
+    return ( this.spawn( elements, { unique: true } ) ).filter( selector );
+  },
+
+  closedNeighborhood: function(selector){
+    return this.neighborhood().add( this ).filter( selector );
+  },
+
+  openNeighborhood: function(selector){
+    return this.neighborhood( selector );
+  }
+});
+
+// aliases
+elesfn.neighbourhood = elesfn.neighborhood;
+elesfn.closedNeighbourhood = elesfn.closedNeighborhood;
+elesfn.openNeighbourhood = elesfn.openNeighborhood;
+
+// Edge functions
+/////////////////
+
+util.extend(elesfn, {
+  source: function( selector ){
+    var ele = this[0];
+    var src;
+
+    if( ele ){
+      src = ele._private.source;
+    }
+
+    return src && selector ? src.filter( selector ) : src;
+  },
+
+  target: function( selector ){
+    var ele = this[0];
+    var tgt;
+
+    if( ele ){
+      tgt = ele._private.target;
+    }
+
+    return tgt && selector ? tgt.filter( selector ) : tgt;
+  },
+
+  sources: defineSourceFunction({
+    attr: 'source'
+  }),
+
+  targets: defineSourceFunction({
+    attr: 'target'
+  })
+});
+
+function defineSourceFunction( params ){
+  return function( selector ){
+    var sources = [];
+
+    for( var i = 0; i < this.length; i++ ){
+      var ele = this[i];
+      var src = ele._private[ params.attr ];
+
+      if( src ){
+        sources.push( src );
+      }
+    }
+
+    return this.spawn( sources, { unique: true } ).filter( selector );
+  };
+}
+
+util.extend(elesfn, {
+  edgesWith: defineEdgesWithFunction(),
+
+  edgesTo: defineEdgesWithFunction({
+    thisIs: 'source'
+  })
+});
+
+function defineEdgesWithFunction( params ){
+
+  return function edgesWithImpl( otherNodes ){
+    var elements = [];
+    var cy = this._private.cy;
+    var p = params || {};
+
+    // get elements if a selector is specified
+    if( is.string(otherNodes) ){
+      otherNodes = cy.$( otherNodes );
+    }
+
+    var thisIds = this._private.ids;
+    var otherIds = otherNodes._private.ids;
+
+    for( var h = 0; h < otherNodes.length; h++ ){
+      var edges = otherNodes[h]._private.edges;
+
+      for( var i = 0; i < edges.length; i++ ){
+        var edge = edges[i];
+        var edgeData = edge._private.data;
+        var thisToOther = thisIds[ edgeData.source ] && otherIds[ edgeData.target ];
+        var otherToThis = otherIds[ edgeData.source ] && thisIds[ edgeData.target ];
+        var edgeConnectsThisAndOther = thisToOther || otherToThis;
+
+        if( !edgeConnectsThisAndOther ){ continue; }
+
+        if( p.thisIs ){
+          if( p.thisIs === 'source' && !thisToOther ){ continue; }
+
+          if( p.thisIs === 'target' && !otherToThis ){ continue; }
+        }
+
+        elements.push( edge );
+      }
+    }
+
+    return this.spawn( elements, { unique: true } );
+  };
+}
+
+util.extend(elesfn, {
+  connectedEdges: function( selector ){
+    var retEles = [];
+
+    var eles = this;
+    for( var i = 0; i < eles.length; i++ ){
+      var node = eles[i];
+      if( !node.isNode() ){ continue; }
+
+      var edges = node._private.edges;
+
+      for( var j = 0; j < edges.length; j++ ){
+        var edge = edges[j];
+        retEles.push( edge );
+      }
+    }
+
+    return this.spawn( retEles, { unique: true } ).filter( selector );
+  },
+
+  connectedNodes: function( selector ){
+    var retEles = [];
+
+    var eles = this;
+    for( var i = 0; i < eles.length; i++ ){
+      var edge = eles[i];
+      if( !edge.isEdge() ){ continue; }
+
+      retEles.push( edge.source()[0] );
+      retEles.push( edge.target()[0] );
+    }
+
+    return this.spawn( retEles, { unique: true } ).filter( selector );
+  },
+
+  parallelEdges: defineParallelEdgesFunction(),
+
+  codirectedEdges: defineParallelEdgesFunction({
+    codirected: true
+  })
+});
+
+function defineParallelEdgesFunction(params){
+  var defaults = {
+    codirected: false
+  };
+  params = util.extend({}, defaults, params);
+
+  return function( selector ){
+    var elements = [];
+    var edges = this.edges();
+    var p = params;
+
+    // look at all the edges in the collection
+    for( var i = 0; i < edges.length; i++ ){
+      var edge1 = edges[i];
+      var src1 = edge1.source()[0];
+      var srcid1 = src1.id();
+      var tgt1 = edge1.target()[0];
+      var tgtid1 = tgt1.id();
+      var srcEdges1 = src1._private.edges;
+
+      // look at edges connected to the src node of this edge
+      for( var j = 0; j < srcEdges1.length; j++ ){
+        var edge2 = srcEdges1[j];
+        var edge2data = edge2._private.data;
+        var tgtid2 = edge2data.target;
+        var srcid2 = edge2data.source;
+
+        var codirected = tgtid2 === tgtid1 && srcid2 === srcid1;
+        var oppdirected = srcid1 === tgtid2 && tgtid1 === srcid2;
+
+        if( (p.codirected && codirected) || (!p.codirected && (codirected || oppdirected)) ){
+          elements.push( edge2 );
+        }
+      }
+    }
+
+    return this.spawn( elements, { unique: true } ).filter( selector );
+  };
+
+}
+
+// Misc functions
+/////////////////
+
+util.extend(elesfn, {
+  components: function(){
+    var cy = this.cy();
+    var visited = cy.collection();
+    var unvisited = this.nodes();
+    var components = [];
+
+    var visitInComponent = function( node, component ){
+      visited.merge( node );
+      unvisited.unmerge( node );
+      component.merge( node );
+    };
+
+    do {
+      var component = cy.collection();
+      components.push( component );
+
+      var root = unvisited[0];
+      visitInComponent( root, component );
+
+      this.bfs({
+        directed: false,
+        roots: root,
+        visit: function( i, depth, v, e, u ){
+          visitInComponent( v, component );
+        }
+      });
+
+    } while( unvisited.length > 0 );
+
+    return components.map(function( component ){
+      var connectedEdges = component.connectedEdges().stdFilter(function( edge ){
+        return component.anySame( edge.source() ) && component.anySame( edge.target() );
+      });
+
+      return component.union( connectedEdges );
+    });
+  }
+});
+
+module.exports = elesfn;
+
+},{"../is":77,"../util":94}],29:[function(_dereq_,module,exports){
+'use strict';
+
+var zIndexSort = function( a, b ){
+  var cy = a.cy();
+  var a_p = a._private;
+  var b_p = b._private;
+  var zDiff = a_p.style['z-index'].value - b_p.style['z-index'].value;
+  var depthA = 0;
+  var depthB = 0;
+  var hasCompoundNodes = cy.hasCompoundNodes();
+  var aIsNode = a_p.group === 'nodes';
+  var aIsEdge = a_p.group === 'edges';
+  var bIsNode = b_p.group === 'nodes';
+  var bIsEdge = b_p.group === 'edges';
+
+  // no need to calculate element depth if there is no compound node
+  if( hasCompoundNodes ){
+    depthA = a.zDepth();
+    depthB = b.zDepth();
+  }
+
+  var depthDiff = depthA - depthB;
+  var sameDepth = depthDiff === 0;
+
+  if( sameDepth ){
+
+    if( aIsNode && bIsEdge ){
+      return 1; // 'a' is a node, it should be drawn later
+
+    } else if( aIsEdge && bIsNode ){
+      return -1; // 'a' is an edge, it should be drawn first
+
+    } else { // both nodes or both edges
+      if( zDiff === 0 ){ // same z-index => compare indices in the core (order added to graph w/ last on top)
+        return a_p.index - b_p.index;
+      } else {
+        return zDiff;
+      }
+    }
+
+  // elements on different level
+  } else {
+    return depthDiff; // deeper element should be drawn later
+  }
+
+};
+
+module.exports = zIndexSort;
+
+},{}],30:[function(_dereq_,module,exports){
+'use strict';
+
+var is = _dereq_('../is');
+var util = _dereq_('../util');
+var Collection = _dereq_('../collection');
+var Element = _dereq_('../collection/element');
+var window = _dereq_('../window');
+var document = window ? window.document : null;
+var NullRenderer = _dereq_('../extensions/renderer/null');
+
+var corefn = {
+  add: function(opts){
+
+    var elements;
+    var cy = this;
+
+    // add the elements
+    if( is.elementOrCollection(opts) ){
+      var eles = opts;
+
+      if( eles._private.cy === cy ){ // same instance => just restore
+        elements = eles.restore();
+
+      } else { // otherwise, copy from json
+        var jsons = [];
+
+        for( var i = 0; i < eles.length; i++ ){
+          var ele = eles[i];
+          jsons.push( ele.json() );
+        }
+
+        elements = new Collection( cy, jsons );
+      }
+    }
+
+    // specify an array of options
+    else if( is.array(opts) ){
+      var jsons = opts;
+
+      elements = new Collection(cy, jsons);
+    }
+
+    // specify via opts.nodes and opts.edges
+    else if( is.plainObject(opts) && (is.array(opts.nodes) || is.array(opts.edges)) ){
+      var elesByGroup = opts;
+      var jsons = [];
+
+      var grs = ['nodes', 'edges'];
+      for( var i = 0, il = grs.length; i < il; i++ ){
+        var group = grs[i];
+        var elesArray = elesByGroup[group];
+
+        if( is.array(elesArray) ){
+
+          for( var j = 0, jl = elesArray.length; j < jl; j++ ){
+            var json = util.extend( { group: group }, elesArray[j] );
+
+            jsons.push( json );
+          }
+        }
+      }
+
+      elements = new Collection(cy, jsons);
+    }
+
+    // specify options for one element
+    else {
+      var json = opts;
+      elements = (new Element( cy, json )).collection();
+    }
+
+    return elements;
+  },
+
+  remove: function(collection){
+    if( is.elementOrCollection(collection) ){
+      collection = collection;
+    } else if( is.string(collection) ){
+      var selector = collection;
+      collection = this.$( selector );
+    }
+
+    return collection.remove();
+  },
+
+  load: function(elements, onload, ondone){
+    var cy = this;
+
+    cy.notifications(false);
+
+    // remove old elements
+    var oldEles = cy.elements();
+    if( oldEles.length > 0 ){
+      oldEles.remove();
+    }
+
+    if( elements != null ){
+      if( is.plainObject(elements) || is.array(elements) ){
+        cy.add( elements );
+      }
+    }
+
+    cy.one('layoutready', function(e){
+      cy.notifications(true);
+      cy.trigger(e); // we missed this event by turning notifications off, so pass it on
+
+      cy.notify({
+        type: 'load',
+        collection: cy.elements()
+      });
+
+      cy.one('load', onload);
+      cy.trigger('load');
+    }).one('layoutstop', function(){
+      cy.one('done', ondone);
+      cy.trigger('done');
+    });
+
+    var layoutOpts = util.extend({}, cy._private.options.layout);
+    layoutOpts.eles = cy.$();
+
+    cy.layout( layoutOpts );
+
+    return this;
+  }
+};
+
+module.exports = corefn;
+
+},{"../collection":23,"../collection/element":19,"../extensions/renderer/null":73,"../is":77,"../util":94,"../window":100}],31:[function(_dereq_,module,exports){
+'use strict';
+
+var define = _dereq_('../define');
+var util = _dereq_('../util');
+var is = _dereq_('../is');
+
+var corefn = ({
+
+  // pull in animation functions
+  animate: define.animate(),
+  animation: define.animation(),
+  animated: define.animated(),
+  clearQueue: define.clearQueue(),
+  delay: define.delay(),
+  delayAnimation: define.delayAnimation(),
+  stop: define.stop(),
+
+  addToAnimationPool: function( eles ){
+    var cy = this;
+
+    if( !cy.styleEnabled() ){ return; } // save cycles when no style used
+
+    cy._private.aniEles.merge( eles );
+  },
+
+  stopAnimationLoop: function(){
+    this._private.animationsRunning = false;
+  },
+
+  startAnimationLoop: function(){
+    var cy = this;
+
+    cy._private.animationsRunning = true;
+
+    if( !cy.styleEnabled() ){ return; } // save cycles when no style used
+
+    // NB the animation loop will exec in headless environments if style enabled
+    // and explicit cy.destroy() is necessary to stop the loop
+
+    function globalAnimationStep(){
+      if( !cy._private.animationsRunning ){ return; }
+
+      util.requestAnimationFrame(function(now){
+        handleElements(now);
+        globalAnimationStep();
+      });
+    }
+
+    globalAnimationStep(); // first call
+
+    function handleElements( now ){
+      var eles = cy._private.aniEles;
+      var doneEles = [];
+
+      function handleElement( ele, isCore ){
+        var _p = ele._private;
+        var current = _p.animation.current;
+        var queue = _p.animation.queue;
+        var ranAnis = false;
+
+        // if nothing currently animating, get something from the queue
+        if( current.length === 0 ){
+          var next = queue.shift();
+
+          if( next ){
+            current.push( next );
+          }
+        }
+
+        var callbacks = function( callbacks ){
+          for( var j = callbacks.length - 1; j >= 0; j-- ){
+            var cb = callbacks[j];
+
+            cb();
+          }
+
+          callbacks.splice( 0, callbacks.length );
+        };
+
+        // step and remove if done
+        for( var i = current.length - 1; i >= 0; i-- ){
+          var ani = current[i];
+          var ani_p = ani._private;
+
+          if( ani_p.stopped ){
+            current.splice( i, 1 );
+
+            ani_p.hooked = false;
+            ani_p.playing = false;
+            ani_p.started = false;
+
+            callbacks( ani_p.frames );
+
+            continue;
+          }
+
+          if( !ani_p.playing && !ani_p.applying ){ continue; }
+
+          // an apply() while playing shouldn't do anything
+          if( ani_p.playing && ani_p.applying ){
+            ani_p.applying = false;
+          }
+
+          if( !ani_p.started ){
+            startAnimation( ele, ani, now );
+          }
+
+          step( ele, ani, now, isCore );
+
+          if( ani_p.applying ){
+            ani_p.applying = false;
+          }
+
+          callbacks( ani_p.frames );
+
+          if( ani.completed() ){
+            current.splice(i, 1);
+
+            ani_p.hooked = false;
+            ani_p.playing = false;
+            ani_p.started = false;
+
+            callbacks( ani_p.completes );
+          }
+
+          ranAnis = true;
+        }
+
+        if( !isCore && current.length === 0 && queue.length === 0 ){
+          doneEles.push( ele );
+        }
+
+        return ranAnis;
+      } // handleElement
+
+      // handle all eles
+      var ranEleAni = false;
+      for( var e = 0; e < eles.length; e++ ){
+        var ele = eles[e];
+        var handledThisEle = handleElement( ele );
+
+        ranEleAni = ranEleAni || handledThisEle;
+      } // each element
+
+      var ranCoreAni = handleElement( cy, true );
+
+      // notify renderer
+      if( ranEleAni || ranCoreAni ){
+        var toNotify;
+
+        if( eles.length > 0 ){
+          var updatedEles = eles.updateCompoundBounds();
+          toNotify = updatedEles.length > 0 ? eles.add( updatedEles ) : eles;
+        }
+
+        cy.notify({
+          type: 'draw',
+          collection: toNotify
+        });
+      }
+
+      // remove elements from list of currently animating if its queues are empty
+      eles.unmerge( doneEles );
+
+    } // handleElements
+
+    function startAnimation( self, ani, now ){
+      var isCore = is.core( self );
+      var isEles = !isCore;
+      var ele = self;
+      var style = cy._private.style;
+      var ani_p = ani._private;
+
+      if( isEles ){
+        var pos = ele._private.position;
+
+        ani_p.startPosition = ani_p.startPosition || {
+          x: pos.x,
+          y: pos.y
+        };
+
+        ani_p.startStyle = ani_p.startStyle || style.getValueStyle( ele );
+      }
+
+      if( isCore ){
+        var pan = cy._private.pan;
+
+        ani_p.startPan = ani_p.startPan || {
+          x: pan.x,
+          y: pan.y
+        };
+
+        ani_p.startZoom = ani_p.startZoom != null ? ani_p.startZoom : cy._private.zoom;
+      }
+
+      ani_p.started = true;
+      ani_p.startTime = now - ani_p.progress * ani_p.duration;
+    }
+
+    function step( self, ani, now, isCore ){
+      var style = cy._private.style;
+      var isEles = !isCore;
+      var _p = self._private;
+      var ani_p = ani._private;
+      var pEasing = ani_p.easing;
+      var startTime = ani_p.startTime;
+
+      if( !ani_p.easingImpl ){
+
+        if( pEasing == null ){ // use default
+          ani_p.easingImpl = easings['linear'];
+
+        } else { // then define w/ name
+          var easingVals;
+
+          if( is.string( pEasing ) ){
+            var easingProp = style.parse('transition-timing-function', pEasing);
+
+            easingVals = easingProp.value;
+
+          } else { // then assume preparsed array
+            easingVals = pEasing;
+          }
+
+          var name, args;
+
+          if( is.string( easingVals ) ){
+            name = easingVals;
+            args = [];
+          } else {
+            name = easingVals[1];
+            args = easingVals.slice(2).map(function(n){ return +n; });
+          }
+
+          if( args.length > 0 ){ // create with args
+            if( name === 'spring' ){
+              args.push( ani_p.duration ); // need duration to generate spring
+            }
+
+            ani_p.easingImpl = easings[ name ].apply( null, args );
+          } else { // static impl by name
+            ani_p.easingImpl = easings[ name ];
+          }
+        }
+
+      }
+
+      var easing = ani_p.easingImpl;
+      var percent;
+
+      if( ani_p.duration === 0 ){
+        percent = 1;
+      } else {
+        percent = (now - startTime) / ani_p.duration;
+      }
+
+      if( ani_p.applying ){
+        percent = ani_p.progress;
+      }
+
+      if( percent < 0 ){
+        percent = 0;
+      } else if( percent > 1 ){
+        percent = 1;
+      }
+
+      if( ani_p.delay == null ){ // then update
+
+        var startPos = ani_p.startPosition;
+        var endPos = ani_p.position;
+        var pos = _p.position;
+        if( endPos && isEles ){
+          if( valid( startPos.x, endPos.x ) ){
+            pos.x = ease( startPos.x, endPos.x, percent, easing );
+          }
+
+          if( valid( startPos.y, endPos.y ) ){
+            pos.y = ease( startPos.y, endPos.y, percent, easing );
+          }
+        }
+
+        var startPan = ani_p.startPan;
+        var endPan = ani_p.pan;
+        var pan = _p.pan;
+        var animatingPan = endPan != null && isCore;
+        if( animatingPan ){
+          if( valid( startPan.x, endPan.x ) ){
+            pan.x = ease( startPan.x, endPan.x, percent, easing );
+          }
+
+          if( valid( startPan.y, endPan.y ) ){
+            pan.y = ease( startPan.y, endPan.y, percent, easing );
+          }
+
+          self.trigger('pan');
+        }
+
+        var startZoom = ani_p.startZoom;
+        var endZoom = ani_p.zoom;
+        var animatingZoom = endZoom != null && isCore;
+        if( animatingZoom ){
+          if( valid( startZoom, endZoom ) ){
+            _p.zoom = ease( startZoom, endZoom, percent, easing );
+          }
+
+          self.trigger('zoom');
+        }
+
+        if( animatingPan || animatingZoom ){
+          self.trigger('viewport');
+        }
+
+        var props = ani_p.style;
+        if( props && isEles ){
+
+          for( var i = 0; i < props.length; i++ ){
+            var prop = props[i];
+            var name = prop.name;
+            var end = prop;
+
+            var start = ani_p.startStyle[ name ];
+            var easedVal = ease( start, end, percent, easing );
+
+            style.overrideBypass( self, name, easedVal );
+          } // for props
+
+        } // if
+
+      }
+
+      if( is.fn(ani_p.step) ){
+        ani_p.step.apply( self, [ now ] );
+      }
+
+      ani_p.progress = percent;
+
+      return percent;
+    }
+
+    function valid(start, end){
+      if( start == null || end == null ){
+        return false;
+      }
+
+      if( is.number(start) && is.number(end) ){
+        return true;
+      } else if( (start) && (end) ){
+        return true;
+      }
+
+      return false;
+    }
+
+    // assumes p0 = 0, p3 = 1
+    function evalCubicBezier( p1, p2, t ){
+      var one_t = 1 - t;
+      var tsq = t*t;
+
+      return ( 3 * one_t * one_t * t * p1 ) + ( 3 * one_t * tsq * p2 ) + tsq * t;
+    }
+
+    function cubicBezier( p1, p2 ){
+      return function( start, end, percent ){
+        return start + (end - start) * evalCubicBezier( p1, p2, percent );
+      };
+    }
+
+    /*! Runge-Kutta spring physics function generator. Adapted from Framer.js, copyright Koen Bok. MIT License: http://en.wikipedia.org/wiki/MIT_License */
+    /* Given a tension, friction, and duration, a simulation at 60FPS will first run without a defined duration in order to calculate the full path. A second pass
+       then adjusts the time delta -- using the relation between actual time and duration -- to calculate the path for the duration-constrained animation. */
+    var generateSpringRK4 = (function () {
+        function springAccelerationForState (state) {
+            return (-state.tension * state.x) - (state.friction * state.v);
+        }
+
+        function springEvaluateStateWithDerivative (initialState, dt, derivative) {
+            var state = {
+                x: initialState.x + derivative.dx * dt,
+                v: initialState.v + derivative.dv * dt,
+                tension: initialState.tension,
+                friction: initialState.friction
+            };
+
+            return { dx: state.v, dv: springAccelerationForState(state) };
+        }
+
+        function springIntegrateState (state, dt) {
+            var a = {
+                    dx: state.v,
+                    dv: springAccelerationForState(state)
+                },
+                b = springEvaluateStateWithDerivative(state, dt * 0.5, a),
+                c = springEvaluateStateWithDerivative(state, dt * 0.5, b),
+                d = springEvaluateStateWithDerivative(state, dt, c),
+                dxdt = 1.0 / 6.0 * (a.dx + 2.0 * (b.dx + c.dx) + d.dx),
+                dvdt = 1.0 / 6.0 * (a.dv + 2.0 * (b.dv + c.dv) + d.dv);
+
+            state.x = state.x + dxdt * dt;
+            state.v = state.v + dvdt * dt;
+
+            return state;
+        }
+
+        return function springRK4Factory (tension, friction, duration) {
+
+            var initState = {
+                    x: -1,
+                    v: 0,
+                    tension: null,
+                    friction: null
+                },
+                path = [0],
+                time_lapsed = 0,
+                tolerance = 1 / 10000,
+                DT = 16 / 1000,
+                have_duration, dt, last_state;
+
+            tension = parseFloat(tension) || 500;
+            friction = parseFloat(friction) || 20;
+            duration = duration || null;
+
+            initState.tension = tension;
+            initState.friction = friction;
+
+            have_duration = duration !== null;
+
+            /* Calculate the actual time it takes for this animation to complete with the provided conditions. */
+            if (have_duration) {
+                /* Run the simulation without a duration. */
+                time_lapsed = springRK4Factory(tension, friction);
+                /* Compute the adjusted time delta. */
+                dt = time_lapsed / duration * DT;
+            } else {
+                dt = DT;
+            }
+
+            while (true) {
+                /* Next/step function .*/
+                last_state = springIntegrateState(last_state || initState, dt);
+                /* Store the position. */
+                path.push(1 + last_state.x);
+                time_lapsed += 16;
+                /* If the change threshold is reached, break. */
+                if (!(Math.abs(last_state.x) > tolerance && Math.abs(last_state.v) > tolerance)) {
+                    break;
+                }
+            }
+
+            /* If duration is not defined, return the actual time required for completing this animation. Otherwise, return a closure that holds the
+               computed path and returns a snapshot of the position according to a given percentComplete. */
+            return !have_duration ? time_lapsed : function(percentComplete) { return path[ (percentComplete * (path.length - 1)) | 0 ]; };
+        };
+    }());
+
+    var easings = {
+      'linear': function( start, end, percent ){
+        return start + (end - start) * percent;
+      },
+
+      // default easings
+      'ease': cubicBezier( 0.25, 0.1, 0.25, 1 ),
+      'ease-in': cubicBezier( 0.42, 0, 1, 1 ),
+      'ease-out': cubicBezier( 0, 0, 0.58, 1 ),
+      'ease-in-out': cubicBezier( 0.42, 0, 0.58, 1 ),
+
+      // sine
+      'ease-in-sine': cubicBezier( 0.47, 0, 0.745, 0.715 ),
+      'ease-out-sine': cubicBezier( 0.39, 0.575, 0.565, 1 ),
+      'ease-in-out-sine': cubicBezier( 0.445, 0.05, 0.55, 0.95 ),
+
+      // quad
+      'ease-in-quad': cubicBezier( 0.55, 0.085, 0.68, 0.53 ),
+      'ease-out-quad': cubicBezier( 0.25, 0.46, 0.45, 0.94 ),
+      'ease-in-out-quad': cubicBezier( 0.455, 0.03, 0.515, 0.955 ),
+
+      // cubic
+      'ease-in-cubic': cubicBezier( 0.55, 0.055, 0.675, 0.19 ),
+      'ease-out-cubic': cubicBezier( 0.215, 0.61, 0.355, 1 ),
+      'ease-in-out-cubic': cubicBezier( 0.645, 0.045, 0.355, 1 ),
+
+      // quart
+      'ease-in-quart': cubicBezier( 0.895, 0.03, 0.685, 0.22 ),
+      'ease-out-quart': cubicBezier( 0.165, 0.84, 0.44, 1 ),
+      'ease-in-out-quart': cubicBezier( 0.77, 0, 0.175, 1 ),
+
+      // quint
+      'ease-in-quint': cubicBezier( 0.755, 0.05, 0.855, 0.06 ),
+      'ease-out-quint': cubicBezier( 0.23, 1, 0.32, 1 ),
+      'ease-in-out-quint': cubicBezier( 0.86, 0, 0.07, 1 ),
+
+      // expo
+      'ease-in-expo': cubicBezier( 0.95, 0.05, 0.795, 0.035 ),
+      'ease-out-expo': cubicBezier( 0.19, 1, 0.22, 1 ),
+      'ease-in-out-expo': cubicBezier( 1, 0, 0, 1 ),
+
+      // circ
+      'ease-in-circ': cubicBezier( 0.6, 0.04, 0.98, 0.335 ),
+      'ease-out-circ': cubicBezier( 0.075, 0.82, 0.165, 1 ),
+      'ease-in-out-circ': cubicBezier( 0.785, 0.135, 0.15, 0.86 ),
+
+
+      // user param easings...
+
+      'spring': function( tension, friction, duration ){
+        var spring = generateSpringRK4( tension, friction, duration );
+
+        return function( start, end, percent ){
+          return start + (end - start) * spring( percent );
+        };
+      },
+
+      'cubic-bezier': function( x1, y1, x2, y2 ){
+        return cubicBezier( x1, y1, x2, y2 );
+      }
+    };
+
+    function ease( startProp, endProp, percent, easingFn ){
+      if( percent < 0 ){
+        percent = 0;
+      } else if( percent > 1 ){
+        percent = 1;
+      }
+
+      var start, end;
+
+      if( startProp.pfValue != null || startProp.value != null ){
+        start = startProp.pfValue != null ? startProp.pfValue : startProp.value;
+      } else {
+        start = startProp;
+      }
+
+      if( endProp.pfValue != null || endProp.value != null ){
+        end = endProp.pfValue != null ? endProp.pfValue : endProp.value;
+      } else {
+        end = endProp;
+      }
+
+      if( is.number(start) && is.number(end) ){
+        return easingFn( start, end, percent );
+
+      } else if( is.array(start) && is.array(end) ){
+        var easedArr = [];
+
+        for( var i = 0; i < end.length; i++ ){
+          var si = start[i];
+          var ei = end[i];
+
+          if( si != null && ei != null ){
+            var val = easingFn(si, ei, percent);
+
+            if( startProp.roundValue ){ val = Math.round( val ); }
+
+            easedArr.push( val );
+          } else {
+            easedArr.push( ei );
+          }
+        }
+
+        return easedArr;
+      }
+
+      return undefined;
+    }
+
+  }
+
+});
+
+module.exports = corefn;
+
+},{"../define":41,"../is":77,"../util":94}],32:[function(_dereq_,module,exports){
+'use strict';
+
+var define = _dereq_('../define');
+
+var corefn = ({
+  on: define.on(), // .on( events [, selector] [, data], handler)
+  one: define.on({ unbindSelfOnTrigger: true }),
+  once: define.on({ unbindAllBindersOnTrigger: true }),
+  off: define.off(), // .off( events [, selector] [, handler] )
+  trigger: define.trigger() // .trigger( events [, extraParams] )
+});
+
+define.eventAliasesOn( corefn );
+
+module.exports = corefn;
+
+},{"../define":41}],33:[function(_dereq_,module,exports){
+'use strict';
+
+var corefn = ({
+
+  png: function( options ){
+    var renderer = this._private.renderer;
+    options = options || {};
+
+    return renderer.png( options );
+  },
+
+  jpg: function( options ){
+    var renderer = this._private.renderer;
+    options = options || {};
+
+    options.bg = options.bg || '#fff';
+
+    return renderer.jpg( options );
+  }
+
+});
+
+corefn.jpeg = corefn.jpg;
+
+module.exports = corefn;
+
+},{}],34:[function(_dereq_,module,exports){
+'use strict';
+
+var window = _dereq_('../window');
+var util = _dereq_('../util');
+var Collection = _dereq_('../collection');
+var is = _dereq_('../is');
+var Promise = _dereq_('../promise');
+var define = _dereq_('../define');
+
+var Core = function( opts ){
+  if( !(this instanceof Core) ){
+    return new Core(opts);
+  }
+  var cy = this;
+
+  opts = util.extend({}, opts);
+
+  var container = opts.container;
+
+  // allow for passing a wrapped jquery object
+  // e.g. cytoscape({ container: $('#cy') })
+  if( container && !is.htmlElement( container ) && is.htmlElement( container[0] ) ){
+    container = container[0];
+  }
+
+  var reg = container ? container._cyreg : null; // e.g. already registered some info (e.g. readies) via jquery
+  reg = reg || {};
+
+  if( reg && reg.cy ){
+    reg.cy.destroy();
+
+    reg = {}; // old instance => replace reg completely
+  }
+
+  var readies = reg.readies = reg.readies || [];
+
+  if( container ){ container._cyreg = reg; } // make sure container assoc'd reg points to this cy
+  reg.cy = cy;
+
+  var head = window !== undefined && container !== undefined && !opts.headless;
+  var options = opts;
+  options.layout = util.extend( { name: head ? 'grid' : 'null' }, options.layout );
+  options.renderer = util.extend( { name: head ? 'canvas' : 'null' }, options.renderer );
+
+  var defVal = function( def, val, altVal ){
+    if( val !== undefined ){
+      return val;
+    } else if( altVal !== undefined ){
+      return altVal;
+    } else {
+      return def;
+    }
+  };
+
+  var _p = this._private = {
+    container: container, // html dom ele container
+    ready: false, // whether ready has been triggered
+    initrender: false, // has initrender has been triggered
+    options: options, // cached options
+    elements: [], // array of elements
+    id2index: {}, // element id => index in elements array
+    listeners: [], // list of listeners
+    onRenders: [], // rendering listeners
+    aniEles: Collection(this), // elements being animated
+    scratch: {}, // scratch object for core
+    layout: null,
+    renderer: null,
+    notificationsEnabled: true, // whether notifications are sent to the renderer
+    minZoom: 1e-50,
+    maxZoom: 1e50,
+    zoomingEnabled: defVal(true, options.zoomingEnabled),
+    userZoomingEnabled: defVal(true, options.userZoomingEnabled),
+    panningEnabled: defVal(true, options.panningEnabled),
+    userPanningEnabled: defVal(true, options.userPanningEnabled),
+    boxSelectionEnabled: defVal(true, options.boxSelectionEnabled),
+    autolock: defVal(false, options.autolock, options.autolockNodes),
+    autoungrabify: defVal(false, options.autoungrabify, options.autoungrabifyNodes),
+    autounselectify: defVal(false, options.autounselectify),
+    styleEnabled: options.styleEnabled === undefined ? head : options.styleEnabled,
+    zoom: is.number(options.zoom) ? options.zoom : 1,
+    pan: {
+      x: is.plainObject(options.pan) && is.number(options.pan.x) ? options.pan.x : 0,
+      y: is.plainObject(options.pan) && is.number(options.pan.y) ? options.pan.y : 0
+    },
+    animation: { // object for currently-running animations
+      current: [],
+      queue: []
+    },
+    hasCompoundNodes: false,
+    deferredExecQueue: []
+  };
+
+  // set selection type
+  var selType = options.selectionType;
+  if( selType === undefined || (selType !== 'additive' && selType !== 'single') ){
+    // then set default
+
+    _p.selectionType = 'single';
+  } else {
+    _p.selectionType = selType;
+  }
+
+  // init zoom bounds
+  if( is.number(options.minZoom) && is.number(options.maxZoom) && options.minZoom < options.maxZoom ){
+    _p.minZoom = options.minZoom;
+    _p.maxZoom = options.maxZoom;
+  } else if( is.number(options.minZoom) && options.maxZoom === undefined ){
+    _p.minZoom = options.minZoom;
+  } else if( is.number(options.maxZoom) && options.minZoom === undefined ){
+    _p.maxZoom = options.maxZoom;
+  }
+
+  var loadExtData = function( next ){
+    var anyIsPromise = false;
+
+    for( var i = 0; i < extData.length; i++ ){
+      var datum = extData[i];
+
+      if( is.promise(datum) ){
+        anyIsPromise = true;
+        break;
+      }
+    }
+
+    if( anyIsPromise ){
+      return Promise.all( extData ).then( next ); // load all data asynchronously, then exec rest of init
+    } else {
+      next( extData ); // exec synchronously for convenience
+    }
+  };
+
+  // create the renderer
+  cy.initRenderer( util.extend({
+    hideEdgesOnViewport: options.hideEdgesOnViewport,
+    hideLabelsOnViewport: options.hideLabelsOnViewport,
+    textureOnViewport: options.textureOnViewport,
+    wheelSensitivity: is.number(options.wheelSensitivity) && options.wheelSensitivity > 0 ? options.wheelSensitivity : 1,
+    motionBlur: options.motionBlur === undefined ? true : options.motionBlur, // on by default
+    motionBlurOpacity: options.motionBlurOpacity === undefined ? 0.05 : options.motionBlurOpacity,
+    pixelRatio: is.number(options.pixelRatio) && options.pixelRatio > 0 ? options.pixelRatio : undefined,
+    desktopTapThreshold: options.desktopTapThreshold === undefined ? 4 : options.desktopTapThreshold,
+    touchTapThreshold: options.touchTapThreshold === undefined ? 8 : options.touchTapThreshold
+  }, options.renderer) );
+
+  var extData = [ options.style, options.elements ];
+  loadExtData(function( thens ){
+    var initStyle = thens[0];
+    var initEles = thens[1];
+
+    // init style
+    if( _p.styleEnabled ){
+      cy.setStyle( initStyle );
+    }
+
+    // trigger the passed function for the `initrender` event
+    if( options.initrender ){
+      cy.on('initrender', options.initrender);
+      cy.on('initrender', function(){
+        _p.initrender = true;
+      });
+    }
+
+    // initial load
+    cy.load(initEles, function(){ // onready
+      cy.startAnimationLoop();
+      _p.ready = true;
+
+      // if a ready callback is specified as an option, the bind it
+      if( is.fn( options.ready ) ){
+        cy.on('ready', options.ready);
+      }
+
+      // bind all the ready handlers registered before creating this instance
+      for( var i = 0; i < readies.length; i++ ){
+        var fn = readies[i];
+        cy.on('ready', fn);
+      }
+      if( reg ){ reg.readies = []; } // clear b/c we've bound them all and don't want to keep it around in case a new core uses the same div etc
+
+      cy.trigger('ready');
+    }, options.done);
+
+  });
+};
+
+var corefn = Core.prototype; // short alias
+
+util.extend(corefn, {
+  instanceString: function(){
+    return 'core';
+  },
+
+  isReady: function(){
+    return this._private.ready;
+  },
+
+  ready: function( fn ){
+    if( this.isReady() ){
+      this.trigger('ready', [], fn); // just calls fn as though triggered via ready event
+    } else {
+      this.on('ready', fn);
+    }
+
+    return this;
+  },
+
+  initrender: function(){
+    return this._private.initrender;
+  },
+
+  destroy: function(){
+    var cy = this;
+
+    cy.stopAnimationLoop();
+
+    cy.notify({ type: 'destroy' }); // destroy the renderer
+
+    var domEle = cy.container();
+    if( domEle ){
+      domEle._cyreg = null;
+
+      while( domEle.childNodes.length > 0 ){
+        domEle.removeChild( domEle.childNodes[0] );
+      }
+    }
+
+    return cy;
+  },
+
+  getElementById: function( id ){
+    var index = this._private.id2index[ id ];
+    if( index !== undefined ){
+      return this._private.elements[ index ];
+    }
+
+    // worst case, return an empty collection
+    return Collection( this );
+  },
+
+  selectionType: function(){
+    return this._private.selectionType;
+  },
+
+  hasCompoundNodes: function(){
+    return this._private.hasCompoundNodes;
+  },
+
+  styleEnabled: function(){
+    return this._private.styleEnabled;
+  },
+
+  addToPool: function( eles ){
+    var elements = this._private.elements;
+    var id2index = this._private.id2index;
+
+    for( var i = 0; i < eles.length; i++ ){
+      var ele = eles[i];
+
+      var id = ele._private.data.id;
+      var index = id2index[ id ];
+      var alreadyInPool = index !== undefined;
+
+      if( !alreadyInPool ){
+        index = elements.length;
+        elements.push( ele );
+        id2index[ id ] = index;
+        ele._private.index = index;
+      }
+    }
+
+    return this; // chaining
+  },
+
+  removeFromPool: function( eles ){
+    var elements = this._private.elements;
+    var id2index = this._private.id2index;
+
+    for( var i = 0; i < eles.length; i++ ){
+      var ele = eles[i];
+
+      var id = ele._private.data.id;
+      var index = id2index[ id ];
+      var inPool = index !== undefined;
+
+      if( inPool ){
+        this._private.id2index[ id ] = undefined;
+        elements.splice(index, 1);
+
+        // adjust the index of all elements past this index
+        for( var j = index; j < elements.length; j++ ){
+          var jid = elements[j]._private.data.id;
+          id2index[ jid ]--;
+          elements[j]._private.index--;
+        }
+      }
+    }
+  },
+
+  container: function(){
+    return this._private.container;
+  },
+
+  options: function(){
+    return util.copy( this._private.options );
+  },
+
+  json: function( obj ){
+    var cy = this;
+    var _p = cy._private;
+
+    if( is.plainObject(obj) ){ // set
+
+      cy.startBatch();
+
+      if( obj.elements ){
+        var idInJson = {};
+
+        var updateEles = function( jsons, gr ){
+          for( var i = 0; i < jsons.length; i++ ){
+            var json = jsons[i];
+            var id = json.data.id;
+            var ele = cy.getElementById( id );
+
+            idInJson[ id ] = true;
+
+            if( ele.length !== 0 ){ // existing element should be updated
+              ele.json( json );
+            } else { // otherwise should be added
+              if( gr ){
+                cy.add( util.extend({ group: gr }, json) );
+              } else {
+                cy.add( json );
+              }
+            }
+          }
+        };
+
+        if( is.array(obj.elements) ){ // elements: []
+          updateEles( obj.elements );
+
+        } else { // elements: { nodes: [], edges: [] }
+          var grs = ['nodes', 'edges'];
+          for( var i = 0; i < grs.length; i++ ){
+            var gr = grs[i];
+            var elements = obj.elements[ gr ];
+
+            if( is.array(elements) ){
+              updateEles( elements, gr );
+            }
+          }
+        }
+
+        // elements not specified in json should be removed
+        cy.elements().stdFilter(function( ele ){
+          return !idInJson[ ele.id() ];
+        }).remove();
+      }
+
+      if( obj.style ){
+        cy.style( obj.style );
+      }
+
+      if( obj.zoom != null && obj.zoom !== _p.zoom ){
+        cy.zoom( obj.zoom );
+      }
+
+      if( obj.pan ){
+        if( obj.pan.x !== _p.pan.x || obj.pan.y !== _p.pan.y ){
+          cy.pan( obj.pan );
+        }
+      }
+
+      var fields = [
+        'minZoom', 'maxZoom', 'zoomingEnabled', 'userZoomingEnabled',
+        'panningEnabled', 'userPanningEnabled',
+        'boxSelectionEnabled',
+        'autolock', 'autoungrabify', 'autounselectify'
+      ];
+
+      for( var i = 0; i < fields.length; i++ ){
+        var f = fields[i];
+
+        if( obj[f] != null ){
+          cy[f]( obj[f] );
+        }
+      }
+
+      cy.endBatch();
+
+      return this; // chaining
+    } else if( obj === undefined ){ // get
+      var json = {};
+
+      json.elements = {};
+      cy.elements().each(function(i, ele){
+        var group = ele.group();
+
+        if( !json.elements[group] ){
+          json.elements[group] = [];
+        }
+
+        json.elements[group].push( ele.json() );
+      });
+
+      if( this._private.styleEnabled ){
+        json.style = cy.style().json();
+      }
+
+      json.zoomingEnabled = cy._private.zoomingEnabled;
+      json.userZoomingEnabled = cy._private.userZoomingEnabled;
+      json.zoom = cy._private.zoom;
+      json.minZoom = cy._private.minZoom;
+      json.maxZoom = cy._private.maxZoom;
+      json.panningEnabled = cy._private.panningEnabled;
+      json.userPanningEnabled = cy._private.userPanningEnabled;
+      json.pan = util.copy( cy._private.pan );
+      json.boxSelectionEnabled = cy._private.boxSelectionEnabled;
+      json.renderer = util.copy( cy._private.options.renderer );
+      json.hideEdgesOnViewport = cy._private.options.hideEdgesOnViewport;
+      json.hideLabelsOnViewport = cy._private.options.hideLabelsOnViewport;
+      json.textureOnViewport = cy._private.options.textureOnViewport;
+      json.wheelSensitivity = cy._private.options.wheelSensitivity;
+      json.motionBlur = cy._private.options.motionBlur;
+
+      return json;
+    }
+  },
+
+  scratch: define.data({
+    field: 'scratch',
+    bindingEvent: 'scratch',
+    allowBinding: true,
+    allowSetting: true,
+    settingEvent: 'scratch',
+    settingTriggersEvent: true,
+    triggerFnName: 'trigger',
+    allowGetting: true
+  }),
+
+  removeScratch: define.removeData({
+    field: 'scratch',
+    event: 'scratch',
+    triggerFnName: 'trigger',
+    triggerEvent: true
+  })
+
+});
+
+[
+  _dereq_('./add-remove'),
+  _dereq_('./animation'),
+  _dereq_('./events'),
+  _dereq_('./export'),
+  _dereq_('./layout'),
+  _dereq_('./notification'),
+  _dereq_('./renderer'),
+  _dereq_('./search'),
+  _dereq_('./style'),
+  _dereq_('./viewport')
+].forEach(function( props ){
+  util.extend( corefn, props );
+});
+
+module.exports = Core;
+
+},{"../collection":23,"../define":41,"../is":77,"../promise":80,"../util":94,"../window":100,"./add-remove":30,"./animation":31,"./events":32,"./export":33,"./layout":35,"./notification":36,"./renderer":37,"./search":38,"./style":39,"./viewport":40}],35:[function(_dereq_,module,exports){
+'use strict';
+
+var util = _dereq_('../util');
+var is = _dereq_('../is');
+
+var corefn = ({
+
+  layout: function( params ){
+    var layout = this._private.prevLayout = ( params == null ? this._private.prevLayout : this.makeLayout( params ) );
+
+    layout.run();
+
+    return this; // chaining
+  },
+
+  makeLayout: function( options ){
+    var cy = this;
+
+    if( options == null ){
+      util.error('Layout options must be specified to make a layout');
+      return;
+    }
+
+    if( options.name == null ){
+      util.error('A `name` must be specified to make a layout');
+      return;
+    }
+
+    var name = options.name;
+    var Layout = cy.extension('layout', name);
+
+    if( Layout == null ){
+      util.error('Can not apply layout: No such layout `' + name + '` found; did you include its JS file?');
+      return;
+    }
+
+    var eles;
+    if( is.string( options.eles ) ){
+      eles = cy.$( options.eles );
+    } else {
+      eles = options.eles != null ? options.eles : cy.$();
+    }
+
+    var layout = new Layout( util.extend({}, options, {
+      cy: cy,
+      eles: eles
+    }) );
+
+    return layout;
+  }
+
+});
+
+corefn.createLayout = corefn.makeLayout;
+
+module.exports = corefn;
+
+},{"../is":77,"../util":94}],36:[function(_dereq_,module,exports){
+'use strict';
+
+var corefn = ({
+  notify: function( params ){
+    var _p = this._private;
+
+    if( _p.batchingNotify ){
+      var bEles = _p.batchNotifyEles;
+      var bTypes = _p.batchNotifyTypes;
+
+      if( params.collection ){
+        bEles.merge( params.collection );
+      }
+
+      if( !bTypes.ids[ params.type ] ){
+        bTypes.push( params.type );
+      }
+
+      return; // notifications are disabled during batching
+    }
+
+    if( !_p.notificationsEnabled ){ return; } // exit on disabled
+
+    var renderer = this.renderer();
+
+    renderer.notify(params);
+  },
+
+  notifications: function( bool ){
+    var p = this._private;
+
+    if( bool === undefined ){
+      return p.notificationsEnabled;
+    } else {
+      p.notificationsEnabled = bool ? true : false;
+    }
+  },
+
+  noNotifications: function( callback ){
+    this.notifications(false);
+    callback();
+    this.notifications(true);
+  },
+
+  startBatch: function(){
+    var _p = this._private;
+
+    if( _p.batchCount == null ){
+      _p.batchCount = 0;
+    }
+
+    if( _p.batchCount === 0 ){
+      _p.batchingStyle = _p.batchingNotify = true;
+      _p.batchStyleEles = this.collection();
+      _p.batchNotifyEles = this.collection();
+      _p.batchNotifyTypes = [];
+
+      _p.batchNotifyTypes.ids = {};
+    }
+
+    _p.batchCount++;
+
+    return this;
+  },
+
+  endBatch: function(){
+    var _p = this._private;
+
+    _p.batchCount--;
+
+    if( _p.batchCount === 0 ){
+      // update style for dirty eles
+      _p.batchingStyle = false;
+      _p.batchStyleEles.updateStyle();
+
+      // notify the renderer of queued eles and event types
+      _p.batchingNotify = false;
+      this.notify({
+        type: _p.batchNotifyTypes,
+        collection: _p.batchNotifyEles
+      });
+    }
+
+    return this;
+  },
+
+  batch: function( callback ){
+    this.startBatch();
+    callback();
+    this.endBatch();
+
+    return this;
+  },
+
+  // for backwards compatibility
+  batchData: function( map ){
+    var cy = this;
+
+    return this.batch(function(){
+      for( var id in map ){
+        var data = map[id];
+        var ele = cy.getElementById( id );
+
+        ele.data( data );
+      }
+    });
+  }
+});
+
+module.exports = corefn;
+
+},{}],37:[function(_dereq_,module,exports){
+'use strict';
+
+var util = _dereq_('../util');
+
+var corefn = ({
+
+  renderTo: function( context, zoom, pan, pxRatio ){
+    var r = this._private.renderer;
+
+    r.renderTo( context, zoom, pan, pxRatio );
+    return this;
+  },
+
+  renderer: function(){
+    return this._private.renderer;
+  },
+
+  forceRender: function(){
+    this.notify({
+      type: 'draw'
+    });
+
+    return this;
+  },
+
+  resize: function(){
+    this.notify({
+      type: 'resize'
+    });
+
+    this.trigger('resize');
+
+    return this;
+  },
+
+  initRenderer: function( options ){
+    var cy = this;
+
+    var RendererProto = cy.extension('renderer', options.name);
+    if( RendererProto == null ){
+      util.error('Can not initialise: No such renderer `%s` found; did you include its JS file?', options.name);
+      return;
+    }
+
+    var rOpts = util.extend({}, options, {
+      cy: cy
+    });
+    var renderer = cy._private.renderer = new RendererProto( rOpts );
+
+    renderer.init( rOpts );
+
+  },
+
+  triggerOnRender: function(){
+    var cbs = this._private.onRenders;
+
+    for( var i = 0; i < cbs.length; i++ ){
+      var cb = cbs[i];
+
+      cb();
+    }
+
+    return this;
+  },
+
+  onRender: function( cb ){
+    this._private.onRenders.push( cb );
+
+    return this;
+  },
+
+  offRender: function( fn ){
+    var cbs = this._private.onRenders;
+
+    if( fn == null ){ // unbind all
+      this._private.onRenders = [];
+      return this;
+    }
+
+    for( var i = 0; i < cbs.length; i++ ){ // unbind specified
+      var cb = cbs[i];
+
+      if( fn === cb ){
+        cbs.splice( i, 1 );
+        break;
+      }
+    }
+
+    return this;
+  }
+
+});
+
+corefn.invalidateDimensions = corefn.resize;
+
+module.exports = corefn;
+
+},{"../util":94}],38:[function(_dereq_,module,exports){
+'use strict';
+
+var is = _dereq_('../is');
+var Collection = _dereq_('../collection');
+
+var corefn = ({
+
+  // get a collection
+  // - empty collection on no args
+  // - collection of elements in the graph on selector arg
+  // - guarantee a returned collection when elements or collection specified
+  collection: function( eles, opts ){
+
+    if( is.string( eles ) ){
+      return this.$( eles );
+
+    } else if( is.elementOrCollection( eles ) ){
+      return eles.collection();
+
+    } else if( is.array( eles ) ){
+      return Collection( this, eles, opts );
+    }
+
+    return Collection( this );
+  },
+
+  nodes: function( selector ){
+    var nodes = this.$(function(){
+      return this.isNode();
+    });
+
+    if( selector ){
+      return nodes.filter( selector );
+    }
+
+    return nodes;
+  },
+
+  edges: function( selector ){
+    var edges = this.$(function(){
+      return this.isEdge();
+    });
+
+    if( selector ){
+      return edges.filter( selector );
+    }
+
+    return edges;
+  },
+
+  // search the graph like jQuery
+  $: function( selector ){
+    var eles = new Collection( this, this._private.elements );
+
+    if( selector ){
+      return eles.filter( selector );
+    }
+
+    return eles;
+  }
+
+});
+
+// aliases
+corefn.elements = corefn.filter = corefn.$;
+
+module.exports = corefn;
+
+},{"../collection":23,"../is":77}],39:[function(_dereq_,module,exports){
+'use strict';
+
+var is = _dereq_('../is');
+var Style = _dereq_('../style');
+
+var corefn = ({
+
+  style: function( newStyle ){
+    if( newStyle ){
+      var s = this.setStyle( newStyle );
+
+      s.update();
+    }
+
+    return this._private.style;
+  },
+
+  setStyle: function( style ){
+    var _p = this._private;
+
+    if( is.stylesheet(style) ){
+      _p.style = style.generateStyle(this);
+
+    } else if( is.array(style) ) {
+      _p.style = Style.fromJson(this, style);
+
+    } else if( is.string(style) ){
+      _p.style = Style.fromString(this, style);
+
+    } else {
+      _p.style = Style( this );
+    }
+
+    return _p.style;
+  }
+});
+
+module.exports = corefn;
+
+},{"../is":77,"../style":86}],40:[function(_dereq_,module,exports){
+'use strict';
+
+var is = _dereq_('../is');
+
+var corefn = ({
+
+  autolock: function(bool){
+    if( bool !== undefined ){
+      this._private.autolock = bool ? true : false;
+    } else {
+      return this._private.autolock;
+    }
+
+    return this; // chaining
+  },
+
+  autoungrabify: function(bool){
+    if( bool !== undefined ){
+      this._private.autoungrabify = bool ? true : false;
+    } else {
+      return this._private.autoungrabify;
+    }
+
+    return this; // chaining
+  },
+
+  autounselectify: function(bool){
+    if( bool !== undefined ){
+      this._private.autounselectify = bool ? true : false;
+    } else {
+      return this._private.autounselectify;
+    }
+
+    return this; // chaining
+  },
+
+  panningEnabled: function( bool ){
+    if( bool !== undefined ){
+      this._private.panningEnabled = bool ? true : false;
+    } else {
+      return this._private.panningEnabled;
+    }
+
+    return this; // chaining
+  },
+
+  userPanningEnabled: function( bool ){
+    if( bool !== undefined ){
+      this._private.userPanningEnabled = bool ? true : false;
+    } else {
+      return this._private.userPanningEnabled;
+    }
+
+    return this; // chaining
+  },
+
+  zoomingEnabled: function( bool ){
+    if( bool !== undefined ){
+      this._private.zoomingEnabled = bool ? true : false;
+    } else {
+      return this._private.zoomingEnabled;
+    }
+
+    return this; // chaining
+  },
+
+  userZoomingEnabled: function( bool ){
+    if( bool !== undefined ){
+      this._private.userZoomingEnabled = bool ? true : false;
+    } else {
+      return this._private.userZoomingEnabled;
+    }
+
+    return this; // chaining
+  },
+
+  boxSelectionEnabled: function( bool ){
+    if( bool !== undefined ){
+      this._private.boxSelectionEnabled = bool ? true : false;
+    } else {
+      return this._private.boxSelectionEnabled;
+    }
+
+    return this; // chaining
+  },
+
+  pan: function(){
+    var args = arguments;
+    var pan = this._private.pan;
+    var dim, val, dims, x, y;
+
+    switch( args.length ){
+    case 0: // .pan()
+      return pan;
+
+    case 1:
+
+      if( is.string( args[0] ) ){ // .pan('x')
+        dim = args[0];
+        return pan[ dim ];
+
+      } else if( is.plainObject( args[0] ) ) { // .pan({ x: 0, y: 100 })
+        if( !this._private.panningEnabled ){
+          return this;
+        }
+
+        dims = args[0];
+        x = dims.x;
+        y = dims.y;
+
+        if( is.number(x) ){
+          pan.x = x;
+        }
+
+        if( is.number(y) ){
+          pan.y = y;
+        }
+
+        this.trigger('pan viewport');
+      }
+      break;
+
+    case 2: // .pan('x', 100)
+      if( !this._private.panningEnabled ){
+        return this;
+      }
+
+      dim = args[0];
+      val = args[1];
+
+      if( (dim === 'x' || dim === 'y') && is.number(val) ){
+        pan[dim] = val;
+      }
+
+      this.trigger('pan viewport');
+      break;
+
+    default:
+      break; // invalid
+    }
+
+    this.notify({ // notify the renderer that the viewport changed
+      type: 'viewport'
+    });
+
+    return this; // chaining
+  },
+
+  panBy: function(params){
+    var args = arguments;
+    var pan = this._private.pan;
+    var dim, val, dims, x, y;
+
+    if( !this._private.panningEnabled ){
+      return this;
+    }
+
+    switch( args.length ){
+    case 1:
+
+      if( is.plainObject( args[0] ) ) { // .panBy({ x: 0, y: 100 })
+        dims = args[0];
+        x = dims.x;
+        y = dims.y;
+
+        if( is.number(x) ){
+          pan.x += x;
+        }
+
+        if( is.number(y) ){
+          pan.y += y;
+        }
+
+        this.trigger('pan viewport');
+      }
+      break;
+
+    case 2: // .panBy('x', 100)
+      dim = args[0];
+      val = args[1];
+
+      if( (dim === 'x' || dim === 'y') && is.number(val) ){
+        pan[dim] += val;
+      }
+
+      this.trigger('pan viewport');
+      break;
+
+    default:
+      break; // invalid
+    }
+
+    this.notify({ // notify the renderer that the viewport changed
+      type: 'viewport'
+    });
+
+    return this; // chaining
+  },
+
+  fit: function( elements, padding ){
+    var viewportState = this.getFitViewport( elements, padding );
+
+    if( viewportState ){
+      var _p = this._private;
+      _p.zoom = viewportState.zoom;
+      _p.pan = viewportState.pan;
+
+      this.trigger('pan zoom viewport');
+
+      this.notify({ // notify the renderer that the viewport changed
+        type: 'viewport'
+      });
+    }
+
+    return this; // chaining
+  },
+
+  getFitViewport: function( elements, padding ){
+    if( is.number(elements) && padding === undefined ){ // elements is optional
+      padding = elements;
+      elements = undefined;
+    }
+
+    if( !this._private.panningEnabled || !this._private.zoomingEnabled ){
+      return;
+    }
+
+    var bb;
+
+    if( is.string(elements) ){
+      var sel = elements;
+      elements = this.$( sel );
+
+    } else if( is.boundingBox(elements) ){ // assume bb
+      var bbe = elements;
+      bb = {
+        x1: bbe.x1,
+        y1: bbe.y1,
+        x2: bbe.x2,
+        y2: bbe.y2
+      };
+
+      bb.w = bb.x2 - bb.x1;
+      bb.h = bb.y2 - bb.y1;
+
+    } else if( !is.elementOrCollection(elements) ){
+      elements = this.elements();
+    }
+
+    bb = bb || elements.boundingBox();
+
+    var w = this.width();
+    var h = this.height();
+    var zoom;
+    padding = is.number(padding) ? padding : 0;
+
+    if( !isNaN(w) && !isNaN(h) && w > 0 && h > 0 && !isNaN(bb.w) && !isNaN(bb.h) &&  bb.w > 0 && bb.h > 0 ){
+      zoom = Math.min( (w - 2*padding)/bb.w, (h - 2*padding)/bb.h );
+
+      // crop zoom
+      zoom = zoom > this._private.maxZoom ? this._private.maxZoom : zoom;
+      zoom = zoom < this._private.minZoom ? this._private.minZoom : zoom;
+
+      var pan = { // now pan to middle
+        x: (w - zoom*( bb.x1 + bb.x2 ))/2,
+        y: (h - zoom*( bb.y1 + bb.y2 ))/2
+      };
+
+      return {
+        zoom: zoom,
+        pan: pan
+      };
+    }
+
+    return;
+  },
+
+  minZoom: function( zoom ){
+    if( zoom === undefined ){
+      return this._private.minZoom;
+    } else if( is.number(zoom) ){
+      this._private.minZoom = zoom;
+    }
+
+    return this;
+  },
+
+  maxZoom: function( zoom ){
+    if( zoom === undefined ){
+      return this._private.maxZoom;
+    } else if( is.number(zoom) ){
+      this._private.maxZoom = zoom;
+    }
+
+    return this;
+  },
+
+  zoom: function( params ){
+    var pos; // in rendered px
+    var zoom;
+
+    if( params === undefined ){ // then get the zoom
+      return this._private.zoom;
+
+    } else if( is.number(params) ){ // then set the zoom
+      zoom = params;
+
+    } else if( is.plainObject(params) ){ // then zoom about a point
+      zoom = params.level;
+
+      if( params.position ){
+        var p = params.position;
+        var pan = this._private.pan;
+        var z = this._private.zoom;
+
+        pos = { // convert to rendered px
+          x: p.x * z + pan.x,
+          y: p.y * z + pan.y
+        };
+      } else if( params.renderedPosition ){
+        pos = params.renderedPosition;
+      }
+
+      if( pos && !this._private.panningEnabled ){
+        return this; // panning disabled
+      }
+    }
+
+    if( !this._private.zoomingEnabled ){
+      return this; // zooming disabled
+    }
+
+    if( !is.number(zoom) || ( pos && (!is.number(pos.x) || !is.number(pos.y)) ) ){
+      return this; // can't zoom with invalid params
+    }
+
+    // crop zoom
+    zoom = zoom > this._private.maxZoom ? this._private.maxZoom : zoom;
+    zoom = zoom < this._private.minZoom ? this._private.minZoom : zoom;
+
+    if( pos ){ // set zoom about position
+      var pan1 = this._private.pan;
+      var zoom1 = this._private.zoom;
+      var zoom2 = zoom;
+
+      var pan2 = {
+        x: -zoom2/zoom1 * (pos.x - pan1.x) + pos.x,
+        y: -zoom2/zoom1 * (pos.y - pan1.y) + pos.y
+      };
+
+      this._private.zoom = zoom;
+      this._private.pan = pan2;
+
+      var posChanged = pan1.x !== pan2.x || pan1.y !== pan2.y;
+      this.trigger(' zoom ' + (posChanged ? ' pan ' : '') + ' viewport ' );
+
+    } else { // just set the zoom
+      this._private.zoom = zoom;
+      this.trigger('zoom viewport');
+    }
+
+    this.notify({ // notify the renderer that the viewport changed
+      type: 'viewport'
+    });
+
+    return this; // chaining
+  },
+
+  viewport: function( opts ){
+    var _p = this._private;
+    var zoomDefd = true;
+    var panDefd = true;
+    var events = []; // to trigger
+    var zoomFailed = false;
+    var panFailed = false;
+
+    if( !opts ){ return this; }
+    if( !is.number(opts.zoom) ){ zoomDefd = false; }
+    if( !is.plainObject(opts.pan) ){ panDefd = false; }
+    if( !zoomDefd && !panDefd ){ return this; }
+
+    if( zoomDefd ){
+      var z = opts.zoom;
+
+      if( z < _p.minZoom || z > _p.maxZoom || !_p.zoomingEnabled ){
+        zoomFailed = true;
+
+      } else {
+        _p.zoom = z;
+
+        events.push('zoom');
+      }
+    }
+
+    if( panDefd && (!zoomFailed || !opts.cancelOnFailedZoom) && _p.panningEnabled ){
+      var p = opts.pan;
+
+      if( is.number(p.x) ){
+        _p.pan.x = p.x;
+        panFailed = false;
+      }
+
+      if( is.number(p.y) ){
+        _p.pan.y = p.y;
+        panFailed = false;
+      }
+
+      if( !panFailed ){
+        events.push('pan');
+      }
+    }
+
+    if( events.length > 0 ){
+      events.push('viewport');
+      this.trigger( events.join(' ') );
+
+      this.notify({
+        type: 'viewport'
+      });
+    }
+
+    return this; // chaining
+  },
+
+  center: function( elements ){
+    var pan = this.getCenterPan( elements );
+
+    if( pan ){
+      this._private.pan = pan;
+
+      this.trigger('pan viewport');
+
+      this.notify({ // notify the renderer that the viewport changed
+        type: 'viewport'
+      });
+    }
+
+    return this; // chaining
+  },
+
+  getCenterPan: function( elements, zoom ){
+    if( !this._private.panningEnabled ){
+      return;
+    }
+
+    if( is.string(elements) ){
+      var selector = elements;
+      elements = this.elements( selector );
+    } else if( !is.elementOrCollection(elements) ){
+      elements = this.elements();
+    }
+
+    var bb = elements.boundingBox();
+    var w = this.width();
+    var h = this.height();
+    zoom = zoom === undefined ? this._private.zoom : zoom;
+
+    var pan = { // middle
+      x: (w - zoom*( bb.x1 + bb.x2 ))/2,
+      y: (h - zoom*( bb.y1 + bb.y2 ))/2
+    };
+
+    return pan;
+  },
+
+  reset: function(){
+    if( !this._private.panningEnabled || !this._private.zoomingEnabled ){
+      return this;
+    }
+
+    this.viewport({
+      pan: { x: 0, y: 0 },
+      zoom: 1
+    });
+
+    return this; // chaining
+  },
+
+  width: function(){
+    var container = this._private.container;
+
+    if( container ){
+      return container.clientWidth;
+    }
+
+    return 1; // fallback if no container (not 0 b/c can be used for dividing etc)
+  },
+
+  height: function(){
+    var container = this._private.container;
+
+    if( container ){
+      return container.clientHeight;
+    }
+
+    return 1; // fallback if no container (not 0 b/c can be used for dividing etc)
+  },
+
+  extent: function(){
+    var pan = this._private.pan;
+    var zoom = this._private.zoom;
+    var rb = this.renderedExtent();
+
+    var b = {
+      x1: ( rb.x1 - pan.x )/zoom,
+      x2: ( rb.x2 - pan.x )/zoom,
+      y1: ( rb.y1 - pan.y )/zoom,
+      y2: ( rb.y2 - pan.y )/zoom
+    };
+
+    b.w = b.x2 - b.x1;
+    b.h = b.y2 - b.y1;
+
+    return b;
+  },
+
+  renderedExtent: function(){
+    var width = this.width();
+    var height = this.height();
+
+    return {
+      x1: 0,
+      y1: 0,
+      x2: width,
+      y2: height,
+      w: width,
+      h: height
+    };
+  }
+});
+
+// aliases
+corefn.centre = corefn.center;
+
+// backwards compatibility
+corefn.autolockNodes = corefn.autolock;
+corefn.autoungrabifyNodes = corefn.autoungrabify;
+
+module.exports = corefn;
+
+},{"../is":77}],41:[function(_dereq_,module,exports){
+'use strict';
+
+// use this module to cherry pick functions into your prototype
+// (useful for functions shared between the core and collections, for example)
+
+// e.g.
+// var foo = define.foo({ /* params... */ })
+
+var util = _dereq_('./util');
+var is = _dereq_('./is');
+var Selector = _dereq_('./selector');
+var Promise = _dereq_('./promise');
+var Event = _dereq_('./event');
+var Animation = _dereq_('./animation');
+
+var define = {
+
+  // access data field
+  data: function( params ){
+    var defaults = {
+      field: 'data',
+      bindingEvent: 'data',
+      allowBinding: false,
+      allowSetting: false,
+      allowGetting: false,
+      settingEvent: 'data',
+      settingTriggersEvent: false,
+      triggerFnName: 'trigger',
+      immutableKeys: {}, // key => true if immutable
+      updateStyle: false,
+      onSet: function( self ){},
+      canSet: function( self ){ return true; }
+    };
+    params = util.extend({}, defaults, params);
+
+    return function dataImpl( name, value ){
+      var p = params;
+      var self = this;
+      var selfIsArrayLike = self.length !== undefined;
+      var all = selfIsArrayLike ? self : [self]; // put in array if not array-like
+      var single = selfIsArrayLike ? self[0] : self;
+
+      // .data('foo', ...)
+      if( is.string(name) ){ // set or get property
+
+        // .data('foo')
+        if( p.allowGetting && value === undefined ){ // get
+
+          var ret;
+          if( single ){
+            ret = single._private[ p.field ][ name ];
+          }
+          return ret;
+
+        // .data('foo', 'bar')
+        } else if( p.allowSetting && value !== undefined ) { // set
+          var valid = !p.immutableKeys[name];
+          if( valid ){
+            for( var i = 0, l = all.length; i < l; i++ ){
+              if( p.canSet( all[i] ) ){
+                all[i]._private[ p.field ][ name ] = value;
+              }
+            }
+
+            // update mappers if asked
+            if( p.updateStyle ){ self.updateStyle(); }
+
+            // call onSet callback
+            p.onSet( self );
+
+            if( p.settingTriggersEvent ){
+              self[ p.triggerFnName ]( p.settingEvent );
+            }
+          }
+        }
+
+      // .data({ 'foo': 'bar' })
+      } else if( p.allowSetting && is.plainObject(name) ){ // extend
+        var obj = name;
+        var k, v;
+
+        for( k in obj ){
+          v = obj[ k ];
+
+          var valid = !p.immutableKeys[k];
+          if( valid ){
+            for( var i = 0, l = all.length; i < l; i++ ){
+              if( p.canSet( all[i] ) ){
+                all[i]._private[ p.field ][ k ] = v;
+              }
+            }
+          }
+        }
+
+        // update mappers if asked
+        if( p.updateStyle ){ self.updateStyle(); }
+
+        // call onSet callback
+        p.onSet( self );
+
+        if( p.settingTriggersEvent ){
+          self[ p.triggerFnName ]( p.settingEvent );
+        }
+
+      // .data(function(){ ... })
+      } else if( p.allowBinding && is.fn(name) ){ // bind to event
+        var fn = name;
+        self.bind( p.bindingEvent, fn );
+
+      // .data()
+      } else if( p.allowGetting && name === undefined ){ // get whole object
+        var ret;
+        if( single ){
+          ret = single._private[ p.field ];
+        }
+        return ret;
+      }
+
+      return self; // maintain chainability
+    }; // function
+  }, // data
+
+  // remove data field
+  removeData: function( params ){
+    var defaults = {
+      field: 'data',
+      event: 'data',
+      triggerFnName: 'trigger',
+      triggerEvent: false,
+      immutableKeys: {} // key => true if immutable
+    };
+    params = util.extend({}, defaults, params);
+
+    return function removeDataImpl( names ){
+      var p = params;
+      var self = this;
+      var selfIsArrayLike = self.length !== undefined;
+      var all = selfIsArrayLike ? self : [self]; // put in array if not array-like
+
+      // .removeData('foo bar')
+      if( is.string(names) ){ // then get the list of keys, and delete them
+        var keys = names.split(/\s+/);
+        var l = keys.length;
+
+        for( var i = 0; i < l; i++ ){ // delete each non-empty key
+          var key = keys[i];
+          if( is.emptyString(key) ){ continue; }
+
+          var valid = !p.immutableKeys[ key ]; // not valid if immutable
+          if( valid ){
+            for( var i_a = 0, l_a = all.length; i_a < l_a; i_a++ ){
+              all[ i_a ]._private[ p.field ][ key ] = undefined;
+            }
+          }
+        }
+
+        if( p.triggerEvent ){
+          self[ p.triggerFnName ]( p.event );
+        }
+
+      // .removeData()
+      } else if( names === undefined ){ // then delete all keys
+
+        for( var i_a = 0, l_a = all.length; i_a < l_a; i_a++ ){
+          var _privateFields = all[ i_a ]._private[ p.field ];
+
+          for( var key in _privateFields ){
+            var validKeyToDelete = !p.immutableKeys[ key ];
+
+            if( validKeyToDelete ){
+              _privateFields[ key ] = undefined;
+            }
+          }
+        }
+
+        if( p.triggerEvent ){
+          self[ p.triggerFnName ]( p.event );
+        }
+      }
+
+      return self; // maintain chaining
+    }; // function
+  }, // removeData
+
+  // event function reusable stuff
+  event: {
+    regex: /(\w+)(\.\w+)?/, // regex for matching event strings (e.g. "click.namespace")
+    optionalTypeRegex: /(\w+)?(\.\w+)?/,
+    falseCallback: function(){ return false; }
+  },
+
+  // event binding
+  on: function( params ){
+    var defaults = {
+      unbindSelfOnTrigger: false,
+      unbindAllBindersOnTrigger: false
+    };
+    params = util.extend({}, defaults, params);
+
+    return function onImpl(events, selector, data, callback){
+      var self = this;
+      var selfIsArrayLike = self.length !== undefined;
+      var all = selfIsArrayLike ? self : [self]; // put in array if not array-like
+      var eventsIsString = is.string(events);
+      var p = params;
+
+      if( is.plainObject(selector) ){ // selector is actually data
+        callback = data;
+        data = selector;
+        selector = undefined;
+      } else if( is.fn(selector) || selector === false ){ // selector is actually callback
+        callback = selector;
+        data = undefined;
+        selector = undefined;
+      }
+
+      if( is.fn(data) || data === false ){ // data is actually callback
+        callback = data;
+        data = undefined;
+      }
+
+      // if there isn't a callback, we can't really do anything
+      // (can't speak for mapped events arg version)
+      if( !(is.fn(callback) || callback === false) && eventsIsString ){
+        return self; // maintain chaining
+      }
+
+      if( eventsIsString ){ // then convert to map
+        var map = {};
+        map[ events ] = callback;
+        events = map;
+      }
+
+      for( var evts in events ){
+        callback = events[evts];
+        if( callback === false ){
+          callback = define.event.falseCallback;
+        }
+
+        if( !is.fn(callback) ){ continue; }
+
+        evts = evts.split(/\s+/);
+        for( var i = 0; i < evts.length; i++ ){
+          var evt = evts[i];
+          if( is.emptyString(evt) ){ continue; }
+
+          var match = evt.match( define.event.regex ); // type[.namespace]
+
+          if( match ){
+            var type = match[1];
+            var namespace = match[2] ? match[2] : undefined;
+
+            var listener = {
+              callback: callback, // callback to run
+              data: data, // extra data in eventObj.data
+              delegated: selector ? true : false, // whether the evt is delegated
+              selector: selector, // the selector to match for delegated events
+              selObj: new Selector(selector), // cached selector object to save rebuilding
+              type: type, // the event type (e.g. 'click')
+              namespace: namespace, // the event namespace (e.g. ".foo")
+              unbindSelfOnTrigger: p.unbindSelfOnTrigger,
+              unbindAllBindersOnTrigger: p.unbindAllBindersOnTrigger,
+              binders: all // who bound together
+            };
+
+            for( var j = 0; j < all.length; j++ ){
+              var _p = all[j]._private;
+
+              _p.listeners = _p.listeners || [];
+              _p.listeners.push( listener );
+            }
+          }
+        } // for events array
+      } // for events map
+
+      return self; // maintain chaining
+    }; // function
+  }, // on
+
+  eventAliasesOn: function( proto ){
+    var p = proto;
+
+    p.addListener = p.listen = p.bind = p.on;
+    p.removeListener = p.unlisten = p.unbind = p.off;
+    p.emit = p.trigger;
+
+    // this is just a wrapper alias of .on()
+    p.pon = p.promiseOn = function( events, selector ){
+      var self = this;
+      var args = Array.prototype.slice.call( arguments, 0 );
+
+      return new Promise(function( resolve, reject ){
+        var callback = function( e ){
+          self.off.apply( self, offArgs );
+
+          resolve( e );
+        };
+
+        var onArgs = args.concat([ callback ]);
+        var offArgs = onArgs.concat([]);
+
+        self.on.apply( self, onArgs );
+      });
+    };
+  },
+
+  off: function offImpl( params ){
+    var defaults = {
+    };
+    params = util.extend({}, defaults, params);
+
+    return function(events, selector, callback){
+      var self = this;
+      var selfIsArrayLike = self.length !== undefined;
+      var all = selfIsArrayLike ? self : [self]; // put in array if not array-like
+      var eventsIsString = is.string(events);
+
+      if( arguments.length === 0 ){ // then unbind all
+
+        for( var i = 0; i < all.length; i++ ){
+          all[i]._private.listeners = [];
+        }
+
+        return self; // maintain chaining
+      }
+
+      if( is.fn(selector) || selector === false ){ // selector is actually callback
+        callback = selector;
+        selector = undefined;
+      }
+
+      if( eventsIsString ){ // then convert to map
+        var map = {};
+        map[ events ] = callback;
+        events = map;
+      }
+
+      for( var evts in events ){
+        callback = events[evts];
+
+        if( callback === false ){
+          callback = define.event.falseCallback;
+        }
+
+        evts = evts.split(/\s+/);
+        for( var h = 0; h < evts.length; h++ ){
+          var evt = evts[h];
+          if( is.emptyString(evt) ){ continue; }
+
+          var match = evt.match( define.event.optionalTypeRegex ); // [type][.namespace]
+          if( match ){
+            var type = match[1] ? match[1] : undefined;
+            var namespace = match[2] ? match[2] : undefined;
+
+            for( var i = 0; i < all.length; i++ ){ //
+              var listeners = all[i]._private.listeners = all[i]._private.listeners || [];
+
+              for( var j = 0; j < listeners.length; j++ ){
+                var listener = listeners[j];
+                var nsMatches = !namespace || namespace === listener.namespace;
+                var typeMatches = !type || listener.type === type;
+                var cbMatches = !callback || callback === listener.callback;
+                var listenerMatches = nsMatches && typeMatches && cbMatches;
+
+                // delete listener if it matches
+                if( listenerMatches ){
+                  listeners.splice(j, 1);
+                  j--;
+                }
+              } // for listeners
+            } // for all
+          } // if match
+        } // for events array
+
+      } // for events map
+
+      return self; // maintain chaining
+    }; // function
+  }, // off
+
+  trigger: function( params ){
+    var defaults = {};
+    params = util.extend({}, defaults, params);
+
+    return function triggerImpl(events, extraParams, fnToTrigger){
+      var self = this;
+      var selfIsArrayLike = self.length !== undefined;
+      var all = selfIsArrayLike ? self : [self]; // put in array if not array-like
+      var eventsIsString = is.string(events);
+      var eventsIsObject = is.plainObject(events);
+      var eventsIsEvent = is.event(events);
+      var cy = this._private.cy || ( is.core(this) ? this : null );
+      var hasCompounds = cy ? cy.hasCompoundNodes() : false;
+
+      if( eventsIsString ){ // then make a plain event object for each event name
+        var evts = events.split(/\s+/);
+        events = [];
+
+        for( var i = 0; i < evts.length; i++ ){
+          var evt = evts[i];
+          if( is.emptyString(evt) ){ continue; }
+
+          var match = evt.match( define.event.regex ); // type[.namespace]
+          var type = match[1];
+          var namespace = match[2] ? match[2] : undefined;
+
+          events.push( {
+            type: type,
+            namespace: namespace
+          } );
+        }
+      } else if( eventsIsObject ){ // put in length 1 array
+        var eventArgObj = events;
+
+        events = [ eventArgObj ];
+      }
+
+      if( extraParams ){
+        if( !is.array(extraParams) ){ // make sure extra params are in an array if specified
+          extraParams = [ extraParams ];
+        }
+      } else { // otherwise, we've got nothing
+        extraParams = [];
+      }
+
+      for( var i = 0; i < events.length; i++ ){ // trigger each event in order
+        var evtObj = events[i];
+
+        for( var j = 0; j < all.length; j++ ){ // for each
+          var triggerer = all[j];
+          var listeners = triggerer._private.listeners = triggerer._private.listeners || [];
+          var triggererIsElement = is.element(triggerer);
+          var bubbleUp = triggererIsElement || params.layout;
+
+          // create the event for this element from the event object
+          var evt;
+
+          if( eventsIsEvent ){ // then just get the object
+            evt = evtObj;
+
+            evt.cyTarget = evt.cyTarget || triggerer;
+            evt.cy = evt.cy || cy;
+
+          } else { // then we have to make one
+            evt = new Event( evtObj, {
+              cyTarget: triggerer,
+              cy: cy,
+              namespace: evtObj.namespace
+            } );
+          }
+
+          // if a layout was specified, then put it in the typed event
+          if( evtObj.layout ){
+            evt.layout = evtObj.layout;
+          }
+
+          // if triggered by layout, put in event
+          if( params.layout ){
+            evt.layout = triggerer;
+          }
+
+          // create a rendered position based on the passed position
+          if( evt.cyPosition ){
+            var pos = evt.cyPosition;
+            var zoom = cy.zoom();
+            var pan = cy.pan();
+
+            evt.cyRenderedPosition = {
+              x: pos.x * zoom + pan.x,
+              y: pos.y * zoom + pan.y
+            };
+          }
+
+          if( fnToTrigger ){ // then override the listeners list with just the one we specified
+            listeners = [{
+              namespace: evt.namespace,
+              type: evt.type,
+              callback: fnToTrigger
+            }];
+          }
+
+          for( var k = 0; k < listeners.length; k++ ){ // check each listener
+            var lis = listeners[k];
+            var nsMatches = !lis.namespace || lis.namespace === evt.namespace;
+            var typeMatches = lis.type === evt.type;
+            var targetMatches = lis.delegated ? ( triggerer !== evt.cyTarget && is.element(evt.cyTarget) && lis.selObj.matches(evt.cyTarget) ) : (true); // we're not going to validate the hierarchy; that's too expensive
+            var listenerMatches = nsMatches && typeMatches && targetMatches;
+
+            if( listenerMatches ){ // then trigger it
+              var args = [ evt ];
+              args = args.concat( extraParams ); // add extra params to args list
+
+              if( lis.data ){ // add on data plugged into binding
+                evt.data = lis.data;
+              } else { // or clear it in case the event obj is reused
+                evt.data = undefined;
+              }
+
+              if( lis.unbindSelfOnTrigger || lis.unbindAllBindersOnTrigger ){ // then remove listener
+                listeners.splice(k, 1);
+                k--;
+              }
+
+              if( lis.unbindAllBindersOnTrigger ){ // then delete the listener for all binders
+                var binders = lis.binders;
+                for( var l = 0; l < binders.length; l++ ){
+                  var binder = binders[l];
+                  if( !binder || binder === triggerer ){ continue; } // already handled triggerer or we can't handle it
+
+                  var binderListeners = binder._private.listeners;
+                  for( var m = 0; m < binderListeners.length; m++ ){
+                    var binderListener = binderListeners[m];
+
+                    if( binderListener === lis ){ // delete listener from list
+                      binderListeners.splice(m, 1);
+                      m--;
+                    }
+                  }
+                }
+              }
+
+              // run the callback
+              var context = lis.delegated ? evt.cyTarget : triggerer;
+              var ret = lis.callback.apply( context, args );
+
+              if( ret === false || evt.isPropagationStopped() ){
+                // then don't bubble
+                bubbleUp = false;
+
+                if( ret === false ){
+                  // returning false is a shorthand for stopping propagation and preventing the def. action
+                  evt.stopPropagation();
+                  evt.preventDefault();
+                }
+              }
+            } // if listener matches
+          } // for each listener
+
+          // bubble up event for elements
+          if( bubbleUp ){
+            var parent = hasCompounds ? triggerer._private.parent : null;
+            var hasParent = parent != null && parent.length !== 0;
+
+            if( hasParent ){ // then bubble up to parent
+              parent = parent[0];
+              parent.trigger(evt);
+            } else { // otherwise, bubble up to the core
+              cy.trigger(evt);
+            }
+          }
+
+        } // for each of all
+      } // for each event
+
+      return self; // maintain chaining
+    }; // function
+  }, // trigger
+
+  animated: function( fnParams ){
+    var defaults = {};
+    fnParams = util.extend({}, defaults, fnParams);
+
+    return function animatedImpl(){
+      var self = this;
+      var selfIsArrayLike = self.length !== undefined;
+      var all = selfIsArrayLike ? self : [self]; // put in array if not array-like
+      var cy = this._private.cy || this;
+
+      if( !cy.styleEnabled() ){ return false; }
+
+      var ele = all[0];
+
+      if( ele ){
+        return ele._private.animation.current.length > 0;
+      }
+    };
+  }, // animated
+
+  clearQueue: function( fnParams ){
+    var defaults = {};
+    fnParams = util.extend({}, defaults, fnParams);
+
+    return function clearQueueImpl(){
+      var self = this;
+      var selfIsArrayLike = self.length !== undefined;
+      var all = selfIsArrayLike ? self : [self]; // put in array if not array-like
+      var cy = this._private.cy || this;
+
+      if( !cy.styleEnabled() ){ return this; }
+
+      for( var i = 0; i < all.length; i++ ){
+        var ele = all[i];
+        ele._private.animation.queue = [];
+      }
+
+      return this;
+    };
+  }, // clearQueue
+
+  delay: function( fnParams ){
+    var defaults = {};
+    fnParams = util.extend({}, defaults, fnParams);
+
+    return function delayImpl( time, complete ){
+      var cy = this._private.cy || this;
+
+      if( !cy.styleEnabled() ){ return this; }
+
+      return this.animate({
+        delay: time,
+        duration: time,
+        complete: complete
+      });
+    };
+  }, // delay
+
+  delayAnimation: function( fnParams ){
+    var defaults = {};
+    fnParams = util.extend({}, defaults, fnParams);
+
+    return function delayAnimationImpl( time, complete ){
+      var cy = this._private.cy || this;
+
+      if( !cy.styleEnabled() ){ return this; }
+
+      return this.animation({
+        delay: time,
+        duration: time,
+        complete: complete
+      });
+    };
+  }, // delay
+
+  animation: function( fnParams ){
+    var defaults = {};
+    fnParams = util.extend({}, defaults, fnParams);
+
+    return function animationImpl( properties, params ){
+      var self = this;
+      var selfIsArrayLike = self.length !== undefined;
+      var all = selfIsArrayLike ? self : [self]; // put in array if not array-like
+      var cy = this._private.cy || this;
+      var isCore = !selfIsArrayLike;
+      var isEles = !isCore;
+
+      if( !cy.styleEnabled() ){ return this; }
+
+      var style = cy.style();
+
+      properties = util.extend( {}, properties, params );
+
+      if( properties.duration === undefined ){
+        properties.duration = 400;
+      }
+
+      switch( properties.duration ){
+      case 'slow':
+        properties.duration = 600;
+        break;
+      case 'fast':
+        properties.duration = 200;
+        break;
+      }
+
+      var propertiesEmpty = true;
+      if( properties ){ for( var i in properties ){ // jshint ignore:line
+        propertiesEmpty = false;
+        break;
+      } }
+
+      if( propertiesEmpty ){
+        return new Animation( all[0], properties ); // nothing to animate
+      }
+
+      if( isEles ){
+        properties.style = style.getPropsList( properties.style || properties.css );
+
+        properties.css = undefined;
+      }
+
+      if( properties.renderedPosition && isEles ){
+        var rpos = properties.renderedPosition;
+        var pan = cy.pan();
+        var zoom = cy.zoom();
+
+        properties.position = {
+          x: ( rpos.x - pan.x ) /zoom,
+          y: ( rpos.y - pan.y ) /zoom
+        };
+      }
+
+      // override pan w/ panBy if set
+      if( properties.panBy && isCore ){
+        var panBy = properties.panBy;
+        var cyPan = cy.pan();
+
+        properties.pan = {
+          x: cyPan.x + panBy.x,
+          y: cyPan.y + panBy.y
+        };
+      }
+
+      // override pan w/ center if set
+      var center = properties.center || properties.centre;
+      if( center && isCore ){
+        var centerPan = cy.getCenterPan( center.eles, properties.zoom );
+
+        if( centerPan ){
+          properties.pan = centerPan;
+        }
+      }
+
+      // override pan & zoom w/ fit if set
+      if( properties.fit && isCore ){
+        var fit = properties.fit;
+        var fitVp = cy.getFitViewport( fit.eles || fit.boundingBox, fit.padding );
+
+        if( fitVp ){
+          properties.pan = fitVp.pan;
+          properties.zoom = fitVp.zoom;
+        }
+      }
+
+      return new Animation( all[0], properties );
+    };
+  }, // animate
+
+  animate: function( fnParams ){
+    var defaults = {};
+    fnParams = util.extend({}, defaults, fnParams);
+
+    return function animateImpl( properties, params ){
+      var self = this;
+      var selfIsArrayLike = self.length !== undefined;
+      var all = selfIsArrayLike ? self : [self]; // put in array if not array-like
+      var cy = this._private.cy || this;
+
+      if( !cy.styleEnabled() ){ return this; }
+
+      if( params ){
+        properties = util.extend( {}, properties, params );
+      }
+
+      // manually hook and run the animation
+      for( var i = 0; i < all.length; i++ ){
+        var ele = all[i];
+        var queue = ele.animated() && (properties.queue === undefined || properties.queue);
+
+        var ani = ele.animation( properties, (queue ? { queue: true } : undefined) );
+
+        ani.play();
+      }
+
+      return this; // chaining
+    };
+  }, // animate
+
+  stop: function( fnParams ){
+    var defaults = {};
+    fnParams = util.extend({}, defaults, fnParams);
+
+    return function stopImpl( clearQueue, jumpToEnd ){
+      var self = this;
+      var selfIsArrayLike = self.length !== undefined;
+      var all = selfIsArrayLike ? self : [self]; // put in array if not array-like
+      var cy = this._private.cy || this;
+
+      if( !cy.styleEnabled() ){ return this; }
+
+      for( var i = 0; i < all.length; i++ ){
+        var ele = all[i];
+        var _p = ele._private;
+        var anis = _p.animation.current;
+
+        for( var j = 0; j < anis.length; j++ ){
+          var ani = anis[j];
+          var ani_p = ani._private;
+
+          if( jumpToEnd ){
+            // next iteration of the animation loop, the animation
+            // will go straight to the end and be removed
+            ani_p.duration = 0;
+          }
+        }
+
+        // clear the queue of future animations
+        if( clearQueue ){
+          _p.animation.queue = [];
+        }
+
+        if( !jumpToEnd ){
+          _p.animation.current = [];
+        }
+      }
+
+      // we have to notify (the animation loop doesn't do it for us on `stop`)
+      cy.notify({
+        collection: this,
+        type: 'draw'
+      });
+
+      return this;
+    };
+  } // stop
+
+}; // define
+
+module.exports = define;
+
+},{"./animation":1,"./event":42,"./is":77,"./promise":80,"./selector":81,"./util":94}],42:[function(_dereq_,module,exports){
+'use strict';
+
+/*!
+Event object based on jQuery events, MIT license
+
+https://jquery.org/license/
+https://tldrlegal.com/license/mit-license
+https://github.com/jquery/jquery/blob/master/src/event.js
+*/
+
+var Event = function( src, props ) {
+  // Allow instantiation without the 'new' keyword
+  if ( !(this instanceof Event) ) {
+    return new Event( src, props );
+  }
+
+  // Event object
+  if ( src && src.type ) {
+    this.originalEvent = src;
+    this.type = src.type;
+
+    // Events bubbling up the document may have been marked as prevented
+    // by a handler lower down the tree; reflect the correct value.
+    this.isDefaultPrevented = ( src.defaultPrevented ) ? returnTrue : returnFalse;
+
+  // Event type
+  } else {
+    this.type = src;
+  }
+
+  // Put explicitly provided properties onto the event object
+  if ( props ) {
+    // util.extend( this, props );
+
+    // more efficient to manually copy fields we use
+    this.type = props.type !== undefined ? props.type : this.type;
+    this.cy = props.cy;
+    this.cyTarget = props.cyTarget;
+    this.cyPosition = props.cyPosition;
+    this.cyRenderedPosition = props.cyRenderedPosition;
+    this.namespace = props.namespace;
+    this.layout = props.layout;
+    this.data = props.data;
+    this.message = props.message;
+  }
+
+  // Create a timestamp if incoming event doesn't have one
+  this.timeStamp = src && src.timeStamp || Date.now();
+};
+
+function returnFalse() {
+  return false;
+}
+
+function returnTrue() {
+  return true;
+}
+
+// http://www.w3.org/TR/2003/WD-DOM-Level-3-Events-20030331/ecma-script-binding.html
+Event.prototype = {
+  instanceString: function(){
+    return 'event';
+  },
+
+  preventDefault: function() {
+    this.isDefaultPrevented = returnTrue;
+
+    var e = this.originalEvent;
+    if ( !e ) {
+      return;
+    }
+
+    // if preventDefault exists run it on the original event
+    if ( e.preventDefault ) {
+      e.preventDefault();
+    }
+  },
+
+  stopPropagation: function() {
+    this.isPropagationStopped = returnTrue;
+
+    var e = this.originalEvent;
+    if ( !e ) {
+      return;
+    }
+
+    // if stopPropagation exists run it on the original event
+    if ( e.stopPropagation ) {
+      e.stopPropagation();
+    }
+  },
+
+  stopImmediatePropagation: function() {
+    this.isImmediatePropagationStopped = returnTrue;
+    this.stopPropagation();
+  },
+
+  isDefaultPrevented: returnFalse,
+  isPropagationStopped: returnFalse,
+  isImmediatePropagationStopped: returnFalse
+};
+
+module.exports = Event;
+
+},{}],43:[function(_dereq_,module,exports){
+'use strict';
+
+var util = _dereq_('./util');
+var define = _dereq_('./define');
+var Collection = _dereq_('./collection');
+var Core = _dereq_('./core');
+var incExts = _dereq_('./extensions');
+var is = _dereq_('./is');
+
+// registered extensions to cytoscape, indexed by name
+var extensions = {};
+
+// registered modules for extensions, indexed by name
+var modules = {};
+
+function setExtension( type, name, registrant ){
+
+  var ext = registrant;
+
+  if( type === 'core' ){
+    Core.prototype[ name ] = registrant;
+
+  } else if( type === 'collection' ){
+    Collection.prototype[ name ] = registrant;
+
+  } else if( type === 'layout' ){
+    // fill in missing layout functions in the prototype
+
+    var Layout = function( options ){
+      this.options = options;
+
+      registrant.call( this, options );
+
+      // make sure layout has _private for use w/ std apis like .on()
+      if( !is.plainObject(this._private) ){
+        this._private = {};
+      }
+
+      this._private.cy = options.cy;
+      this._private.listeners = [];
+    };
+
+    var layoutProto = Layout.prototype = Object.create( registrant.prototype );
+
+    var optLayoutFns = [];
+
+    for( var i = 0; i < optLayoutFns.length; i++ ){
+      var fnName = optLayoutFns[i];
+
+      layoutProto[fnName] = layoutProto[fnName] || function(){ return this; };
+    }
+
+    // either .start() or .run() is defined, so autogen the other
+    if( layoutProto.start && !layoutProto.run ){
+      layoutProto.run = function(){ this.start(); return this; };
+    } else if( !layoutProto.start && layoutProto.run ){
+      layoutProto.start = function(){ this.run(); return this; };
+    }
+
+    if( !layoutProto.stop ){
+      layoutProto.stop = function(){
+        var opts = this.options;
+
+        if( opts && opts.animate ){
+          var anis = this.animations;
+          for( var i = 0; i < anis.length; i++ ){
+            anis[i].stop();
+          }
+        }
+
+        this.trigger('layoutstop');
+
+        return this;
+      };
+    }
+
+    if( !layoutProto.destroy ){
+      layoutProto.destroy = function(){
+        return this;
+      };
+    }
+
+    layoutProto.on = define.on({ layout: true });
+    layoutProto.one = define.on({ layout: true, unbindSelfOnTrigger: true });
+    layoutProto.once = define.on({ layout: true, unbindAllBindersOnTrigger: true });
+    layoutProto.off = define.off({ layout: true });
+    layoutProto.trigger = define.trigger({ layout: true });
+
+    define.eventAliasesOn( layoutProto );
+
+    ext = Layout; // replace with our wrapped layout
+
+  } else if( type === 'renderer' && name !== 'null' && name !== 'base' ){
+    // user registered renderers inherit from base
+
+    var bProto = getExtension( 'renderer', 'base' ).prototype;
+    var rProto = registrant.prototype;
+
+    for( var pName in bProto ){
+      var pVal = bProto[ pName ];
+      var existsInR = rProto[ pName ] != null;
+
+      if( existsInR ){
+        util.error('Can not register renderer `' + name + '` since it overrides `' + pName + '` in its prototype');
+        return;
+      }
+
+      rProto[ pName ] = pVal; // take impl from base
+    }
+
+    bProto.clientFunctions.forEach(function( name ){
+      rProto[ name ] = rProto[ name ] || function(){
+        util.error('Renderer does not implement `renderer.' + name + '()` on its prototype');
+      };
+    });
+
+  }
+
+  return util.setMap({
+    map: extensions,
+    keys: [ type, name ],
+    value: ext
+  });
+}
+
+function getExtension(type, name){
+  return util.getMap({
+    map: extensions,
+    keys: [ type, name ]
+  });
+}
+
+function setModule(type, name, moduleType, moduleName, registrant){
+  return util.setMap({
+    map: modules,
+    keys: [ type, name, moduleType, moduleName ],
+    value: registrant
+  });
+}
+
+function getModule(type, name, moduleType, moduleName){
+  return util.getMap({
+    map: modules,
+    keys: [ type, name, moduleType, moduleName ]
+  });
+}
+
+var extension = function(){
+  // e.g. extension('renderer', 'svg')
+  if( arguments.length === 2 ){
+    return getExtension.apply(null, arguments);
+  }
+
+  // e.g. extension('renderer', 'svg', { ... })
+  else if( arguments.length === 3 ){
+    return setExtension.apply(null, arguments);
+  }
+
+  // e.g. extension('renderer', 'svg', 'nodeShape', 'ellipse')
+  else if( arguments.length === 4 ){
+    return getModule.apply(null, arguments);
+  }
+
+  // e.g. extension('renderer', 'svg', 'nodeShape', 'ellipse', { ... })
+  else if( arguments.length === 5 ){
+    return setModule.apply(null, arguments);
+  }
+
+  else {
+    util.error('Invalid extension access syntax');
+  }
+
+};
+
+// allows a core instance to access extensions internally
+Core.prototype.extension = extension;
+
+// included extensions
+incExts.forEach(function( group ){
+  group.extensions.forEach(function( ext ){
+    setExtension( group.type, ext.name, ext.impl );
+  });
+});
+
+module.exports = extension;
+
+},{"./collection":23,"./core":34,"./define":41,"./extensions":44,"./is":77,"./util":94}],44:[function(_dereq_,module,exports){
+'use strict';
+
+module.exports = [
+  {
+    type: 'layout',
+    extensions: _dereq_('./layout')
+  },
+
+  {
+    type: 'renderer',
+    extensions: _dereq_('./renderer')
+  }
+];
+
+},{"./layout":50,"./renderer":72}],45:[function(_dereq_,module,exports){
+'use strict';
+
+var util = _dereq_('../../util');
+var math = _dereq_('../../math');
+var is = _dereq_('../../is');
+
+var defaults = {
+  fit: true, // whether to fit the viewport to the graph
+  directed: false, // whether the tree is directed downwards (or edges can point in any direction if false)
+  padding: 30, // padding on fit
+  circle: false, // put depths in concentric circles if true, put depths top down if false
+  spacingFactor: 1.75, // positive spacing factor, larger => more space between nodes (N.B. n/a if causes overlap)
+  boundingBox: undefined, // constrain layout bounds; { x1, y1, x2, y2 } or { x1, y1, w, h }
+  avoidOverlap: true, // prevents node overlap, may overflow boundingBox if not enough space
+  roots: undefined, // the roots of the trees
+  maximalAdjustments: 0, // how many times to try to position the nodes in a maximal way (i.e. no backtracking)
+  animate: false, // whether to transition the node positions
+  animationDuration: 500, // duration of animation in ms if enabled
+  animationEasing: undefined, // easing of animation if enabled
+  ready: undefined, // callback on layoutready
+  stop: undefined // callback on layoutstop
+};
+
+function BreadthFirstLayout( options ){
+  this.options = util.extend({}, defaults, options);
+}
+
+BreadthFirstLayout.prototype.run = function(){
+  var params = this.options;
+  var options = params;
+
+  var cy = params.cy;
+  var eles = options.eles;
+  var nodes = eles.nodes().not(':parent');
+  var graph = eles;
+
+  var bb = math.makeBoundingBox( options.boundingBox ? options.boundingBox : {
+    x1: 0, y1: 0, w: cy.width(), h: cy.height()
+  } );
+
+  var roots;
+  if( is.elementOrCollection(options.roots) ){
+    roots = options.roots;
+  } else if( is.array(options.roots) ){
+    var rootsArray = [];
+
+    for( var i = 0; i < options.roots.length; i++ ){
+      var id = options.roots[i];
+      var ele = cy.getElementById( id );
+      rootsArray.push( ele );
+    }
+
+    roots = cy.collection( rootsArray );
+  } else if( is.string(options.roots) ){
+    roots = cy.$( options.roots );
+
+  } else {
+    if( options.directed ){
+      roots = nodes.roots();
+    } else {
+      var components = [];
+      var unhandledNodes = nodes;
+
+      while( unhandledNodes.length > 0 ){
+        var currComp = cy.collection();
+
+        eles.bfs({
+          roots: unhandledNodes[0],
+          visit: function(i, depth, node, edge, pNode){
+            currComp = currComp.add( node );
+          },
+          directed: false
+        });
+
+        unhandledNodes = unhandledNodes.not( currComp );
+        components.push( currComp );
+      }
+
+      roots = cy.collection();
+      for( var i = 0; i < components.length; i++ ){
+        var comp = components[i];
+        var maxDegree = comp.maxDegree( false );
+        var compRoots = comp.filter(function(){
+          return this.degree(false) === maxDegree;
+        });
+
+        roots = roots.add( compRoots );
+      }
+
+    }
+  }
+
+
+  var depths = [];
+  var foundByBfs = {};
+  var id2depth = {};
+  var prevNode = {};
+  var prevEdge = {};
+  var successors = {};
+
+  // find the depths of the nodes
+  graph.bfs({
+    roots: roots,
+    directed: options.directed,
+    visit: function(i, depth, node, edge, pNode){
+      var ele = this[0];
+      var id = ele.id();
+
+      if( !depths[depth] ){
+        depths[depth] = [];
+      }
+
+      depths[depth].push( ele );
+      foundByBfs[ id ] = true;
+      id2depth[ id ] = depth;
+      prevNode[ id ] = pNode;
+      prevEdge[ id ] = edge;
+
+      if( pNode ){
+        var prevId = pNode.id();
+        var succ = successors[ prevId ] = successors[ prevId ] || [];
+
+        succ.push( node );
+      }
+    }
+  });
+
+  // check for nodes not found by bfs
+  var orphanNodes = [];
+  for( var i = 0; i < nodes.length; i++ ){
+    var ele = nodes[i];
+
+    if( foundByBfs[ ele.id() ] ){
+      continue;
+    } else {
+      orphanNodes.push( ele );
+    }
+  }
+
+  // assign orphan nodes a depth from their neighborhood
+  var maxChecks = orphanNodes.length * 3;
+  var checks = 0;
+  while( orphanNodes.length !== 0 && checks < maxChecks ){
+    var node = orphanNodes.shift();
+    var neighbors = node.neighborhood().nodes();
+    var assignedDepth = false;
+
+    for( var i = 0; i < neighbors.length; i++ ){
+      var depth = id2depth[ neighbors[i].id() ];
+
+      if( depth !== undefined ){
+        depths[depth].push( node );
+        assignedDepth = true;
+        break;
+      }
+    }
+
+    if( !assignedDepth ){
+      orphanNodes.push( node );
+    }
+
+    checks++;
+  }
+
+  // assign orphan nodes that are still left to the depth of their subgraph
+  while( orphanNodes.length !== 0 ){
+    var node = orphanNodes.shift();
+    //var subgraph = graph.bfs( node ).path;
+    var assignedDepth = false;
+
+    // for( var i = 0; i < subgraph.length; i++ ){
+    //   var depth = id2depth[ subgraph[i].id() ];
+
+    //   if( depth !== undefined ){
+    //     depths[depth].push( node );
+    //     assignedDepth = true;
+    //     break;
+    //   }
+    // }
+
+    if( !assignedDepth ){ // worst case if the graph really isn't tree friendly, then just dump it in 0
+      if( depths.length === 0 ){
+        depths.push([]);
+      }
+
+      depths[0].push( node );
+    }
+  }
+
+  // assign the nodes a depth and index
+  var assignDepthsToEles = function(){
+    for( var i = 0; i < depths.length; i++ ){
+      var eles = depths[i];
+
+      for( var j = 0; j < eles.length; j++ ){
+        var ele = eles[j];
+
+        ele._private.scratch.breadthfirst = {
+          depth: i,
+          index: j
+        };
+      }
+    }
+  };
+  assignDepthsToEles();
+
+
+  var intersectsDepth = function( node ){ // returns true if has edges pointing in from a higher depth
+    var edges = node.connectedEdges(function(){
+      return this.data('target') === node.id();
+    });
+    var thisInfo = node._private.scratch.breadthfirst;
+    var highestDepthOfOther = 0;
+    var highestOther;
+    for( var i = 0; i < edges.length; i++ ){
+      var edge = edges[i];
+      var otherNode = edge.source()[0];
+      var otherInfo = otherNode._private.scratch.breadthfirst;
+
+      if( thisInfo.depth <= otherInfo.depth && highestDepthOfOther < otherInfo.depth ){
+        highestDepthOfOther = otherInfo.depth;
+        highestOther = otherNode;
+      }
+    }
+
+    return highestOther;
+  };
+
+   // make maximal if so set by adjusting depths
+  for( var adj = 0; adj < options.maximalAdjustments; adj++ ){
+
+    var nDepths = depths.length;
+    var elesToMove = [];
+    for( var i = 0; i < nDepths; i++ ){
+      var depth = depths[i];
+
+      var nDepth = depth.length;
+      for( var j = 0; j < nDepth; j++ ){
+        var ele = depth[j];
+        var info = ele._private.scratch.breadthfirst;
+        var intEle = intersectsDepth(ele);
+
+        if( intEle ){
+          info.intEle = intEle;
+          elesToMove.push( ele );
+        }
+      }
+    }
+
+    for( var i = 0; i < elesToMove.length; i++ ){
+      var ele = elesToMove[i];
+      var info = ele._private.scratch.breadthfirst;
+      var intEle = info.intEle;
+      var intInfo = intEle._private.scratch.breadthfirst;
+
+      depths[ info.depth ].splice( info.index, 1 ); // remove from old depth & index
+
+      // add to end of new depth
+      var newDepth = intInfo.depth + 1;
+      while( newDepth > depths.length - 1 ){
+        depths.push([]);
+      }
+      depths[ newDepth ].push( ele );
+
+      info.depth = newDepth;
+      info.index = depths[newDepth].length - 1;
+    }
+
+    assignDepthsToEles();
+  }
+
+  // find min distance we need to leave between nodes
+  var minDistance = 0;
+  if( options.avoidOverlap ){
+    for( var i = 0; i < nodes.length; i++ ){
+      var n = nodes[i];
+      var nbb = n.boundingBox();
+      var w = nbb.w;
+      var h = nbb.h;
+
+      minDistance = Math.max(minDistance, w, h);
+    }
+    minDistance *= options.spacingFactor; // just to have some nice spacing
+  }
+
+  // get the weighted percent for an element based on its connectivity to other levels
+  var cachedWeightedPercent = {};
+  var getWeightedPercent = function( ele ){
+    if( cachedWeightedPercent[ ele.id() ] ){
+      return cachedWeightedPercent[ ele.id() ];
+    }
+
+    var eleDepth = ele._private.scratch.breadthfirst.depth;
+    var neighbors = ele.neighborhood().nodes().not(':parent');
+    var percent = 0;
+    var samples = 0;
+
+    for( var i = 0; i < neighbors.length; i++ ){
+      var neighbor = neighbors[i];
+      var bf = neighbor._private.scratch.breadthfirst;
+      var index = bf.index;
+      var depth = bf.depth;
+      var nDepth = depths[depth].length;
+
+      if( eleDepth > depth || eleDepth === 0 ){ // only get influenced by elements above
+        percent += index / nDepth;
+        samples++;
+      }
+    }
+
+    samples = Math.max(1, samples);
+    percent = percent / samples;
+
+    if( samples === 0 ){ // so lone nodes have a "don't care" state in sorting
+      percent = undefined;
+    }
+
+    cachedWeightedPercent[ ele.id() ] = percent;
+    return percent;
+  };
+
+
+  // rearrange the indices in each depth level based on connectivity
+
+  var sortFn = function(a, b){
+    var apct = getWeightedPercent( a );
+    var bpct = getWeightedPercent( b );
+
+    return apct - bpct;
+  };
+
+  for( var times = 0; times < 3; times++ ){ // do it a few times b/c the depths are dynamic and we want a more stable result
+
+    for( var i = 0; i < depths.length; i++ ){
+      depths[i] = depths[i].sort( sortFn );
+    }
+    assignDepthsToEles(); // and update
+
+  }
+
+  var biggestDepthSize = 0;
+  for( var i = 0; i < depths.length; i++ ){
+    biggestDepthSize = Math.max( depths[i].length, biggestDepthSize );
+  }
+
+  var center = {
+    x: bb.x1 + bb.w/2,
+    y: bb.x1 + bb.h/2
+  };
+
+  var getPosition = function( ele, isBottomDepth ){
+    var info = ele._private.scratch.breadthfirst;
+    var depth = info.depth;
+    var index = info.index;
+    var depthSize = depths[depth].length;
+
+    var distanceX = Math.max( bb.w / (depthSize + 1), minDistance );
+    var distanceY = Math.max( bb.h / (depths.length + 1), minDistance );
+    var radiusStepSize = Math.min( bb.w / 2 / depths.length, bb.h / 2 / depths.length );
+    radiusStepSize = Math.max( radiusStepSize, minDistance );
+
+    if( !options.circle ){
+
+      var epos = {
+        x: center.x + (index + 1 - (depthSize + 1)/2) * distanceX,
+        y: (depth + 1) * distanceY
+      };
+
+      if( isBottomDepth ){
+        return epos;
+      }
+
+      // var succs = successors[ ele.id() ];
+      // if( succs ){
+      //   epos.x = 0;
+      //
+      //   for( var i = 0 ; i < succs.length; i++ ){
+      //     var spos = pos[ succs[i].id() ];
+      //
+      //     epos.x += spos.x;
+      //   }
+      //
+      //   epos.x /= succs.length;
+      // } else {
+      //   //debugger;
+      // }
+
+      return epos;
+
+    } else {
+      if( options.circle ){
+        var radius = radiusStepSize * depth + radiusStepSize - (depths.length > 0 && depths[0].length <= 3 ? radiusStepSize/2 : 0);
+        var theta = 2 * Math.PI / depths[depth].length * index;
+
+        if( depth === 0 && depths[0].length === 1 ){
+          radius = 1;
+        }
+
+        return {
+          x: center.x + radius * Math.cos(theta),
+          y: center.y + radius * Math.sin(theta)
+        };
+
+      } else {
+        return {
+          x: center.x + (index + 1 - (depthSize + 1)/2) * distanceX,
+          y: (depth + 1) * distanceY
+        };
+      }
+    }
+
+  };
+
+  // get positions in reverse depth order
+  var pos = {};
+  for( var i = depths.length - 1; i >=0; i-- ){
+    var depth = depths[i];
+
+    for( var j = 0; j < depth.length; j++ ){
+      var node = depth[j];
+
+      pos[ node.id() ] = getPosition( node, i === depths.length - 1 );
+    }
+  }
+
+  nodes.layoutPositions(this, options, function(){
+    return pos[ this.id() ];
+  });
+
+  return this; // chaining
+};
+
+module.exports = BreadthFirstLayout;
+
+},{"../../is":77,"../../math":79,"../../util":94}],46:[function(_dereq_,module,exports){
+'use strict';
+
+var util = _dereq_('../../util');
+var math = _dereq_('../../math');
+var is = _dereq_('../../is');
+
+var defaults = {
+  fit: true, // whether to fit the viewport to the graph
+  padding: 30, // the padding on fit
+  boundingBox: undefined, // constrain layout bounds; { x1, y1, x2, y2 } or { x1, y1, w, h }
+  avoidOverlap: true, // prevents node overlap, may overflow boundingBox and radius if not enough space
+  radius: undefined, // the radius of the circle
+  startAngle: 3/2 * Math.PI, // where nodes start in radians
+  sweep: undefined, // how many radians should be between the first and last node (defaults to full circle)
+  clockwise: true, // whether the layout should go clockwise (true) or counterclockwise/anticlockwise (false)
+  sort: undefined, // a sorting function to order the nodes; e.g. function(a, b){ return a.data('weight') - b.data('weight') }
+  animate: false, // whether to transition the node positions
+  animationDuration: 500, // duration of animation in ms if enabled
+  animationEasing: undefined, // easing of animation if enabled
+  ready: undefined, // callback on layoutready
+  stop: undefined // callback on layoutstop
+};
+
+function CircleLayout( options ){
+  this.options = util.extend({}, defaults, options);
+}
+
+CircleLayout.prototype.run = function(){
+  var params = this.options;
+  var options = params;
+
+  var cy = params.cy;
+  var eles = options.eles;
+
+  var clockwise = options.counterclockwise !== undefined ? !options.counterclockwise : options.clockwise;
+
+  var nodes = eles.nodes().not(':parent');
+
+  if( options.sort ){
+    nodes = nodes.sort( options.sort );
+  }
+
+  var bb = math.makeBoundingBox( options.boundingBox ? options.boundingBox : {
+    x1: 0, y1: 0, w: cy.width(), h: cy.height()
+  } );
+
+  var center = {
+    x: bb.x1 + bb.w/2,
+    y: bb.y1 + bb.h/2
+  };
+
+  var sweep = options.sweep === undefined ? 2*Math.PI - 2*Math.PI/nodes.length : options.sweep;
+
+  var dTheta = sweep / ( Math.max(1, nodes.length - 1) );
+  var r;
+
+  var minDistance = 0;
+  for( var i = 0; i < nodes.length; i++ ){
+    var n = nodes[i];
+    var nbb = n.boundingBox();
+    var w = nbb.w;
+    var h = nbb.h;
+
+    minDistance = Math.max(minDistance, w, h);
+  }
+
+  if( is.number(options.radius) ){
+    r = options.radius;
+  } else if( nodes.length <= 1 ){
+    r = 0;
+  } else {
+    r = Math.min( bb.h, bb.w )/2 - minDistance;
+  }
+
+  // calculate the radius
+  if( nodes.length > 1 && options.avoidOverlap ){ // but only if more than one node (can't overlap)
+    minDistance *= 1.75; // just to have some nice spacing
+
+    var dcos = Math.cos(dTheta) - Math.cos(0);
+    var dsin = Math.sin(dTheta) - Math.sin(0);
+    var rMin = Math.sqrt( minDistance * minDistance / ( dcos*dcos + dsin*dsin ) ); // s.t. no nodes overlapping
+    r = Math.max( rMin, r );
+  }
+
+  var getPos = function( i, ele ){
+    var theta = options.startAngle + i * dTheta * ( clockwise ? 1 : -1 );
+
+    var rx = r * Math.cos( theta );
+    var ry = r * Math.sin( theta );
+    var pos = {
+      x: center.x + rx,
+      y: center.y + ry
+    };
+
+    return pos;
+  };
+
+  nodes.layoutPositions( this, options, getPos );
+
+  return this; // chaining
+};
+
+module.exports = CircleLayout;
+
+},{"../../is":77,"../../math":79,"../../util":94}],47:[function(_dereq_,module,exports){
+'use strict';
+
+var util = _dereq_('../../util');
+var math = _dereq_('../../math');
+
+var defaults = {
+  fit: true, // whether to fit the viewport to the graph
+  padding: 30, // the padding on fit
+  startAngle: 3/2 * Math.PI, // where nodes start in radians
+  sweep: undefined, // how many radians should be between the first and last node (defaults to full circle)
+  clockwise: true, // whether the layout should go clockwise (true) or counterclockwise/anticlockwise (false)
+  equidistant: false, // whether levels have an equal radial distance betwen them, may cause bounding box overflow
+  minNodeSpacing: 10, // min spacing between outside of nodes (used for radius adjustment)
+  boundingBox: undefined, // constrain layout bounds; { x1, y1, x2, y2 } or { x1, y1, w, h }
+  avoidOverlap: true, // prevents node overlap, may overflow boundingBox if not enough space
+  height: undefined, // height of layout area (overrides container height)
+  width: undefined, // width of layout area (overrides container width)
+  concentric: function(node){ // returns numeric value for each node, placing higher nodes in levels towards the centre
+    return node.degree();
+  },
+  levelWidth: function(nodes){ // the variation of concentric values in each level
+    return nodes.maxDegree() / 4;
+  },
+  animate: false, // whether to transition the node positions
+  animationDuration: 500, // duration of animation in ms if enabled
+  animationEasing: undefined, // easing of animation if enabled
+  ready: undefined, // callback on layoutready
+  stop: undefined // callback on layoutstop
+};
+
+function ConcentricLayout( options ){
+  this.options = util.extend({}, defaults, options);
+}
+
+ConcentricLayout.prototype.run = function(){
+  var params = this.options;
+  var options = params;
+
+  var clockwise = options.counterclockwise !== undefined ? !options.counterclockwise : options.clockwise;
+
+  var cy = params.cy;
+
+  var eles = options.eles;
+  var nodes = eles.nodes().not(':parent');
+
+  var bb = math.makeBoundingBox( options.boundingBox ? options.boundingBox : {
+    x1: 0, y1: 0, w: cy.width(), h: cy.height()
+  } );
+
+  var center = {
+    x: bb.x1 + bb.w/2,
+    y: bb.y1 + bb.h/2
+  };
+
+  var nodeValues = []; // { node, value }
+  var theta = options.startAngle;
+  var maxNodeSize = 0;
+
+  for( var i = 0; i < nodes.length; i++ ){
+    var node = nodes[i];
+    var value;
+
+    // calculate the node value
+    value = options.concentric.apply(node, [ node ]);
+    nodeValues.push({
+      value: value,
+      node: node
+    });
+
+    // for style mapping
+    node._private.scratch.concentric = value;
+  }
+
+  // in case we used the `concentric` in style
+  nodes.updateStyle();
+
+  // calculate max size now based on potentially updated mappers
+  for( var i = 0; i < nodes.length; i++ ){
+    var node = nodes[i];
+    var nbb = node.boundingBox();
+
+    maxNodeSize = Math.max( maxNodeSize, nbb.w, nbb.h );
+  }
+
+  // sort node values in descreasing order
+  nodeValues.sort(function(a, b){
+    return b.value - a.value;
+  });
+
+  var levelWidth = options.levelWidth( nodes );
+
+  // put the values into levels
+  var levels = [ [] ];
+  var currentLevel = levels[0];
+  for( var i = 0; i < nodeValues.length; i++ ){
+    var val = nodeValues[i];
+
+    if( currentLevel.length > 0 ){
+      var diff = Math.abs( currentLevel[0].value - val.value );
+
+      if( diff >= levelWidth ){
+        currentLevel = [];
+        levels.push( currentLevel );
+      }
+    }
+
+    currentLevel.push( val );
+  }
+
+  // create positions from levels
+
+  var minDist = maxNodeSize + options.minNodeSpacing; // min dist between nodes
+
+  if( !options.avoidOverlap ){ // then strictly constrain to bb
+    var firstLvlHasMulti = levels.length > 0 && levels[0].length > 1;
+    var maxR = ( Math.min(bb.w, bb.h) / 2 - minDist );
+    var rStep = maxR / ( levels.length + firstLvlHasMulti ? 1 : 0 );
+
+    minDist = Math.min( minDist, rStep );
+  }
+
+  // find the metrics for each level
+  var r = 0;
+  for( var i = 0; i < levels.length; i++ ){
+    var level = levels[i];
+    var sweep = options.sweep === undefined ? 2*Math.PI - 2*Math.PI/level.length : options.sweep;
+    var dTheta = level.dTheta = sweep / ( Math.max(1, level.length - 1) );
+
+    // calculate the radius
+    if( level.length > 1 && options.avoidOverlap ){ // but only if more than one node (can't overlap)
+      var dcos = Math.cos(dTheta) - Math.cos(0);
+      var dsin = Math.sin(dTheta) - Math.sin(0);
+      var rMin = Math.sqrt( minDist * minDist / ( dcos*dcos + dsin*dsin ) ); // s.t. no nodes overlapping
+
+      r = Math.max( rMin, r );
+    }
+
+    level.r = r;
+
+    r += minDist;
+  }
+
+  if( options.equidistant ){
+    var rDeltaMax = 0;
+    var r = 0;
+
+    for( var i = 0; i < levels.length; i++ ){
+      var level = levels[i];
+      var rDelta = level.r - r;
+
+      rDeltaMax = Math.max( rDeltaMax, rDelta );
+    }
+
+    r = 0;
+    for( var i = 0; i < levels.length; i++ ){
+      var level = levels[i];
+
+      if( i === 0 ){
+        r = level.r;
+      }
+
+      level.r = r;
+
+      r += rDeltaMax;
+    }
+  }
+
+  // calculate the node positions
+  var pos = {}; // id => position
+  for( var i = 0; i < levels.length; i++ ){
+    var level = levels[i];
+    var dTheta = level.dTheta;
+    var r = level.r;
+
+    for( var j = 0; j < level.length; j++ ){
+      var val = level[j];
+      var theta = options.startAngle + (clockwise ? 1 : -1) * dTheta * j;
+
+      var p = {
+        x: center.x + r * Math.cos(theta),
+        y: center.y + r * Math.sin(theta)
+      };
+
+      pos[ val.node.id() ] = p;
+    }
+  }
+
+  // position the nodes
+  nodes.layoutPositions(this, options, function(){
+    var id = this.id();
+
+    return pos[id];
+  });
+
+  return this; // chaining
+};
+
+module.exports = ConcentricLayout;
+
+},{"../../math":79,"../../util":94}],48:[function(_dereq_,module,exports){
+'use strict';
+
+/*
+The CoSE layout was written by Gerardo Huck.
+https://www.linkedin.com/in/gerardohuck/
+
+Based on the following article:
+http://dl.acm.org/citation.cfm?id=1498047
+
+Modifications tracked on Github.
+*/
+
+var util = _dereq_('../../util');
+var math = _dereq_('../../math');
+var Thread = _dereq_('../../thread');
+var is = _dereq_('../../is');
+
+var DEBUG;
+
+/**
+ * @brief :  default layout options
  */
-!function(e){if("object"==typeof exports&&"undefined"!=typeof module)module.exports=e();else if("function"==typeof define&&define.amd)define([],e);else{var t;t="undefined"!=typeof window?window:"undefined"!=typeof global?global:"undefined"!=typeof self?self:this,t.cytoscape=e()}}(function(){var define,module,exports;return function e(t,r,n){function i(o,s){if(!r[o]){if(!t[o]){var l="function"==typeof require&&require;if(!s&&l)return l(o,!0);if(a)return a(o,!0);var u=new Error("Cannot find module '"+o+"'");throw u.code="MODULE_NOT_FOUND",u}var c=r[o]={exports:{}};t[o][0].call(c.exports,function(e){var r=t[o][1][e];return i(r?r:e)},c,c.exports,e,t,r,n)}return r[o].exports}for(var a="function"==typeof require&&require,o=0;o<n.length;o++)i(n[o]);return i}({1:[function(e,t,r){"use strict";var n=e("./util"),i=e("./is"),a=e("./promise"),o=function(e,t,r){if(!(this instanceof o))return new o(e,t,r);var a=this._private=n.extend({duration:1e3},t,r);a.target=e,a.style=a.style||a.css,a.started=!1,a.playing=!1,a.hooked=!1,a.applying=!1,a.progress=0,a.completes=[],a.frames=[],a.complete&&i.fn(a.complete)&&a.completes.push(a.complete),this.length=1,this[0]=this},s=o.prototype;n.extend(s,{instanceString:function(){return"animation"},hook:function(){var e=this._private;if(!e.hooked){var t,r=e.target._private.animation;t=e.queue?r.queue:r.current,t.push(this),i.elementOrCollection(e.target)&&e.target.cy().addToAnimationPool(e.target),e.hooked=!0}return this},play:function(){var e=this._private;return 1===e.progress&&(e.progress=0),e.playing=!0,e.started=!1,e.stopped=!1,this.hook(),this},playing:function(){return this._private.playing},apply:function(){var e=this._private;return e.applying=!0,e.started=!1,e.stopped=!1,this.hook(),this},applying:function(){return this._private.applying},pause:function(){var e=this._private;return e.playing=!1,e.started=!1,this},stop:function(){var e=this._private;return e.playing=!1,e.started=!1,e.stopped=!0,this},rewind:function(){return this.progress(0)},fastforward:function(){return this.progress(1)},time:function(e){var t=this._private;return void 0===e?t.progress*t.duration:this.progress(e/t.duration)},progress:function(e){var t=this._private,r=t.playing;return void 0===e?t.progress:(r&&this.pause(),t.progress=e,t.started=!1,r&&this.play(),this)},completed:function(){return 1===this._private.progress},reverse:function(){var e=this._private,t=e.playing;t&&this.pause(),e.progress=1-e.progress,e.started=!1;var r=function(t,r){var n=e[t];e[t]=e[r],e[r]=n};r("zoom","startZoom"),r("pan","startPan"),r("position","startPosition");for(var i=0;i<e.style.length;i++){var a=e.style[i],o=a.name,s=e.startStyle[o];e.startStyle[o]=e.startStyle[n.dash2camel(o)]=a,e.style[i]=s}return t&&this.play(),this},promise:function(e){var t,r=this._private;switch(e){case"frame":t=r.frames;break;default:case"complete":case"completed":t=r.completes}return new a(function(e,r){t.push(function(){e()})})}}),s.complete=s.completed,t.exports=o},{"./is":77,"./promise":80,"./util":94}],2:[function(e,t,r){"use strict";var n=e("../../is"),i={aStar:function(e){var t=this;e=e||{};var r=function(e,t,n,i){if(e==t)return i.push(a.getElementById(t)),i;if(t in n){var o=n[t],s=v[t];return i.push(a.getElementById(t)),i.push(a.getElementById(s)),r(e,o,n,i)}return void 0},i=function(e,t){if(0===e.length)return void 0;for(var r=0,n=t[e[0]],i=1;i<e.length;i++){var a=t[e[i]];n>a&&(n=a,r=i)}return r},a=this._private.cy;if(null==e||null==e.root)return void 0;var o=n.string(e.root)?this.filter(e.root)[0]:e.root[0];if(null==e.goal)return void 0;var s=n.string(e.goal)?this.filter(e.goal)[0]:e.goal[0];if(null!=e.heuristic&&n.fn(e.heuristic))var l=e.heuristic;else var l=function(){return 0};if(null!=e.weight&&n.fn(e.weight))var u=e.weight;else var u=function(e){return 1};if(null!=e.directed)var c=e.directed;else var c=!1;var d=[],h=[o.id()],p={},v={},f={},g={};f[o.id()]=0,g[o.id()]=l(o);for(var y=this.edges().stdFilter(function(e){return!e.isLoop()}),m=this.nodes(),b=0;h.length>0;){var x=i(h,g),w=a.getElementById(h[x]);if(b++,w.id()==s.id()){var _=r(o.id(),s.id(),p,[]);return _.reverse(),{found:!0,distance:f[w.id()],path:t.spawn(_),steps:b}}d.push(w.id()),h.splice(x,1);var E=w.connectedEdges();c&&(E=E.stdFilter(function(e){return e.data("source")===w.id()})),E=E.intersect(y);for(var D=0;D<E.length;D++){var S=E[D],k=S.connectedNodes().stdFilter(function(e){return e.id()!==w.id()}).intersect(m);if(-1==d.indexOf(k.id())){var T=f[w.id()]+u.apply(S,[S]);-1!=h.indexOf(k.id())?T<f[k.id()]&&(f[k.id()]=T,g[k.id()]=T+l(k),p[k.id()]=w.id()):(f[k.id()]=T,g[k.id()]=T+l(k),h.push(k.id()),p[k.id()]=w.id(),v[k.id()]=S.id())}}}return{found:!1,distance:void 0,path:void 0,steps:b}}};t.exports=i},{"../../is":77}],3:[function(e,t,r){"use strict";var n=e("../../is"),i=e("../../util"),a={bellmanFord:function(e){var t=this;if(e=e||{},null!=e.weight&&n.fn(e.weight))var r=e.weight;else var r=function(e){return 1};if(null!=e.directed)var a=e.directed;else var a=!1;if(null==e.root)return void 0;if(n.string(e.root))var o=this.filter(e.root)[0];else var o=e.root[0];for(var s=this._private.cy,l=this.edges().stdFilter(function(e){return!e.isLoop()}),u=this.nodes(),c=u.length,d={},h=0;c>h;h++)d[u[h].id()]=h;for(var p=[],v=[],f=[],h=0;c>h;h++)u[h].id()===o.id()?p[h]=0:p[h]=1/0,v[h]=void 0;for(var g=!1,h=1;c>h;h++){g=!1;for(var y=0;y<l.length;y++){var m=d[l[y].source().id()],b=d[l[y].target().id()],x=r.apply(l[y],[l[y]]),w=p[m]+x;if(w<p[b]&&(p[b]=w,v[b]=m,f[b]=l[y],g=!0),!a){var w=p[b]+x;w<p[m]&&(p[m]=w,v[m]=b,f[m]=l[y],g=!0)}}if(!g)break}if(g)for(var y=0;y<l.length;y++){var m=d[l[y].source().id()],b=d[l[y].target().id()],x=r.apply(l[y],[l[y]]);if(p[m]+x<p[b])return i.error("Graph contains a negative weight cycle for Bellman-Ford"),{pathTo:void 0,distanceTo:void 0,hasNegativeWeightCycle:!0}}for(var _=[],h=0;c>h;h++)_.push(u[h].id());var E={distanceTo:function(e){if(n.string(e))var t=s.filter(e)[0].id();else var t=e.id();return p[d[t]]},pathTo:function(e){var r=function(e,t,r,n,i,a){for(;;){if(i.push(s.getElementById(n[r])),i.push(a[r]),t===r)return i;var o=e[r];if("undefined"==typeof o)return void 0;r=o}};if(n.string(e))var i=s.filter(e)[0].id();else var i=e.id();var a=[],l=r(v,d[o.id()],d[i],_,a,f);return null!=l&&l.reverse(),t.spawn(l)},hasNegativeWeightCycle:!1};return E}};t.exports=a},{"../../is":77,"../../util":94}],4:[function(e,t,r){"use strict";var n=e("../../is"),i={betweennessCentrality:function(e){if(e=e||{},null!=e.weight&&n.fn(e.weight))var t=e.weight,r=!0;else var r=!1;if(null!=e.directed&&n.bool(e.directed))var i=e.directed;else var i=!1;for(var a=function(e,t){e.unshift(t);for(var r=0;f[e[r]]<f[e[r+1]]&&r<e.length-1;r++){var n=e[r];e[r]=e[r+1],e[r+1]=n}},o=this._private.cy,s=this.nodes(),l={},u={},c=0;c<s.length;c++)i?l[s[c].id()]=s[c].outgoers("node"):l[s[c].id()]=s[c].openNeighborhood("node");for(var c=0;c<s.length;c++)u[s[c].id()]=0;for(var d=0;d<s.length;d++){for(var h=[],p={},v={},f={},g=[],c=0;c<s.length;c++)p[s[c].id()]=[],v[s[c].id()]=0,f[s[c].id()]=Number.POSITIVE_INFINITY;for(v[s[d].id()]=1,f[s[d].id()]=0,g.unshift(s[d].id());g.length>0;){var y=g.pop();h.push(y),r?l[y].forEach(function(e){if(o.$("#"+y).edgesTo(e).length>0)var r=o.$("#"+y).edgesTo(e)[0];else var r=e.edgesTo("#"+y)[0];var n=t.apply(r,[r]);f[e.id()]>f[y]+n&&(f[e.id()]=f[y]+n,g.indexOf(e.id())<0?a(g,e.id()):(g.splice(g.indexOf(e.id()),1),a(g,e.id())),v[e.id()]=0,p[e.id()]=[]),f[e.id()]==f[y]+n&&(v[e.id()]=v[e.id()]+v[y],p[e.id()].push(y))}):l[y].forEach(function(e){f[e.id()]==Number.POSITIVE_INFINITY&&(g.unshift(e.id()),f[e.id()]=f[y]+1),f[e.id()]==f[y]+1&&(v[e.id()]=v[e.id()]+v[y],p[e.id()].push(y))})}for(var m={},c=0;c<s.length;c++)m[s[c].id()]=0;for(;h.length>0;){var b=h.pop();p[b].forEach(function(e){m[e]=m[e]+v[e]/v[b]*(1+m[b]),b!=s[d].id()&&(u[b]=u[b]+m[b])})}}var x=0;for(var w in u)x<u[w]&&(x=u[w]);var _={betweenness:function(e){if(n.string(e))var e=o.filter(e)[0].id();else var e=e.id();return u[e]},betweennessNormalized:function(e){if(n.string(e))var e=o.filter(e)[0].id();else var e=e.id();return u[e]/x}};return _.betweennessNormalised=_.betweennessNormalized,_}};i.bc=i.betweennessCentrality,t.exports=i},{"../../is":77}],5:[function(e,t,r){"use strict";var n=e("../../is"),i=e("../../heap"),a=function(e){return e={bfs:e.bfs||!e.dfs,dfs:e.dfs||!e.bfs},function(t,r,i){var a,o,s;n.plainObject(t)&&!n.elementOrCollection(t)&&(a=t,t=a.roots||a.root,r=a.visit,i=a.directed,o=a.std,s=a.thisArg),i=2!==arguments.length||n.fn(r)?i:r,r=n.fn(r)?r:function(){};for(var l,u=this._private.cy,c=t=n.string(t)?this.filter(t):t,d=[],h=[],p={},v={},f={},g=0,y=this.nodes(),m=this.edges(),b=0;b<c.length;b++)c[b].isNode()&&(d.unshift(c[b]),e.bfs&&(f[c[b].id()]=!0,h.push(c[b])),v[c[b].id()]=0);for(;0!==d.length;){var c=e.bfs?d.shift():d.pop();if(e.dfs){if(f[c.id()])continue;f[c.id()]=!0,h.push(c)}var x,w=v[c.id()],_=p[c.id()],E=null==_?void 0:_.connectedNodes().not(c)[0];if(x=o?r.call(s,c,_,E,g++,w):r.call(c,g++,w,c,_,E),x===!0){l=c;break}if(x===!1)break;for(var D=c.connectedEdges(i?function(){return this.data("source")===c.id()}:void 0).intersect(m),b=0;b<D.length;b++){var S=D[b],k=S.connectedNodes(function(){return this.id()!==c.id()}).intersect(y);0===k.length||f[k.id()]||(k=k[0],d.push(k),e.bfs&&(f[k.id()]=!0,h.push(k)),p[k.id()]=S,v[k.id()]=v[c.id()]+1)}}for(var T=[],b=0;b<h.length;b++){var P=h[b],C=p[P.id()];C&&T.push(C),T.push(P)}return{path:u.collection(T,{unique:!0}),found:u.collection(l)}}},o={breadthFirstSearch:a({bfs:!0}),depthFirstSearch:a({dfs:!0}),kruskal:function(e){function t(e){for(var t=0;t<a.length;t++){var r=a[t];if(r.anySame(e))return{eles:r,index:t}}}var r=this.cy();e=n.fn(e)?e:function(){return 1};for(var i=r.collection(r,[]),a=[],o=this.nodes(),s=0;s<o.length;s++)a.push(o[s].collection());for(var l=this.edges(),u=l.toArray().sort(function(t,r){var n=e.call(t,t),i=e.call(r,r);return n-i}),s=0;s<u.length;s++){var c=u[s],d=c.source()[0],h=c.target()[0],p=t(d),v=t(h);p.index!==v.index&&(i=i.add(c),a[p.index]=p.eles.add(v.eles),a.splice(v.index,1))}return o.add(i)},dijkstra:function(e,t,r){var a;n.plainObject(e)&&!n.elementOrCollection(e)&&(a=e,e=a.root,t=a.weight,r=a.directed);var o=this._private.cy;t=n.fn(t)?t:function(){return 1};for(var s=n.string(e)?this.filter(e)[0]:e[0],l={},u={},c={},d=this.edges().filter(function(){return!this.isLoop()}),h=this.nodes(),p=function(e){return l[e.id()]},v=function(e,t){l[e.id()]=t,f.updateItem(e)},f=new i(function(e,t){return p(e)-p(t)}),g=0;g<h.length;g++){var y=h[g];l[y.id()]=y.same(s)?0:1/0,f.push(y)}for(var m=function(e,n){for(var i,a=(r?e.edgesTo(n):e.edgesWith(n)).intersect(d),o=1/0,s=0;s<a.length;s++){var l=a[s],u=t.apply(l,[l]);(o>u||!i)&&(o=u,i=l)}return{edge:i,dist:o}};f.size()>0;){var b=f.pop(),x=p(b),w=b.id();if(c[w]=x,x===Math.Infinite)break;for(var _=b.neighborhood().intersect(h),g=0;g<_.length;g++){var E=_[g],D=E.id(),S=m(b,E),k=x+S.dist;k<p(E)&&(v(E,k),u[D]={node:b,edge:S.edge})}}return{distanceTo:function(e){var t=n.string(e)?h.filter(e)[0]:e[0];return c[t.id()]},pathTo:function(e){var t=n.string(e)?h.filter(e)[0]:e[0],r=[],i=t;if(t.length>0)for(r.unshift(t);u[i.id()];){var a=u[i.id()];r.unshift(a.edge),r.unshift(a.node),i=a.node}return o.collection(r)}}}};o.bfs=o.breadthFirstSearch,o.dfs=o.depthFirstSearch,t.exports=o},{"../../heap":75,"../../is":77}],6:[function(e,t,r){"use strict";var n=e("../../is"),i={closenessCentralityNormalized:function(e){e=e||{};var t=this.cy(),r=e.harmonic;void 0===r&&(r=!0);for(var i={},a=0,o=this.nodes(),s=this.floydWarshall({weight:e.weight,directed:e.directed}),l=0;l<o.length;l++){for(var u=0,c=0;c<o.length;c++)if(l!=c){var d=s.distance(o[l],o[c]);u+=r?1/d:d}r||(u=1/u),u>a&&(a=u),i[o[l].id()]=u}return{closeness:function(e){if(n.string(e))var e=t.filter(e)[0].id();else var e=e.id();return i[e]/a}}},closenessCentrality:function(e){if(e=e||{},null==e.root)return void 0;if(n.string(e.root))var t=this.filter(e.root)[0];else var t=e.root[0];if(null!=e.weight&&n.fn(e.weight))var r=e.weight;else var r=function(){return 1};if(null!=e.directed&&n.bool(e.directed))var i=e.directed;else var i=!1;var a=e.harmonic;void 0===a&&(a=!0);for(var o=this.dijkstra({root:t,weight:r,directed:i}),s=0,l=this.nodes(),u=0;u<l.length;u++)if(l[u].id()!=t.id()){var c=o.distanceTo(l[u]);s+=a?1/c:c}return a?s:1/s}};i.cc=i.closenessCentrality,i.ccn=i.closenessCentralityNormalised=i.closenessCentralityNormalized,t.exports=i},{"../../is":77}],7:[function(e,t,r){"use strict";var n=e("../../is"),i=e("../../util"),a={degreeCentralityNormalized:function(e){e=e||{};var t=this.cy();if(null!=e.directed)var r=e.directed;else var r=!1;var a=this.nodes(),o=a.length;if(r){for(var s={},l={},u=0,c=0,d=0;o>d;d++){var h=a[d],p=this.degreeCentrality(i.extend({},e,{root:h}));u<p.indegree&&(u=p.indegree),c<p.outdegree&&(c=p.outdegree),s[h.id()]=p.indegree,l[h.id()]=p.outdegree}return{indegree:function(e){if(n.string(e))var e=t.filter(e)[0].id();else var e=e.id();return s[e]/u},outdegree:function(e){if(n.string(e))var e=t.filter(e)[0].id();else var e=e.id();return l[e]/c}}}for(var v={},f=0,d=0;o>d;d++){var h=a[d],p=this.degreeCentrality(i.extend({},e,{root:h}));f<p.degree&&(f=p.degree),v[h.id()]=p.degree}return{degree:function(e){if(n.string(e))var e=t.filter(e)[0].id();else var e=e.id();return v[e]/f}}},degreeCentrality:function(e){e=e||{};var t=this;if(null==e||null==e.root)return void 0;var r=n.string(e.root)?this.filter(e.root)[0]:e.root[0];if(null!=e.weight&&n.fn(e.weight))var i=e.weight;else var i=function(e){return 1};if(null!=e.directed)var a=e.directed;else var a=!1;if(null!=e.alpha&&n.number(e.alpha))var o=e.alpha;else o=0;if(a){for(var s=r.connectedEdges('edge[target = "'+r.id()+'"]').intersection(t),l=r.connectedEdges('edge[source = "'+r.id()+'"]').intersection(t),u=s.length,c=l.length,d=0,h=0,p=0;p<s.length;p++){var v=s[p];d+=i.apply(v,[v])}for(var p=0;p<l.length;p++){var v=l[p];h+=i.apply(v,[v])}return{indegree:Math.pow(u,1-o)*Math.pow(d,o),outdegree:Math.pow(c,1-o)*Math.pow(h,o)}}for(var f=r.connectedEdges().intersection(t),g=f.length,y=0,p=0;p<f.length;p++){var v=f[p];y+=i.apply(v,[v])}return{degree:Math.pow(g,1-o)*Math.pow(y,o)}}};a.dc=a.degreeCentrality,a.dcn=a.degreeCentralityNormalised=a.degreeCentralityNormalized,t.exports=a},{"../../is":77,"../../util":94}],8:[function(e,t,r){"use strict";var n=e("../../is"),i={floydWarshall:function(e){e=e||{};var t=this.cy();if(null!=e.weight&&n.fn(e.weight))var r=e.weight;else var r=function(e){return 1};if(null!=e.directed)var i=e.directed;else var i=!1;for(var a=this.edges().stdFilter(function(e){return!e.isLoop()}),o=this.nodes(),s=o.length,l={},u=0;s>u;u++)l[o[u].id()]=u;for(var c=[],u=0;s>u;u++){for(var d=new Array(s),h=0;s>h;h++)u==h?d[h]=0:d[h]=1/0;c.push(d)}var p=[],v=[],f=function(e){for(var t=0;s>t;t++){for(var r=new Array(s),n=0;s>n;n++)r[n]=void 0;e.push(r)}};f(p),f(v);for(var u=0;u<a.length;u++){var g=l[a[u].source().id()],y=l[a[u].target().id()],m=r.apply(a[u],[a[u]]);c[g][y]>m&&(c[g][y]=m,p[g][y]=y,v[g][y]=a[u])}if(!i)for(var u=0;u<a.length;u++){var g=l[a[u].target().id()],y=l[a[u].source().id()],m=r.apply(a[u],[a[u]]);c[g][y]>m&&(c[g][y]=m,p[g][y]=y,v[g][y]=a[u])}for(var b=0;s>b;b++)for(var u=0;s>u;u++)for(var h=0;s>h;h++)c[u][b]+c[b][h]<c[u][h]&&(c[u][h]=c[u][b]+c[b][h],p[u][h]=p[u][b]);for(var x=[],u=0;s>u;u++)x.push(o[u].id());var w={distance:function(e,r){if(n.string(e))var i=t.filter(e)[0].id();else var i=e.id();if(n.string(r))var a=t.filter(r)[0].id();else var a=r.id();return c[l[i]][l[a]]},path:function(e,r){var i=function(e,r,n,i,a){if(e===r)return t.getElementById(i[e]);if(void 0===n[e][r])return void 0;for(var o=[t.getElementById(i[e])],s=e;e!==r;){s=e,e=n[e][r];var l=a[s][e];o.push(l),o.push(t.getElementById(i[e]))}return o};if(n.string(e))var a=t.filter(e)[0].id();else var a=e.id();if(n.string(r))var o=t.filter(r)[0].id();else var o=r.id();var s=i(l[a],l[o],p,x,v);return t.collection(s)}};return w}};t.exports=i},{"../../is":77}],9:[function(e,t,r){"use strict";var n=e("../../util"),i={};[e("./bfs-dfs"),e("./a-star"),e("./floyd-warshall"),e("./bellman-ford"),e("./kerger-stein"),e("./page-rank"),e("./degree-centrality"),e("./closeness-centrality"),e("./betweenness-centrality")].forEach(function(e){n.extend(i,e)}),t.exports=i},{"../../util":94,"./a-star":2,"./bellman-ford":3,"./betweenness-centrality":4,"./bfs-dfs":5,"./closeness-centrality":6,"./degree-centrality":7,"./floyd-warshall":8,"./kerger-stein":10,"./page-rank":11}],10:[function(e,t,r){"use strict";var n=e("../../util"),i={kargerStein:function(e){var t=this;e=e||{};var r=function(e,t,r){for(var n=r[e],i=n[1],a=n[2],o=t[i],s=t[a],l=r.filter(function(e){return t[e[1]]===o&&t[e[2]]===s?!1:t[e[1]]===s&&t[e[2]]===o?!1:!0}),u=0;u<l.length;u++){var c=l[u];c[1]===s?(l[u]=c.slice(0),l[u][1]=o):c[2]===s&&(l[u]=c.slice(0),l[u][2]=o)}for(var u=0;u<t.length;u++)t[u]===s&&(t[u]=o);return l},i=function(e,t,n,a){if(a>=n)return t;var o=Math.floor(Math.random()*t.length),s=r(o,e,t);return i(e,s,n-1,a)},a=this._private.cy,o=this.edges().stdFilter(function(e){return!e.isLoop()}),s=this.nodes(),l=s.length,u=o.length,c=Math.ceil(Math.pow(Math.log(l)/Math.LN2,2)),d=Math.floor(l/Math.sqrt(2));if(2>l)return void n.error("At least 2 nodes are required for Karger-Stein algorithm");for(var h={},p=0;l>p;p++)h[s[p].id()]=p;for(var v=[],p=0;u>p;p++){var f=o[p];v.push([p,h[f.source().id()],h[f.target().id()]])}for(var g,y=1/0,m=[],p=0;l>p;p++)m.push(p);for(var b=0;c>=b;b++){var x=m.slice(0),w=i(x,v,l,d),_=x.slice(0),E=i(x,w,d,2),D=i(_,w,d,2);E.length<=D.length&&E.length<y?(y=E.length,g=[E,x]):D.length<=E.length&&D.length<y&&(y=D.length,g=[D,_])}for(var S=g[0].map(function(e){return o[e[0]]}),k=[],T=[],P=g[1][0],p=0;p<g[1].length;p++){var C=g[1][p];C===P?k.push(s[p]):T.push(s[p])}var N={cut:t.spawn(a,S),partition1:t.spawn(k),partition2:t.spawn(T)};return N}};t.exports=i},{"../../util":94}],11:[function(e,t,r){"use strict";var n=e("../../is"),i={pageRank:function(e){e=e||{};var t=function(e){for(var t=e.length,r=0,n=0;t>n;n++)r+=e[n];for(var n=0;t>n;n++)e[n]=e[n]/r};if(null!=e&&null!=e.dampingFactor)var r=e.dampingFactor;else var r=.8;if(null!=e&&null!=e.precision)var i=e.precision;else var i=1e-6;if(null!=e&&null!=e.iterations)var a=e.iterations;else var a=200;if(null!=e&&null!=e.weight&&n.fn(e.weight))var o=e.weight;else var o=function(e){return 1};for(var s=this._private.cy,l=this.edges().stdFilter(function(e){return!e.isLoop()}),u=this.nodes(),c=u.length,d=l.length,h={},p=0;c>p;p++)h[u[p].id()]=p;for(var v=[],f=[],g=(1-r)/c,p=0;c>p;p++){for(var y=[],m=0;c>m;m++)y.push(0);v.push(y),f.push(0)}for(var p=0;d>p;p++){var b=l[p],x=h[b.source().id()],w=h[b.target().id()],_=o.apply(b,[b]);v[w][x]+=_,f[x]+=_}for(var E=1/c+g,m=0;c>m;m++)if(0===f[m])for(var p=0;c>p;p++)v[p][m]=E;else for(var p=0;c>p;p++)v[p][m]=v[p][m]/f[m]+g;for(var D,S=[],k=[],p=0;c>p;p++)S.push(1),k.push(0);for(var T=0;a>T;T++){for(var P=k.slice(0),p=0;c>p;p++)for(var m=0;c>m;m++)P[p]+=v[p][m]*S[m];t(P),D=S,S=P;for(var C=0,p=0;c>p;p++)C+=Math.pow(D[p]-S[p],2);if(i>C)break}var N={rank:function(e){if(n.string(e))var t=s.filter(e)[0].id();else var t=e.id();return S[h[t]]}};return N}};t.exports=i},{"../../is":77}],12:[function(e,t,r){"use strict";var n=e("../define"),i={animate:n.animate(),animation:n.animation(),animated:n.animated(),clearQueue:n.clearQueue(),delay:n.delay(),delayAnimation:n.delayAnimation(),stop:n.stop()};t.exports=i},{"../define":41}],13:[function(e,t,r){"use strict";var n=e("../util"),i={classes:function(e){e=e.match(/\S+/g)||[];for(var t=this,r=[],i={},a=0;a<e.length;a++){var o=e[a];i[o]=!0}for(var s=0;s<t.length;s++){for(var l=t[s],u=l._private,c=u.classes,d=!1,a=0;a<e.length;a++){var o=e[a],h=c[o];if(!h){d=!0;break}}if(!d)for(var p in c){var h=c[p],v=i[p];if(h&&!v){d=!0;break}}d&&(u.classes=n.copy(i),r.push(l))}return r.length>0&&this.spawn(r).updateStyle().trigger("class"),t},addClass:function(e){return this.toggleClass(e,!0)},hasClass:function(e){var t=this[0];return null!=t&&t._private.classes[e]?!0:!1},toggleClass:function(e,t){for(var r=e.match(/\S+/g)||[],n=this,i=[],a=0,o=n.length;o>a;a++)for(var s=n[a],l=!1,u=0;u<r.length;u++){var c=r[u],d=s._private.classes,h=d[c],p=t||void 0===t&&!h;p?(d[c]=!0,h||l||(i.push(s),l=!0)):(d[c]=!1,h&&!l&&(i.push(s),l=!0))}return i.length>0&&this.spawn(i).updateStyle().trigger("class"),n},removeClass:function(e){return this.toggleClass(e,!1)},flashClass:function(e,t){var r=this;if(null==t)t=250;else if(0===t)return r;return r.addClass(e),setTimeout(function(){r.removeClass(e)},t),r}};t.exports=i},{"../util":94}],14:[function(e,t,r){"use strict";var n={allAre:function(e){return this.filter(e).length===this.length},is:function(e){return this.filter(e).length>0},some:function(e,t){for(var r=0;r<this.length;r++){var n=t?e.apply(t,[this[r],r,this]):e(this[r],r,this);if(n)return!0}return!1},every:function(e,t){for(var r=0;r<this.length;r++){var n=t?e.apply(t,[this[r],r,this]):e(this[r],r,this);if(!n)return!1}return!0},same:function(e){return e=this.cy().collection(e),this.length!==e.length?!1:this.intersect(e).length===this.length},anySame:function(e){return e=this.cy().collection(e),this.intersect(e).length>0},allAreNeighbors:function(e){return e=this.cy().collection(e),this.neighborhood().intersect(e).length===e.length}};n.allAreNeighbours=n.allAreNeighbors,t.exports=n},{}],15:[function(e,t,r){"use strict";var n={parent:function(e){for(var t=[],r=this._private.cy,n=0;n<this.length;n++){var i=this[n],a=r.getElementById(i._private.data.parent);a.size()>0&&t.push(a)}return this.spawn(t,{unique:!0}).filter(e)},parents:function(e){for(var t=[],r=this.parent();r.nonempty();){for(var n=0;n<r.length;n++){var i=r[n];t.push(i)}r=r.parent()}return this.spawn(t,{unique:!0}).filter(e)},commonAncestors:function(e){for(var t,r=0;r<this.length;r++){var n=this[r],i=n.parents();t=t||i,t=t.intersect(i)}return t.filter(e)},orphans:function(e){return this.stdFilter(function(e){return e.isNode()&&e.parent().empty()}).filter(e)},nonorphans:function(e){return this.stdFilter(function(e){return e.isNode()&&e.parent().nonempty()}).filter(e)},children:function(e){for(var t=[],r=0;r<this.length;r++){var n=this[r];t=t.concat(n._private.children)}return this.spawn(t,{unique:!0}).filter(e)},siblings:function(e){return this.parent().children().not(this).filter(e)},isParent:function(){var e=this[0];return e?0!==e._private.children.length:void 0},isChild:function(){var e=this[0];return e?void 0!==e._private.data.parent&&0!==e.parent().length:void 0},descendants:function(e){function t(e){for(var n=0;n<e.length;n++){var i=e[n];r.push(i),i.children().nonempty()&&t(i.children())}}var r=[];return t(this.children()),this.spawn(r,{unique:!0}).filter(e)}};n.ancestors=n.parents,t.exports=n},{}],16:[function(e,t,r){"use strict";var n,i,a=e("../define");n=i={data:a.data({field:"data",bindingEvent:"data",allowBinding:!0,allowSetting:!0,settingEvent:"data",settingTriggersEvent:!0,triggerFnName:"trigger",allowGetting:!0,immutableKeys:{id:!0,source:!0,target:!0,parent:!0},updateStyle:!0}),removeData:a.removeData({field:"data",event:"data",triggerFnName:"trigger",triggerEvent:!0,immutableKeys:{id:!0,source:!0,target:!0,parent:!0},updateStyle:!0}),scratch:a.data({field:"scratch",bindingEvent:"scratch",allowBinding:!0,allowSetting:!0,settingEvent:"scratch",settingTriggersEvent:!0,triggerFnName:"trigger",allowGetting:!0,updateStyle:!0}),removeScratch:a.removeData({field:"scratch",event:"scratch",triggerFnName:"trigger",triggerEvent:!0,updateStyle:!0}),rscratch:a.data({field:"rscratch",allowBinding:!1,allowSetting:!0,settingTriggersEvent:!1,allowGetting:!0}),removeRscratch:a.removeData({field:"rscratch",triggerEvent:!1}),id:function(){var e=this[0];return e?e._private.data.id:void 0}},n.attr=n.data,n.removeAttr=n.removeData,t.exports=i},{"../define":41}],17:[function(e,t,r){"use strict";function n(e){return function(t){var r=this;if(void 0===t&&(t=!0),0!==r.length&&r.isNode()&&!r.removed()){for(var n=0,i=r[0],a=i._private.edges,o=0;o<a.length;o++){var s=a[o];(t||!s.isLoop())&&(n+=e(i,s))}return n}}}function i(e,t){return function(r){for(var n,i=this.nodes(),a=0;a<i.length;a++){var o=i[a],s=o[e](r);void 0===s||void 0!==n&&!t(s,n)||(n=s)}return n}}var a=e("../util"),o={};a.extend(o,{degree:n(function(e,t){return t.source().same(t.target())?2:1}),indegree:n(function(e,t){return t.target().same(e)?1:0}),outdegree:n(function(e,t){return t.source().same(e)?1:0})}),a.extend(o,{minDegree:i("degree",function(e,t){return t>e}),maxDegree:i("degree",function(e,t){return e>t}),minIndegree:i("indegree",function(e,t){return t>e}),maxIndegree:i("indegree",function(e,t){return e>t}),minOutdegree:i("outdegree",function(e,t){return t>e}),maxOutdegree:i("outdegree",function(e,t){return e>t})}),a.extend(o,{totalDegree:function(e){for(var t=0,r=this.nodes(),n=0;n<r.length;n++)t+=r[n].degree(e);return t}}),t.exports=o},{"../util":94}],18:[function(e,t,r){"use strict";var n,i,a=e("../define"),o=e("../is"),s=e("../util");n=i={position:a.data({field:"position",bindingEvent:"position",allowBinding:!0,allowSetting:!0,settingEvent:"position",settingTriggersEvent:!0,triggerFnName:"rtrigger",allowGetting:!0,validKeys:["x","y"],onSet:function(e){var t=e.updateCompoundBounds();t.rtrigger("position")},canSet:function(e){return!e.locked()&&!e.isParent()}}),silentPosition:a.data({field:"position",bindingEvent:"position",allowBinding:!1,allowSetting:!0,settingEvent:"position",settingTriggersEvent:!1,triggerFnName:"trigger",allowGetting:!0,validKeys:["x","y"],onSet:function(e){e.updateCompoundBounds()},canSet:function(e){return!e.locked()&&!e.isParent()}}),positions:function(e,t){if(o.plainObject(e))this.position(e);else if(o.fn(e)){for(var r=e,n=0;n<this.length;n++){var i=this[n],e=r.apply(i,[n,i]);if(e&&!i.locked()&&!i.isParent()){var a=i._private.position;a.x=e.x,a.y=e.y}}var s=this.updateCompoundBounds(),l=s.length>0?this.add(s):this;t?l.trigger("position"):l.rtrigger("position")}return this},silentPositions:function(e){return this.positions(e,!0)},renderedPosition:function(e,t){var r=this[0],n=this.cy(),i=n.zoom(),a=n.pan(),s=o.plainObject(e)?e:void 0,l=void 0!==s||void 0!==t&&o.string(e);if(r&&r.isNode()){if(!l){var u=r._private.position;return s={x:u.x*i+a.x,y:u.y*i+a.y},void 0===e?s:s[e]}for(var c=0;c<this.length;c++){var r=this[c];void 0!==t?r._private.position[e]=(t-a[e])/i:void 0!==s&&(r._private.position={x:(s.x-a.x)/i,y:(s.y-a.y)/i})}this.rtrigger("position")}else if(!l)return void 0;return this},relativePosition:function(e,t){var r=this[0],n=this.cy(),i=o.plainObject(e)?e:void 0,a=void 0!==i||void 0!==t&&o.string(e),s=n.hasCompoundNodes();if(r&&r.isNode()){if(!a){var l=r._private.position,u=s?r.parent():null,c=u&&u.length>0,d=c;c&&(u=u[0]);var h=d?u._private.position:{x:0,y:0};return i={x:l.x-h.x,y:l.y-h.y},void 0===e?i:i[e]}for(var p=0;p<this.length;p++){var r=this[p],u=s?r.parent():null,c=u&&u.length>0,d=c;c&&(u=u[0]);var h=d?u._private.position:{x:0,y:0};void 0!==t?r._private.position[e]=t+h[e]:void 0!==i&&(r._private.position={x:i.x+h.x,y:i.y+h.y})}this.rtrigger("position")}else if(!a)return void 0;return this},renderedBoundingBox:function(e){var t=this.boundingBox(e),r=this.cy(),n=r.zoom(),i=r.pan(),a=t.x1*n+i.x,o=t.x2*n+i.x,s=t.y1*n+i.y,l=t.y2*n+i.y;return{x1:a,x2:o,y1:s,y2:l,w:o-a,h:l-s}},updateCompoundBounds:function(){function e(e){var t=e.children(),n=e._private.style,i="include"===n["compound-sizing-wrt-labels"].value,a=t.boundingBox({includeLabels:i,includeEdges:!0}),o={top:n["padding-top"].pfValue,bottom:n["padding-bottom"].pfValue,left:n["padding-left"].pfValue,right:n["padding-right"].pfValue},s=e._private.position,l=!1;"auto"===n.width.value&&(e._private.autoWidth=a.w,s.x=(a.x1+a.x2-o.left+o.right)/2,l=!0),"auto"===n.height.value&&(e._private.autoHeight=a.h,s.y=(a.y1+a.y2-o.top+o.bottom)/2,l=!0),l&&r.push(e)}var t=this.cy();if(!t.styleEnabled()||!t.hasCompoundNodes())return t.collection();for(var r=[],n=this.parent();n.nonempty();){for(var i=0;i<n.length;i++){var a=n[i];e(a)}n=n.parent()}return this.spawn(r)},boundingBox:function(e){var t=this,r=t._private.cy,n=r._private,i=n.styleEnabled;e=e||s.staticEmptyObject();var a=void 0===e.includeNodes?!0:e.includeNodes,o=void 0===e.includeEdges?!0:e.includeEdges,l=void 0===e.includeLabels?!0:e.includeLabels;i&&n.renderer.recalculateRenderedStyle(this);for(var u=1/0,c=-(1/0),d=1/0,h=-(1/0),p=0;p<t.length;p++){var v,f,g,y,m,b,x=t[p],w=x._private,_=w.style,E=i?w.style.display.value:"element",D="nodes"===w.group,S=!1;if("none"!==E){if(D&&a){S=!0;var k=w.position;m=k.x,b=k.y;var T=x.outerWidth(),P=T/2,C=x.outerHeight(),N=C/2;v=m-P,f=m+P,g=b-N,y=b+N,u=u>v?v:u,c=f>c?f:c,d=d>g?g:d,h=y>h?y:h}else if(x.isEdge()&&o){S=!0;var M=w.source,B=M._private,z=B.position,O=w.target,I=O._private,L=I.position,A=w.rstyle||{},T=0,R=0;if(i&&(T=_.width.pfValue,R=T/2),v=z.x,f=L.x,g=z.y,y=L.y,v>f){var V=v;v=f,f=V}if(g>y){var V=g;g=y,y=V}if(v-=R,f+=R,g-=R,y+=R,u=u>v?v:u,c=f>c?f:c,d=d>g?g:d,h=y>h?y:h,i)for(var F=A.bezierPts||A.linePts||[],j=0;j<F.length;j++){var q=F[j];v=q.x-R,f=q.x+R,g=q.y-R,y=q.y+R,u=u>v?v:u,c=f>c?f:c,d=d>g?g:d,h=y>h?y:h}if(i&&"haystack"===_["curve-style"].strValue){var X=A.haystackPts;if(v=X[0].x,g=X[0].y,f=X[1].x,y=X[1].y,v>f){var V=v;v=f,f=V}if(g>y){var V=g;g=y,y=V}u=u>v?v:u,c=f>c?f:c,d=d>g?g:d,h=y>h?y:h}}if(i){var w=x._private,_=w.style,A=w.rstyle,Y=_.label.strValue,$=_["font-size"],H=_["text-halign"],W=_["text-valign"],Z=A.labelWidth,U=A.labelHeight,G=A.labelX,K=A.labelY,J=x.isEdge(),Q="autorotate"===_["edge-text-rotation"].strValue;if(l&&Y&&$&&null!=U&&null!=Z&&null!=G&&null!=K&&H&&W){var ee,te,re,ne,ie=U,ae=Z;if(J){if(ee=G-ae/2,te=G+ae/2,re=K-ie/2,ne=K+ie/2,Q){var oe=w.rscratch.labelAngle,se=Math.cos(oe),le=Math.sin(oe),ue=function(e,t){return e-=G,t-=K,{x:e*se-t*le+G,y:e*le+t*se+K}},ce=ue(ee,re),de=ue(ee,ne),he=ue(te,re),pe=ue(te,ne);ee=Math.min(ce.x,de.x,he.x,pe.x),te=Math.max(ce.x,de.x,he.x,pe.x),re=Math.min(ce.y,de.y,he.y,pe.y),ne=Math.max(ce.y,de.y,he.y,pe.y)}}else{switch(H.value){case"left":ee=G-ae,te=G;break;case"center":ee=G-ae/2,te=G+ae/2;break;case"right":ee=G,te=G+ae}switch(W.value){case"top":re=K-ie,ne=K;break;case"center":re=K-ie/2,ne=K+ie/2;break;case"bottom":re=K,ne=K+ie}}u=u>ee?ee:u,c=te>c?te:c,d=d>re?re:d,h=ne>h?ne:h}}}}var ve=function(e){return e===1/0||e===-(1/0)?0:e};return u=ve(u),c=ve(c),d=ve(d),h=ve(h),{x1:u,x2:c,y1:d,y2:h,w:c-u,h:h-d}}};var l=function(e){e.uppercaseName=s.capitalize(e.name),e.autoName="auto"+e.uppercaseName,e.labelName="label"+e.uppercaseName,e.outerName="outer"+e.uppercaseName,e.uppercaseOuterName=s.capitalize(e.outerName),n[e.name]=function(){var t=this[0],r=t._private,n=r.cy,i=n._private.styleEnabled;if(t){if(!i)return 1;var a=r.style[e.name];switch(a.strValue){case"auto":return r[e.autoName]||0;case"label":return r.rstyle[e.labelName]||0;default:return a.pfValue}}},n["outer"+e.uppercaseName]=function(){var t=this[0],r=t._private,n=r.cy,i=n._private.styleEnabled;if(t){if(i){var a=r.style,o=t[e.name](),s=a["border-width"].pfValue,l=a[e.paddings[0]].pfValue+a[e.paddings[1]].pfValue;return o+s+l}return 1}},n["rendered"+e.uppercaseName]=function(){var t=this[0];if(t){var r=t[e.name]();return r*this.cy().zoom()}},n["rendered"+e.uppercaseOuterName]=function(){var t=this[0];if(t){var r=t[e.outerName]();return r*this.cy().zoom()}}};l({name:"width",paddings:["padding-left","padding-right"]}),l({name:"height",paddings:["padding-top","padding-bottom"]}),n.modelPosition=n.point=n.position,n.modelPositions=n.points=n.positions,n.renderedPoint=n.renderedPosition,n.relativePoint=n.relativePosition,n.boundingbox=n.boundingBox,n.renderedBoundingbox=n.renderedBoundingBox,t.exports=i},{"../define":41,"../is":77,"../util":94}],19:[function(e,t,r){"use strict";var n=e("../util"),i=e("../is"),a=function(e,t,r){if(!(this instanceof a))return new a(e,t,r);var o=this;if(r=void 0===r||r?!0:!1,void 0===e||void 0===t||!i.core(e))return void n.error("An element must have a core reference and parameters set");var s=t.group;
-if(null==s&&(s=null!=t.data.source&&null!=t.data.target?"edges":"nodes"),"nodes"!==s&&"edges"!==s)return void n.error("An element must be of type `nodes` or `edges`; you specified `"+s+"`");if(this.length=1,this[0]=this,this._private={cy:e,single:!0,data:t.data||{},position:t.position||{},autoWidth:void 0,autoHeight:void 0,listeners:[],group:s,style:{},rstyle:{},styleCxts:[],removed:!0,selected:t.selected?!0:!1,selectable:void 0===t.selectable?!0:t.selectable?!0:!1,locked:t.locked?!0:!1,grabbed:!1,grabbable:void 0===t.grabbable?!0:t.grabbable?!0:!1,active:!1,classes:{},animation:{current:[],queue:[]},rscratch:{},scratch:t.scratch||{},edges:[],children:[]},t.renderedPosition){var l=t.renderedPosition,u=e.pan(),c=e.zoom();this._private.position={x:(l.x-u.x)/c,y:(l.y-u.y)/c}}if(i.string(t.classes))for(var d=t.classes.split(/\s+/),h=0,p=d.length;p>h;h++){var v=d[h];v&&""!==v&&(o._private.classes[v]=!0)}(t.style||t.css)&&e.style().applyBypass(this,t.style||t.css),(void 0===r||r)&&this.restore()};t.exports=a},{"../is":77,"../util":94}],20:[function(e,t,r){"use strict";var n=e("../define"),i={on:n.on(),one:n.on({unbindSelfOnTrigger:!0}),once:n.on({unbindAllBindersOnTrigger:!0}),off:n.off(),trigger:n.trigger(),rtrigger:function(e,t){return 0!==this.length?(this.cy().notify({type:e,collection:this}),this.trigger(e,t),this):void 0}};n.eventAliasesOn(i),t.exports=i},{"../define":41}],21:[function(e,t,r){"use strict";var n=e("../is"),i=e("../selector"),a={nodes:function(e){return this.filter(function(e,t){return t.isNode()}).filter(e)},edges:function(e){return this.filter(function(e,t){return t.isEdge()}).filter(e)},filter:function(e){if(n.fn(e)){for(var t=[],r=0;r<this.length;r++){var a=this[r];e.apply(a,[r,a])&&t.push(a)}return this.spawn(t)}return n.string(e)||n.elementOrCollection(e)?i(e).filter(this):void 0===e?this:this.spawn()},not:function(e){if(e){n.string(e)&&(e=this.filter(e));for(var t=[],r=0;r<this.length;r++){var i=this[r],a=e._private.ids[i.id()];a||t.push(i)}return this.spawn(t)}return this},absoluteComplement:function(){var e=this._private.cy;return e.elements().not(this)},intersect:function(e){if(n.string(e)){var t=e;return this.filter(t)}for(var r=[],i=this,a=e,o=this.length<e.length,s=o?a._private.ids:i._private.ids,l=o?i:a,u=0;u<l.length;u++){var c=l[u]._private.data.id,d=s[c];d&&r.push(d)}return this.spawn(r)},xor:function(e){var t=this._private.cy;n.string(e)&&(e=t.$(e));var r=[],i=this,a=e,o=function(e,t){for(var n=0;n<e.length;n++){var i=e[n],a=i._private.data.id,o=t._private.ids[a];o||r.push(i)}};return o(i,a),o(a,i),this.spawn(r)},diff:function(e){var t=this._private.cy;n.string(e)&&(e=t.$(e));var r=[],i=[],a=[],o=this,s=e,l=function(e,t,r){for(var n=0;n<e.length;n++){var i=e[n],o=i._private.data.id,s=t._private.ids[o];s?a.push(i):r.push(i)}};return l(o,s,r),l(s,o,i),{left:this.spawn(r,{unique:!0}),right:this.spawn(i,{unique:!0}),both:this.spawn(a,{unique:!0})}},add:function(e){var t=this._private.cy;if(!e)return this;if(n.string(e)){var r=e;e=t.elements(r)}for(var i=[],a=0;a<this.length;a++)i.push(this[a]);for(var a=0;a<e.length;a++){var o=!this._private.ids[e[a].id()];o&&i.push(e[a])}return this.spawn(i)},merge:function(e){var t=this._private,r=t.cy;if(!e)return this;if(n.string(e)){var i=e;e=r.elements(i)}for(var a=0;a<e.length;a++){var o=e[a],s=o.id(),l=!t.ids[s];if(l){var u=this.length++;this[u]=o,t.ids[s]=o,t.indexes[s]=u}}return this},unmergeOne:function(e){e=e[0];var t=this._private,r=e.id(),n=t.indexes[r];if(null==n)return this;this[n]=void 0,t.ids[r]=void 0,t.indexes[r]=void 0;var i=n===this.length-1;if(this.length>1&&!i){var a=this.length-1,o=this[a];this[a]=void 0,this[n]=o,t.indexes[o.id()]=n}return this.length--,this},unmerge:function(e){var t=this._private.cy;if(!e)return this;if(n.string(e)){var r=e;e=t.elements(r)}for(var i=0;i<e.length;i++)this.unmergeOne(e[i]);return this},map:function(e,t){for(var r=[],n=this,i=0;i<n.length;i++){var a=n[i],o=t?e.apply(t,[a,i,n]):e(a,i,n);r.push(o)}return r},stdFilter:function(e,t){for(var r=[],n=this,i=0;i<n.length;i++){var a=n[i],o=t?e.apply(t,[a,i,n]):e(a,i,n);o&&r.push(a)}return this.spawn(r)},max:function(e,t){for(var r,n=-(1/0),i=this,a=0;a<i.length;a++){var o=i[a],s=t?e.apply(t,[o,a,i]):e(o,a,i);s>n&&(n=s,r=o)}return{value:n,ele:r}},min:function(e,t){for(var r,n=1/0,i=this,a=0;a<i.length;a++){var o=i[a],s=t?e.apply(t,[o,a,i]):e(o,a,i);n>s&&(n=s,r=o)}return{value:n,ele:r}}},o=a;o.u=o["|"]=o["+"]=o.union=o.or=o.add,o["\\"]=o["!"]=o["-"]=o.difference=o.relativeComplement=o.subtract=o.not,o.n=o["&"]=o["."]=o.and=o.intersection=o.intersect,o["^"]=o["(+)"]=o["(-)"]=o.symmetricDifference=o.symdiff=o.xor,o.fnFilter=o.filterFn=o.stdFilter,o.complement=o.abscomp=o.absoluteComplement,t.exports=a},{"../is":77,"../selector":81}],22:[function(e,t,r){"use strict";var n={isNode:function(){return"nodes"===this.group()},isEdge:function(){return"edges"===this.group()},isLoop:function(){return this.isEdge()&&this.source().id()===this.target().id()},isSimple:function(){return this.isEdge()&&this.source().id()!==this.target().id()},group:function(){var e=this[0];return e?e._private.group:void 0}};t.exports=n},{}],23:[function(e,t,r){"use strict";var n=e("../util"),i=e("../is"),a=e("./element"),o={prefix:"ele",id:0,generate:function(e,t,r){var n=(i.element(t)?t._private:t,null!=r?r:this.prefix+this.id);if(e.getElementById(n).empty())this.id++;else for(;!e.getElementById(n).empty();)n=this.prefix+ ++this.id;return n}},s=function(e,t,r){if(!(this instanceof s))return new s(e,t,r);if(void 0===e||!i.core(e))return void n.error("A collection must have a reference to the core");var l={},u={},c=!1;if(t){if(t.length>0&&i.plainObject(t[0])&&!i.element(t[0])){c=!0;for(var d=[],h={},p=0,v=t.length;v>p;p++){var f=t[p];null==f.data&&(f.data={});var g=f.data;if(null==g.id)g.id=o.generate(e,f);else if(0!==e.getElementById(g.id).length||h[g.id])continue;var y=new a(e,f,!1);d.push(y),h[g.id]=!0}t=d}}else t=[];this.length=0;for(var p=0,v=t.length;v>p;p++){var m=t[p];if(m){var b=m._private.data.id;(!r||r.unique&&!l[b])&&(l[b]=m,u[b]=this.length,this[this.length]=m,this.length++)}}this._private={cy:e,ids:l,indexes:u},c&&this.restore()},l=a.prototype=s.prototype;l.instanceString=function(){return"collection"},l.spawn=function(e,t,r){return i.core(e)||(r=t,t=e,e=this.cy()),new s(e,t,r)},l.cy=function(){return this._private.cy},l.element=function(){return this[0]},l.collection=function(){return i.collection(this)?this:new s(this._private.cy,[this])},l.unique=function(){return new s(this._private.cy,this,{unique:!0})},l.getElementById=function(e){var t=this._private.cy,r=this._private.ids[e];return r?r:new s(t)},l.json=function(e){var t=this.element(),r=this.cy();if(null==t&&e)return this;if(null==t)return void 0;var a=t._private;if(i.plainObject(e)){r.startBatch(),e.data&&t.data(e.data),e.position&&t.position(e.position);var o=function(r,n,i){var o=e[r];null!=o&&o!==a[r]&&(o?t[n]():t[i]())};return o("removed","remove","restore"),o("selected","select","unselect"),o("selectable","selectify","unselectify"),o("locked","lock","unlock"),o("grabbable","grabify","ungrabify"),null!=e.classes&&t.classes(e.classes),r.endBatch(),this}if(void 0===e){var s={data:n.copy(a.data),position:n.copy(a.position),group:a.group,removed:a.removed,selected:a.selected,selectable:a.selectable,locked:a.locked,grabbable:a.grabbable,classes:null},l=[];for(var u in a.classes)a.classes[u]&&l.push(u);return s.classes=l.join(" "),s}},l.jsons=function(){for(var e=[],t=0;t<this.length;t++){var r=this[t],n=r.json();e.push(n)}return e},l.clone=function(){for(var e=this.cy(),t=[],r=0;r<this.length;r++){var n=this[r],i=n.json(),o=new a(e,i,!1);t.push(o)}return new s(e,t)},l.copy=l.clone,l.restore=function(e){var t=this,r=[],a=t.cy();void 0===e&&(e=!0);for(var l=[],u=[],c=[],d=0,h=0,p=0,v=t.length;v>p;p++){var f=t[p];f.isNode()?(u.push(f),d++):(c.push(f),h++)}l=u.concat(c);for(var p=0,v=l.length;v>p;p++){var f=l[p];if(f.removed()){var g=f._private,y=g.data;if(void 0===y.id)y.id=o.generate(a,f);else if(i.number(y.id))y.id=""+y.id;else{if(i.emptyString(y.id)||!i.string(y.id)){n.error("Can not create element with invalid string ID `"+y.id+"`");continue}if(0!==a.getElementById(y.id).length){n.error("Can not create second element with ID `"+y.id+"`");continue}}var m=y.id;if(f.isNode()){var b=f,x=g.position;null==x.x&&(x.x=0),null==x.y&&(x.y=0)}if(f.isEdge()){for(var w=f,_=["source","target"],E=_.length,D=!1,S=0;E>S;S++){var k=_[S],T=y[k];i.number(T)&&(T=y[k]=""+y[k]),null==T||""===T?(n.error("Can not create edge `"+m+"` with unspecified "+k),D=!0):a.getElementById(T).empty()&&(n.error("Can not create edge `"+m+"` with nonexistant "+k+" `"+T+"`"),D=!0)}if(D)continue;var P=a.getElementById(y.source),C=a.getElementById(y.target);P._private.edges.push(w),C._private.edges.push(w),w._private.source=P,w._private.target=C}g.ids={},g.ids[m]=f,g.removed=!1,a.addToPool(f),r.push(f)}}for(var p=0;d>p;p++){var b=l[p],y=b._private.data;i.number(y.parent)&&(y.parent=""+y.parent);var N=y.parent,M=null!=N;if(M){var B=a.getElementById(N);if(B.empty())y.parent=void 0;else{for(var z=!1,O=B;!O.empty();){if(b.same(O)){z=!0,y.parent=void 0;break}O=O.parent()}z||(B[0]._private.children.push(b),b._private.parent=B[0],a._private.hasCompoundNodes=!0)}}}if(r=new s(a,r),r.length>0){var I=r.add(r.connectedNodes()).add(r.parent());I.updateStyle(e),e?r.rtrigger("add"):r.trigger("add")}return t},l.removed=function(){var e=this[0];return e&&e._private.removed},l.inside=function(){var e=this[0];return e&&!e._private.removed},l.remove=function(e){function t(e){for(var t=e._private.edges,r=0;r<t.length;r++)n(t[r])}function r(e){for(var t=e._private.children,r=0;r<t.length;r++)n(t[r])}function n(e){var n=c[e.id()];n||(c[e.id()]=!0,e.isNode()?(u.push(e),t(e),r(e)):u.unshift(e))}function i(e,t){for(var r=e._private.edges,n=0;n<r.length;n++){var i=r[n];if(t===i){r.splice(n,1);break}}}function a(e,t){t=t[0],e=e[0];for(var r=e._private.children,n=0;n<r.length;n++)if(r[n][0]===t[0]){r.splice(n,1);break}}var o=this,l=[],u=[],c={},d=o._private.cy;void 0===e&&(e=!0);for(var h=0,p=o.length;p>h;h++){var v=o[h];n(v)}for(var h=0;h<u.length;h++){var v=u[h];if(v._private.removed=!0,d.removeFromPool(v),l.push(v),v.isEdge()){var f=v.source()[0],g=v.target()[0];i(f,v),i(g,v)}else{var y=v.parent();0!==y.length&&a(y,v)}}var m=d._private.elements;d._private.hasCompoundNodes=!1;for(var h=0;h<m.length;h++){var v=m[h];if(v.isParent()){d._private.hasCompoundNodes=!0;break}}var b=new s(this.cy(),l);b.size()>0&&(e&&this.cy().notify({type:"remove",collection:b}),b.trigger("remove"));for(var x={},h=0;h<u.length;h++){var v=u[h],w="nodes"===v._private.group,_=v._private.data.parent;if(w&&void 0!==_&&!x[_]){x[_]=!0;var y=d.getElementById(_);y&&0!==y.length&&!y._private.removed&&0===y.children().length&&y.updateStyle()}}return new s(d,l)},l.move=function(e){var t=this._private.cy;if(void 0!==e.source||void 0!==e.target){var r=e.source,n=e.target,i=t.getElementById(r).length>0,a=t.getElementById(n).length>0;if(i||a){var o=this.jsons();this.remove();for(var s=0;s<o.length;s++){var l=o[s];"edges"===l.group&&(i&&(l.data.source=r),a&&(l.data.target=n))}return t.add(o)}}else if(void 0!==e.parent){var u=e.parent,c=null===u||t.getElementById(u).length>0;if(c){var o=this.jsons(),d=this.descendants(),h=d.merge(d.add(this).connectedEdges());this.remove();for(var s=0;s<this.length;s++){var l=o[s];"nodes"===l.group&&(l.data.parent=null===u?void 0:u)}}return t.add(o).merge(h.restore())}return this},[e("./algorithms"),e("./animation"),e("./class"),e("./comparators"),e("./compounds"),e("./data"),e("./degree"),e("./dimensions"),e("./events"),e("./filter"),e("./group"),e("./index"),e("./iteration"),e("./layout"),e("./style"),e("./switch-functions"),e("./traversing")].forEach(function(e){n.extend(l,e)}),t.exports=s},{"../is":77,"../util":94,"./algorithms":9,"./animation":12,"./class":13,"./comparators":14,"./compounds":15,"./data":16,"./degree":17,"./dimensions":18,"./element":19,"./events":20,"./filter":21,"./group":22,"./index":23,"./iteration":24,"./layout":25,"./style":26,"./switch-functions":27,"./traversing":28}],24:[function(e,t,r){"use strict";var n=e("../is"),i=e("./zsort"),a={each:function(e){if(n.fn(e))for(var t=0;t<this.length;t++){var r=this[t],i=e.apply(r,[t,r]);if(i===!1)break}return this},forEach:function(e,t){if(n.fn(e))for(var r=0;r<this.length;r++){var i=this[r],a=t?e.apply(t,[i,r,this]):e(i,r,this);if(a===!1)break}return this},toArray:function(){for(var e=[],t=0;t<this.length;t++)e.push(this[t]);return e},slice:function(e,t){var r=[],n=this.length;null==t&&(t=n),null==e&&(e=0),0>e&&(e=n+e),0>t&&(t=n+t);for(var i=e;i>=0&&t>i&&n>i;i++)r.push(this[i]);return this.spawn(r)},size:function(){return this.length},eq:function(e){return this[e]||this.spawn()},first:function(){return this[0]||this.spawn()},last:function(){return this[this.length-1]||this.spawn()},empty:function(){return 0===this.length},nonempty:function(){return!this.empty()},sort:function(e){if(!n.fn(e))return this;var t=this.toArray().sort(e);return this.spawn(t)},sortByZIndex:function(){return this.sort(i)},zDepth:function(){var e=this[0];if(!e)return void 0;var t=e._private,r=t.group;if("nodes"===r){var n=t.data.parent?e.parents().size():0;return e.isParent()?n:Number.MAX_VALUE}var i=t.source,a=t.target,o=i.zDepth(),s=a.zDepth();return Math.max(o,s,0)}};t.exports=a},{"../is":77,"./zsort":29}],25:[function(e,t,r){"use strict";var n=e("../is"),i=e("../util"),a={layoutPositions:function(e,t,r){var i=this.nodes(),a=this.cy();if(e.trigger({type:"layoutstart",layout:e}),e.animations=[],t.animate){for(var o=0;o<i.length;o++){var s=i[o],l=o===i.length-1,u=r.call(s,o,s),c=s.position();n.number(c.x)&&n.number(c.y)||s.silentPosition({x:0,y:0});var d=s.animation({position:u,duration:t.animationDuration,easing:t.animationEasing,step:l?function(){t.fit&&a.fit(t.eles,t.padding)}:void 0,complete:l?function(){null!=t.zoom&&a.zoom(t.zoom),t.pan&&a.pan(t.pan),t.fit&&a.fit(t.eles,t.padding),e.one("layoutstop",t.stop),e.trigger({type:"layoutstop",layout:e})}:void 0});e.animations.push(d),d.play()}e.one("layoutready",t.ready),e.trigger({type:"layoutready",layout:e})}else i.positions(r),t.fit&&a.fit(t.eles,t.padding),null!=t.zoom&&a.zoom(t.zoom),t.pan&&a.pan(t.pan),e.one("layoutready",t.ready),e.trigger({type:"layoutready",layout:e}),e.one("layoutstop",t.stop),e.trigger({type:"layoutstop",layout:e});return this},layout:function(e){var t=this.cy();return t.layout(i.extend({},e,{eles:this})),this},makeLayout:function(e){var t=this.cy();return t.makeLayout(i.extend({},e,{eles:this}))}};a.createLayout=a.makeLayout,t.exports=a},{"../is":77,"../util":94}],26:[function(e,t,r){"use strict";var n=e("../is"),i={updateStyle:function(e){var t=this._private.cy;if(!t.styleEnabled())return this;if(t._private.batchingStyle){var r=t._private.batchStyleEles;return r.merge(this),this}var n=t.style();e=e||void 0===e?!0:!1,n.apply(this);var i=this.updateCompoundBounds(),a=i.length>0?this.add(i):this;return e?a.rtrigger("style"):a.trigger("style"),this},updateMappers:function(e){var t=this._private.cy,r=t.style();if(e=e||void 0===e?!0:!1,!t.styleEnabled())return this;r.updateMappers(this);var n=this.updateCompoundBounds(),i=n.length>0?this.add(n):this;return e?i.rtrigger("style"):i.trigger("style"),this},renderedCss:function(e){var t=this.cy();if(!t.styleEnabled())return this;var r=this[0];if(r){var n=r.cy().style().getRenderedStyle(r);return void 0===e?n:n[e]}},css:function(e,t){var r=this.cy();if(!r.styleEnabled())return this;var i=!1,a=r.style();if(n.plainObject(e)){var o=e;a.applyBypass(this,o,i);var s=this.updateCompoundBounds(),l=s.length>0?this.add(s):this;l.rtrigger("style")}else if(n.string(e)){if(void 0===t){var u=this[0];return u?a.getStylePropertyValue(u,e):void 0}a.applyBypass(this,e,t,i);var s=this.updateCompoundBounds(),l=s.length>0?this.add(s):this;l.rtrigger("style")}else if(void 0===e){var u=this[0];return u?a.getRawStyle(u):void 0}return this},removeCss:function(e){var t=this.cy();if(!t.styleEnabled())return this;var r=!1,n=t.style(),i=this;if(void 0===e)for(var a=0;a<i.length;a++){var o=i[a];n.removeAllBypasses(o,r)}else{e=e.split(/\s+/);for(var a=0;a<i.length;a++){var o=i[a];n.removeBypasses(o,e,r)}}var s=this.updateCompoundBounds(),l=s.length>0?this.add(s):this;return l.rtrigger("style"),this},show:function(){return this.css("display","element"),this},hide:function(){return this.css("display","none"),this},visible:function(){var e=this.cy();if(!e.styleEnabled())return!0;var t=this[0],r=e.hasCompoundNodes();if(t){var n=t._private.style;if("visible"!==n.visibility.value||"element"!==n.display.value)return!1;if("nodes"===t._private.group){if(!r)return!0;var i=t._private.data.parent?t.parents():null;if(i)for(var a=0;a<i.length;a++){var o=i[a],s=o._private.style,l=s.visibility.value,u=s.display.value;if("visible"!==l||"element"!==u)return!1}return!0}var c=t._private.source,d=t._private.target;return c.visible()&&d.visible()}},hidden:function(){var e=this[0];return e?!e.visible():void 0},effectiveOpacity:function(){var e=this.cy();if(!e.styleEnabled())return 1;var t=e.hasCompoundNodes(),r=this[0];if(r){var n=r._private,i=n.style.opacity.value;if(!t)return i;var a=n.data.parent?r.parents():null;if(a)for(var o=0;o<a.length;o++){var s=a[o],l=s._private.style.opacity.value;i=l*i}return i}},transparent:function(){var e=this.cy();if(!e.styleEnabled())return!1;var t=this[0],r=t.cy().hasCompoundNodes();return t?r?0===t.effectiveOpacity():0===t._private.style.opacity.value:void 0},isFullAutoParent:function(){var e=this.cy();if(!e.styleEnabled())return!1;var t=this[0];if(t){var r="auto"===t._private.style.width.value,n="auto"===t._private.style.height.value;return t.isParent()&&r&&n}},backgrounding:function(){var e=this.cy();if(!e.styleEnabled())return!1;var t=this[0];return t._private.backgrounding?!0:!1}};i.bypass=i.style=i.css,i.renderedStyle=i.renderedCss,i.removeBypass=i.removeStyle=i.removeCss,t.exports=i},{"../is":77}],27:[function(e,t,r){"use strict";function n(e){return function(){var t=arguments,r=[];if(2===t.length){var n=t[0],i=t[1];this.bind(e.event,n,i)}else if(1===t.length){var i=t[0];this.bind(e.event,i)}else if(0===t.length){for(var a=0;a<this.length;a++){var o=this[a],s=!e.ableField||o._private[e.ableField],l=o._private[e.field]!=e.value;if(e.overrideAble){var u=e.overrideAble(o);if(void 0!==u&&(s=u,!u))return this}s&&(o._private[e.field]=e.value,l&&r.push(o))}var c=this.spawn(r);c.updateStyle(),c.trigger(e.event)}return this}}function i(e){a[e.field]=function(){var t=this[0];if(t){if(e.overrideField){var r=e.overrideField(t);if(void 0!==r)return r}return t._private[e.field]}},a[e.on]=n({event:e.on,field:e.field,ableField:e.ableField,overrideAble:e.overrideAble,value:!0}),a[e.off]=n({event:e.off,field:e.field,ableField:e.ableField,overrideAble:e.overrideAble,value:!1})}var a={};i({field:"locked",overrideField:function(e){return e.cy().autolock()?!0:void 0},on:"lock",off:"unlock"}),i({field:"grabbable",overrideField:function(e){return e.cy().autoungrabify()?!1:void 0},on:"grabify",off:"ungrabify"}),i({field:"selected",ableField:"selectable",overrideAble:function(e){return e.cy().autounselectify()?!1:void 0},on:"select",off:"unselect"}),i({field:"selectable",overrideField:function(e){return e.cy().autounselectify()?!1:void 0},on:"selectify",off:"unselectify"}),a.deselect=a.unselect,a.grabbed=function(){var e=this[0];return e?e._private.grabbed:void 0},i({field:"active",on:"activate",off:"unactivate"}),a.inactive=function(){var e=this[0];return e?!e._private.active:void 0},t.exports=a},{}],28:[function(e,t,r){"use strict";function n(e){return function(t){for(var r=[],n=0;n<this.length;n++){var i=this[n],a=i._private[e.attr];a&&r.push(a)}return this.spawn(r,{unique:!0}).filter(t)}}function i(e){return function(t){var r=[],n=this._private.cy,i=e||{};s.string(t)&&(t=n.$(t));for(var a=this._private.ids,o=t._private.ids,l=0;l<t.length;l++)for(var u=t[l]._private.edges,c=0;c<u.length;c++){var d=u[c],h=d._private.data,p=a[h.source]&&o[h.target],v=o[h.source]&&a[h.target],f=p||v;if(f){if(i.thisIs){if("source"===i.thisIs&&!p)continue;if("target"===i.thisIs&&!v)continue}r.push(d)}}return this.spawn(r,{unique:!0})}}function a(e){var t={codirected:!1};return e=o.extend({},t,e),function(t){for(var r=[],n=this.edges(),i=e,a=0;a<n.length;a++)for(var o=n[a],s=o.source()[0],l=s.id(),u=o.target()[0],c=u.id(),d=s._private.edges,h=0;h<d.length;h++){var p=d[h],v=p._private.data,f=v.target,g=v.source,y=f===c&&g===l,m=l===f&&c===g;(i.codirected&&y||!i.codirected&&(y||m))&&r.push(p)}return this.spawn(r,{unique:!0}).filter(t)}}var o=e("../util"),s=e("../is"),l={};o.extend(l,{roots:function(e){for(var t=this,r=[],n=0;n<t.length;n++){var i=t[n];if(i.isNode()){var a=i.connectedEdges(function(){return this.data("target")===i.id()&&this.data("source")!==i.id()}).length>0;a||r.push(i)}}return this.spawn(r,{unique:!0}).filter(e)},leaves:function(e){for(var t=this,r=[],n=0;n<t.length;n++){var i=t[n];if(i.isNode()){var a=i.connectedEdges(function(){return this.data("source")===i.id()&&this.data("target")!==i.id()}).length>0;a||r.push(i)}}return this.spawn(r,{unique:!0}).filter(e)},outgoers:function(e){for(var t=this,r=[],n=0;n<t.length;n++){var i=t[n],a=i.id();if(i.isNode())for(var o=i._private.edges,s=0;s<o.length;s++){var l=o[s],u=l._private.data.source,c=l._private.data.target;u===a&&c!==a&&(r.push(l),r.push(l.target()[0]))}}return this.spawn(r,{unique:!0}).filter(e)},successors:function(e){for(var t=this,r=[],n={};;){var i=t.outgoers();if(0===i.length)break;for(var a=!1,o=0;o<i.length;o++){var s=i[o],l=s.id();n[l]||(n[l]=!0,r.push(s),a=!0)}if(!a)break;t=i}return this.spawn(r,{unique:!0}).filter(e)},incomers:function(e){for(var t=this,r=[],n=0;n<t.length;n++){var i=t[n],a=i.id();if(i.isNode())for(var o=i._private.edges,s=0;s<o.length;s++){var l=o[s],u=l._private.data.source,c=l._private.data.target;c===a&&u!==a&&(r.push(l),r.push(l.source()[0]))}}return this.spawn(r,{unique:!0}).filter(e)},predecessors:function(e){for(var t=this,r=[],n={};;){var i=t.incomers();if(0===i.length)break;for(var a=!1,o=0;o<i.length;o++){var s=i[o],l=s.id();n[l]||(n[l]=!0,r.push(s),a=!0)}if(!a)break;t=i}return this.spawn(r,{unique:!0}).filter(e)}}),o.extend(l,{neighborhood:function(e){for(var t=[],r=this.nodes(),n=0;n<r.length;n++)for(var i=r[n],a=i.connectedEdges(),o=0;o<a.length;o++){var s=a[o],l=s._private.source,u=s._private.target,c=i===l?u:l;c.length>0&&t.push(c[0]),t.push(s[0])}return this.spawn(t,{unique:!0}).filter(e)},closedNeighborhood:function(e){return this.neighborhood().add(this).filter(e)},openNeighborhood:function(e){return this.neighborhood(e)}}),l.neighbourhood=l.neighborhood,l.closedNeighbourhood=l.closedNeighborhood,l.openNeighbourhood=l.openNeighborhood,o.extend(l,{source:function(e){var t,r=this[0];return r&&(t=r._private.source),t&&e?t.filter(e):t},target:function(e){var t,r=this[0];return r&&(t=r._private.target),t&&e?t.filter(e):t},sources:n({attr:"source"}),targets:n({attr:"target"})}),o.extend(l,{edgesWith:i(),edgesTo:i({thisIs:"source"})}),o.extend(l,{connectedEdges:function(e){for(var t=[],r=this,n=0;n<r.length;n++){var i=r[n];if(i.isNode())for(var a=i._private.edges,o=0;o<a.length;o++){var s=a[o];t.push(s)}}return this.spawn(t,{unique:!0}).filter(e)},connectedNodes:function(e){for(var t=[],r=this,n=0;n<r.length;n++){var i=r[n];i.isEdge()&&(t.push(i.source()[0]),t.push(i.target()[0]))}return this.spawn(t,{unique:!0}).filter(e)},parallelEdges:a(),codirectedEdges:a({codirected:!0})}),o.extend(l,{components:function(){var e=this.cy(),t=e.collection(),r=this.nodes(),n=[],i=function(e,n){t.merge(e),r.unmerge(e),n.merge(e)};do{var a=e.collection();n.push(a);var o=r[0];i(o,a),this.bfs({directed:!1,roots:o,visit:function(e,t,r,n,o){i(r,a)}})}while(r.length>0);return n.map(function(e){return e.closedNeighborhood()})}}),t.exports=l},{"../is":77,"../util":94}],29:[function(e,t,r){"use strict";var n=function(e,t){var r=e.cy(),n=e._private,i=t._private,a=n.style["z-index"].value-i.style["z-index"].value,o=0,s=0,l=r.hasCompoundNodes(),u="nodes"===n.group,c="edges"===n.group,d="nodes"===i.group,h="edges"===i.group;l&&(o=e.zDepth(),s=t.zDepth());var p=o-s,v=0===p;return v?u&&h?1:c&&d?-1:0===a?n.index-i.index:a:p};t.exports=n},{}],30:[function(e,t,r){"use strict";var n=e("../is"),i=e("../util"),a=e("../collection"),o=e("../collection/element"),s=e("../window"),l=(s?s.document:null,e("../extensions/renderer/null"),{add:function(e){var t,r=this;if(n.elementOrCollection(e)){var s=e;if(s._private.cy===r)t=s.restore();else{for(var l=[],u=0;u<s.length;u++){var c=s[u];l.push(c.json())}t=new a(r,l)}}else if(n.array(e)){var l=e;t=new a(r,l)}else if(n.plainObject(e)&&(n.array(e.nodes)||n.array(e.edges))){for(var d=e,l=[],h=["nodes","edges"],u=0,p=h.length;p>u;u++){var v=h[u],f=d[v];if(n.array(f))for(var g=0,y=f.length;y>g;g++){var m=i.extend({group:v},f[g]);l.push(m)}}t=new a(r,l)}else{var m=e;t=new o(r,m).collection()}return t},remove:function(e){if(n.elementOrCollection(e))e=e;else if(n.string(e)){var t=e;e=this.$(t)}return e.remove()},load:function(e,t,r){var a=this;a.notifications(!1);var o=a.elements();o.length>0&&o.remove(),null!=e&&(n.plainObject(e)||n.array(e))&&a.add(e),a.one("layoutready",function(e){a.notifications(!0),a.trigger(e),a.notify({type:"load",collection:a.elements()}),a.one("load",t),a.trigger("load")}).one("layoutstop",function(){a.one("done",r),a.trigger("done")});var s=i.extend({},a._private.options.layout);return s.eles=a.$(),a.layout(s),this}});t.exports=l},{"../collection":23,"../collection/element":19,"../extensions/renderer/null":73,"../is":77,"../util":94,"../window":100}],31:[function(e,t,r){"use strict";var n=e("../define"),i=e("../util"),a=e("../is"),o={animate:n.animate(),animation:n.animation(),animated:n.animated(),clearQueue:n.clearQueue(),delay:n.delay(),delayAnimation:n.delayAnimation(),stop:n.stop(),addToAnimationPool:function(e){var t=this;t.styleEnabled()&&t._private.aniEles.merge(e)},stopAnimationLoop:function(){this._private.animationsRunning=!1},startAnimationLoop:function(){function e(){c._private.animationsRunning&&i.requestAnimationFrame(function(r){t(r),e()})}function t(e){function t(t,i){var o=t._private,s=o.animation.current,l=o.animation.queue,u=!1;if(0===s.length){var c=l.shift();c&&s.push(c)}for(var d=function(e){for(var t=e.length-1;t>=0;t--){var r=e[t];r()}e.splice(0,e.length)},h=s.length-1;h>=0;h--){var p=s[h],v=p._private;v.stopped?(s.splice(h,1),v.hooked=!1,v.playing=!1,v.started=!1,d(v.frames)):(v.playing||v.applying)&&(v.playing&&v.applying&&(v.applying=!1),v.started||r(t,p,e),n(t,p,e,i),v.applying&&(v.applying=!1),d(v.frames),p.completed()&&(s.splice(h,1),v.hooked=!1,v.playing=!1,v.started=!1,d(v.completes)),u=!0)}return i||0!==s.length||0!==l.length||a.push(t),u}for(var i=c._private.aniEles,a=[],o=!1,s=0;s<i.length;s++){var l=i[s],u=t(l);o=o||u}var d=t(c,!0);if(o||d){var h;if(i.length>0){var p=i.updateCompoundBounds();h=p.length>0?i.add(p):i}c.notify({type:"draw",collection:h})}i.unmerge(a)}function r(e,t,r){var n=a.core(e),i=!n,o=e,s=c._private.style,l=t._private;if(i){var u=o._private.position;l.startPosition=l.startPosition||{x:u.x,y:u.y},l.startStyle=l.startStyle||s.getValueStyle(o)}if(n){var d=c._private.pan;l.startPan=l.startPan||{x:d.x,y:d.y},l.startZoom=null!=l.startZoom?l.startZoom:c._private.zoom}l.started=!0,l.startTime=r-l.progress*l.duration}function n(e,t,r,n){var i=c._private.style,s=!n,l=e._private,d=t._private,p=d.easing,v=d.startTime;if(!d.easingImpl)if(null==p)d.easingImpl=h.linear;else{var f;if(a.string(p)){var g=i.parse("transition-timing-function",p);f=g.value}else f=p;var y,m;a.string(f)?(y=f,m=[]):(y=f[1],m=f.slice(2).map(function(e){return+e})),m.length>0?("spring"===y&&m.push(d.duration),d.easingImpl=h[y].apply(null,m)):d.easingImpl=h[y]}var b,x=d.easingImpl;if(b=0===d.duration?1:(r-v)/d.duration,d.applying&&(b=d.progress),0>b?b=0:b>1&&(b=1),null==d.delay){var w=d.startPosition,_=d.position,E=l.position;_&&s&&(o(w.x,_.x)&&(E.x=u(w.x,_.x,b,x)),o(w.y,_.y)&&(E.y=u(w.y,_.y,b,x)));var D=d.startPan,S=d.pan,k=l.pan,T=null!=S&&n;T&&(o(D.x,S.x)&&(k.x=u(D.x,S.x,b,x)),o(D.y,S.y)&&(k.y=u(D.y,S.y,b,x)),e.trigger("pan"));var P=d.startZoom,C=d.zoom,N=null!=C&&n;N&&(o(P,C)&&(l.zoom=u(P,C,b,x)),e.trigger("zoom")),(T||N)&&e.trigger("viewport");var M=d.style;if(M&&s)for(var B=0;B<M.length;B++){var z=M[B],y=z.name,O=z,I=d.startStyle[y],L=u(I,O,b,x);i.overrideBypass(e,y,L)}}return a.fn(d.step)&&d.step.apply(e,[r]),d.progress=b,b}function o(e,t){return null==e||null==t?!1:a.number(e)&&a.number(t)?!0:e&&t?!0:!1}function s(e,t,r){var n=1-r,i=r*r;return 3*n*n*r*e+3*n*i*t+i*r}function l(e,t){return function(r,n,i){return r+(n-r)*s(e,t,i)}}function u(e,t,r,n){0>r?r=0:r>1&&(r=1);var i,o;if(i=null!=e.pfValue||null!=e.value?null!=e.pfValue?e.pfValue:e.value:e,o=null!=t.pfValue||null!=t.value?null!=t.pfValue?t.pfValue:t.value:t,a.number(i)&&a.number(o))return n(i,o,r);if(a.array(i)&&a.array(o)){for(var s=[],l=0;l<o.length;l++){var u=i[l],c=o[l];if(null!=u&&null!=c){var d=n(u,c,r);e.roundValue&&(d=Math.round(d)),s.push(d)}else s.push(c)}return s}return void 0}var c=this;if(c._private.animationsRunning=!0,c.styleEnabled()){e();var d=function(){function e(e){return-e.tension*e.x-e.friction*e.v}function t(t,r,n){var i={x:t.x+n.dx*r,v:t.v+n.dv*r,tension:t.tension,friction:t.friction};return{dx:i.v,dv:e(i)}}function r(r,n){var i={dx:r.v,dv:e(r)},a=t(r,.5*n,i),o=t(r,.5*n,a),s=t(r,n,o),l=1/6*(i.dx+2*(a.dx+o.dx)+s.dx),u=1/6*(i.dv+2*(a.dv+o.dv)+s.dv);return r.x=r.x+l*n,r.v=r.v+u*n,r}return function n(e,t,i){var a,o,s,l={x:-1,v:0,tension:null,friction:null},u=[0],c=0,d=1e-4,h=.016;for(e=parseFloat(e)||500,t=parseFloat(t)||20,i=i||null,l.tension=e,l.friction=t,a=null!==i,a?(c=n(e,t),o=c/i*h):o=h;;)if(s=r(s||l,o),u.push(1+s.x),c+=16,!(Math.abs(s.x)>d&&Math.abs(s.v)>d))break;return a?function(e){return u[e*(u.length-1)|0]}:c}}(),h={linear:function(e,t,r){return e+(t-e)*r},ease:l(.25,.1,.25,1),"ease-in":l(.42,0,1,1),"ease-out":l(0,0,.58,1),"ease-in-out":l(.42,0,.58,1),"ease-in-sine":l(.47,0,.745,.715),"ease-out-sine":l(.39,.575,.565,1),"ease-in-out-sine":l(.445,.05,.55,.95),"ease-in-quad":l(.55,.085,.68,.53),"ease-out-quad":l(.25,.46,.45,.94),"ease-in-out-quad":l(.455,.03,.515,.955),"ease-in-cubic":l(.55,.055,.675,.19),"ease-out-cubic":l(.215,.61,.355,1),"ease-in-out-cubic":l(.645,.045,.355,1),"ease-in-quart":l(.895,.03,.685,.22),"ease-out-quart":l(.165,.84,.44,1),"ease-in-out-quart":l(.77,0,.175,1),"ease-in-quint":l(.755,.05,.855,.06),"ease-out-quint":l(.23,1,.32,1),"ease-in-out-quint":l(.86,0,.07,1),"ease-in-expo":l(.95,.05,.795,.035),"ease-out-expo":l(.19,1,.22,1),"ease-in-out-expo":l(1,0,0,1),"ease-in-circ":l(.6,.04,.98,.335),"ease-out-circ":l(.075,.82,.165,1),"ease-in-out-circ":l(.785,.135,.15,.86),spring:function(e,t,r){var n=d(e,t,r);return function(e,t,r){return e+(t-e)*n(r)}},"cubic-bezier":function(e,t,r,n){return l(e,t,r,n)}}}}};t.exports=o},{"../define":41,"../is":77,"../util":94}],32:[function(e,t,r){"use strict";var n=e("../define"),i={on:n.on(),one:n.on({unbindSelfOnTrigger:!0}),once:n.on({unbindAllBindersOnTrigger:!0}),off:n.off(),trigger:n.trigger()};n.eventAliasesOn(i),t.exports=i},{"../define":41}],33:[function(e,t,r){"use strict";var n={png:function(e){var t=this._private.renderer;return e=e||{},t.png(e)},jpg:function(e){var t=this._private.renderer;return e=e||{},e.bg=e.bg||"#fff",t.jpg(e)}};n.jpeg=n.jpg,t.exports=n},{}],34:[function(e,t,r){"use strict";var n=e("../window"),i=e("../util"),a=e("../collection"),o=e("../is"),s=e("../promise"),l=e("../define"),u=function(e){if(!(this instanceof u))return new u(e);var t=this;e=i.extend({},e);var r=e.container;r&&!o.htmlElement(r)&&o.htmlElement(r[0])&&(r=r[0]);var l=r?r._cyreg:null;l=l||{},l&&l.cy&&(l.cy.destroy(),l={});var c=l.readies=l.readies||[];r&&(r._cyreg=l),l.cy=t;var d=void 0!==n&&void 0!==r&&!e.headless,h=e;h.layout=i.extend({name:d?"grid":"null"},h.layout),h.renderer=i.extend({
-name:d?"canvas":"null"},h.renderer);var p=function(e,t,r){return void 0!==t?t:void 0!==r?r:e},v=this._private={container:r,ready:!1,initrender:!1,options:h,elements:[],id2index:{},listeners:[],onRenders:[],aniEles:a(this),scratch:{},layout:null,renderer:null,notificationsEnabled:!0,minZoom:1e-50,maxZoom:1e50,zoomingEnabled:p(!0,h.zoomingEnabled),userZoomingEnabled:p(!0,h.userZoomingEnabled),panningEnabled:p(!0,h.panningEnabled),userPanningEnabled:p(!0,h.userPanningEnabled),boxSelectionEnabled:p(!0,h.boxSelectionEnabled),autolock:p(!1,h.autolock,h.autolockNodes),autoungrabify:p(!1,h.autoungrabify,h.autoungrabifyNodes),autounselectify:p(!1,h.autounselectify),styleEnabled:void 0===h.styleEnabled?d:h.styleEnabled,zoom:o.number(h.zoom)?h.zoom:1,pan:{x:o.plainObject(h.pan)&&o.number(h.pan.x)?h.pan.x:0,y:o.plainObject(h.pan)&&o.number(h.pan.y)?h.pan.y:0},animation:{current:[],queue:[]},hasCompoundNodes:!1,deferredExecQueue:[]},f=h.selectionType;void 0===f||"additive"!==f&&"single"!==f?v.selectionType="single":v.selectionType=f,o.number(h.minZoom)&&o.number(h.maxZoom)&&h.minZoom<h.maxZoom?(v.minZoom=h.minZoom,v.maxZoom=h.maxZoom):o.number(h.minZoom)&&void 0===h.maxZoom?v.minZoom=h.minZoom:o.number(h.maxZoom)&&void 0===h.minZoom&&(v.maxZoom=h.maxZoom);var g=function(e){for(var t=!1,r=0;r<y.length;r++){var n=y[r];if(o.promise(n)){t=!0;break}}return t?s.all(y).then(e):void e(y)};t.initRenderer(i.extend({hideEdgesOnViewport:h.hideEdgesOnViewport,hideLabelsOnViewport:h.hideLabelsOnViewport,textureOnViewport:h.textureOnViewport,wheelSensitivity:o.number(h.wheelSensitivity)&&h.wheelSensitivity>0?h.wheelSensitivity:1,motionBlur:void 0===h.motionBlur?!0:h.motionBlur,motionBlurOpacity:void 0===h.motionBlurOpacity?.05:h.motionBlurOpacity,pixelRatio:o.number(h.pixelRatio)&&h.pixelRatio>0?h.pixelRatio:void 0,desktopTapThreshold:void 0===h.desktopTapThreshold?4:h.desktopTapThreshold,touchTapThreshold:void 0===h.touchTapThreshold?8:h.touchTapThreshold},h.renderer));var y=[h.style,h.elements];g(function(e){var r=e[0],n=e[1];v.styleEnabled&&t.setStyle(r),h.initrender&&(t.on("initrender",h.initrender),t.on("initrender",function(){v.initrender=!0})),t.load(n,function(){t.startAnimationLoop(),v.ready=!0,o.fn(h.ready)&&t.on("ready",h.ready);for(var e=0;e<c.length;e++){var r=c[e];t.on("ready",r)}l&&(l.readies=[]),t.trigger("ready")},h.done)})},c=u.prototype;i.extend(c,{instanceString:function(){return"core"},isReady:function(){return this._private.ready},ready:function(e){return this.isReady()?this.trigger("ready",[],e):this.on("ready",e),this},initrender:function(){return this._private.initrender},destroy:function(){var e=this;e.stopAnimationLoop(),e.notify({type:"destroy"});var t=e.container();if(t)for(t._cyreg=null;t.childNodes.length>0;)t.removeChild(t.childNodes[0]);return e},getElementById:function(e){var t=this._private.id2index[e];return void 0!==t?this._private.elements[t]:a(this)},selectionType:function(){return this._private.selectionType},hasCompoundNodes:function(){return this._private.hasCompoundNodes},styleEnabled:function(){return this._private.styleEnabled},addToPool:function(e){for(var t=this._private.elements,r=this._private.id2index,n=0;n<e.length;n++){var i=e[n],a=i._private.data.id,o=r[a],s=void 0!==o;s||(o=t.length,t.push(i),r[a]=o,i._private.index=o)}return this},removeFromPool:function(e){for(var t=this._private.elements,r=this._private.id2index,n=0;n<e.length;n++){var i=e[n],a=i._private.data.id,o=r[a],s=void 0!==o;if(s){this._private.id2index[a]=void 0,t.splice(o,1);for(var l=o;l<t.length;l++){var u=t[l]._private.data.id;r[u]--,t[l]._private.index--}}}},container:function(){return this._private.container},options:function(){return i.copy(this._private.options)},json:function(e){var t=this,r=t._private;if(o.plainObject(e)){if(t.startBatch(),e.elements){var n={},a=function(e,r){for(var a=0;a<e.length;a++){var o=e[a],s=o.data.id,l=t.getElementById(s);n[s]=!0,0!==l.length?l.json(o):r?t.add(i.extend({group:r},o)):t.add(o)}};if(o.array(e.elements))a(e.elements);else for(var s=["nodes","edges"],l=0;l<s.length;l++){var u=s[l],c=e.elements[u];o.array(c)&&a(c,u)}t.elements().stdFilter(function(e){return!n[e.id()]}).remove()}e.style&&t.style(e.style),null!=e.zoom&&e.zoom!==r.zoom&&t.zoom(e.zoom),e.pan&&(e.pan.x!==r.pan.x||e.pan.y!==r.pan.y)&&t.pan(e.pan);for(var d=["minZoom","maxZoom","zoomingEnabled","userZoomingEnabled","panningEnabled","userPanningEnabled","boxSelectionEnabled","autolock","autoungrabify","autounselectify"],l=0;l<d.length;l++){var h=d[l];null!=e[h]&&t[h](e[h])}return t.endBatch(),this}if(void 0===e){var p={};return p.elements={},t.elements().each(function(e,t){var r=t.group();p.elements[r]||(p.elements[r]=[]),p.elements[r].push(t.json())}),this._private.styleEnabled&&(p.style=t.style().json()),p.zoomingEnabled=t._private.zoomingEnabled,p.userZoomingEnabled=t._private.userZoomingEnabled,p.zoom=t._private.zoom,p.minZoom=t._private.minZoom,p.maxZoom=t._private.maxZoom,p.panningEnabled=t._private.panningEnabled,p.userPanningEnabled=t._private.userPanningEnabled,p.pan=i.copy(t._private.pan),p.boxSelectionEnabled=t._private.boxSelectionEnabled,p.renderer=i.copy(t._private.options.renderer),p.hideEdgesOnViewport=t._private.options.hideEdgesOnViewport,p.hideLabelsOnViewport=t._private.options.hideLabelsOnViewport,p.textureOnViewport=t._private.options.textureOnViewport,p.wheelSensitivity=t._private.options.wheelSensitivity,p.motionBlur=t._private.options.motionBlur,p}},scratch:l.data({field:"scratch",bindingEvent:"scratch",allowBinding:!0,allowSetting:!0,settingEvent:"scratch",settingTriggersEvent:!0,triggerFnName:"trigger",allowGetting:!0}),removeScratch:l.removeData({field:"scratch",event:"scratch",triggerFnName:"trigger",triggerEvent:!0})}),[e("./add-remove"),e("./animation"),e("./events"),e("./export"),e("./layout"),e("./notification"),e("./renderer"),e("./search"),e("./style"),e("./viewport")].forEach(function(e){i.extend(c,e)}),t.exports=u},{"../collection":23,"../define":41,"../is":77,"../promise":80,"../util":94,"../window":100,"./add-remove":30,"./animation":31,"./events":32,"./export":33,"./layout":35,"./notification":36,"./renderer":37,"./search":38,"./style":39,"./viewport":40}],35:[function(e,t,r){"use strict";var n=e("../util"),i=e("../is"),a={layout:function(e){var t=this._private.prevLayout=null==e?this._private.prevLayout:this.makeLayout(e);return t.run(),this},makeLayout:function(e){var t=this;if(null==e)return void n.error("Layout options must be specified to make a layout");if(null==e.name)return void n.error("A `name` must be specified to make a layout");var r=e.name,a=t.extension("layout",r);if(null==a)return void n.error("Can not apply layout: No such layout `"+r+"` found; did you include its JS file?");var o;o=i.string(e.eles)?t.$(e.eles):null!=e.eles?e.eles:t.$();var s=new a(n.extend({},e,{cy:t,eles:o}));return s}};a.createLayout=a.makeLayout,t.exports=a},{"../is":77,"../util":94}],36:[function(e,t,r){"use strict";var n={notify:function(e){var t=this._private;if(t.batchingNotify){var r=t.batchNotifyEles,n=t.batchNotifyTypes;return e.collection&&r.merge(e.collection),void(n.ids[e.type]||n.push(e.type))}if(t.notificationsEnabled){var i=this.renderer();i.notify(e)}},notifications:function(e){var t=this._private;return void 0===e?t.notificationsEnabled:void(t.notificationsEnabled=e?!0:!1)},noNotifications:function(e){this.notifications(!1),e(),this.notifications(!0)},startBatch:function(){var e=this._private;return null==e.batchCount&&(e.batchCount=0),0===e.batchCount&&(e.batchingStyle=e.batchingNotify=!0,e.batchStyleEles=this.collection(),e.batchNotifyEles=this.collection(),e.batchNotifyTypes=[],e.batchNotifyTypes.ids={}),e.batchCount++,this},endBatch:function(){var e=this._private;return e.batchCount--,0===e.batchCount&&(e.batchingStyle=!1,e.batchStyleEles.updateStyle(),e.batchingNotify=!1,this.notify({type:e.batchNotifyTypes,collection:e.batchNotifyEles})),this},batch:function(e){return this.startBatch(),e(),this.endBatch(),this},batchData:function(e){var t=this;return this.batch(function(){for(var r in e){var n=e[r],i=t.getElementById(r);i.data(n)}})}};t.exports=n},{}],37:[function(e,t,r){"use strict";var n=e("../util"),i={renderTo:function(e,t,r,n){var i=this._private.renderer;return i.renderTo(e,t,r,n),this},renderer:function(){return this._private.renderer},forceRender:function(){return this.notify({type:"draw"}),this},resize:function(){return this.notify({type:"resize"}),this.trigger("resize"),this},initRenderer:function(e){var t=this,r=t.extension("renderer",e.name);if(null==r)return void n.error("Can not initialise: No such renderer `%s` found; did you include its JS file?",e.name);var i=n.extend({},e,{cy:t}),a=t._private.renderer=new r(i);a.init(i)},triggerOnRender:function(){for(var e=this._private.onRenders,t=0;t<e.length;t++){var r=e[t];r()}return this},onRender:function(e){return this._private.onRenders.push(e),this},offRender:function(e){var t=this._private.onRenders;if(null==e)return this._private.onRenders=[],this;for(var r=0;r<t.length;r++){var n=t[r];if(e===n){t.splice(r,1);break}}return this}};i.invalidateDimensions=i.resize,t.exports=i},{"../util":94}],38:[function(e,t,r){"use strict";var n=e("../is"),i=e("../collection"),a={collection:function(e,t){return n.string(e)?this.$(e):n.elementOrCollection(e)?e.collection():n.array(e)?i(this,e,t):i(this)},nodes:function(e){var t=this.$(function(){return this.isNode()});return e?t.filter(e):t},edges:function(e){var t=this.$(function(){return this.isEdge()});return e?t.filter(e):t},$:function(e){var t=new i(this,this._private.elements);return e?t.filter(e):t}};a.elements=a.filter=a.$,t.exports=a},{"../collection":23,"../is":77}],39:[function(e,t,r){"use strict";var n=e("../is"),i=e("../style"),a={style:function(e){if(e){var t=this.setStyle(e);t.update()}return this._private.style},setStyle:function(e){var t=this._private;return n.stylesheet(e)?t.style=e.generateStyle(this):n.array(e)?t.style=i.fromJson(this,e):n.string(e)?t.style=i.fromString(this,e):t.style=i(this),t.style}};t.exports=a},{"../is":77,"../style":86}],40:[function(e,t,r){"use strict";var n=e("../is"),i={autolock:function(e){return void 0===e?this._private.autolock:(this._private.autolock=e?!0:!1,this)},autoungrabify:function(e){return void 0===e?this._private.autoungrabify:(this._private.autoungrabify=e?!0:!1,this)},autounselectify:function(e){return void 0===e?this._private.autounselectify:(this._private.autounselectify=e?!0:!1,this)},panningEnabled:function(e){return void 0===e?this._private.panningEnabled:(this._private.panningEnabled=e?!0:!1,this)},userPanningEnabled:function(e){return void 0===e?this._private.userPanningEnabled:(this._private.userPanningEnabled=e?!0:!1,this)},zoomingEnabled:function(e){return void 0===e?this._private.zoomingEnabled:(this._private.zoomingEnabled=e?!0:!1,this)},userZoomingEnabled:function(e){return void 0===e?this._private.userZoomingEnabled:(this._private.userZoomingEnabled=e?!0:!1,this)},boxSelectionEnabled:function(e){return void 0===e?this._private.boxSelectionEnabled:(this._private.boxSelectionEnabled=e?!0:!1,this)},pan:function(){var e,t,r,i,a,o=arguments,s=this._private.pan;switch(o.length){case 0:return s;case 1:if(n.string(o[0]))return e=o[0],s[e];if(n.plainObject(o[0])){if(!this._private.panningEnabled)return this;r=o[0],i=r.x,a=r.y,n.number(i)&&(s.x=i),n.number(a)&&(s.y=a),this.trigger("pan viewport")}break;case 2:if(!this._private.panningEnabled)return this;e=o[0],t=o[1],"x"!==e&&"y"!==e||!n.number(t)||(s[e]=t),this.trigger("pan viewport")}return this.notify({type:"viewport"}),this},panBy:function(e){var t,r,i,a,o,s=arguments,l=this._private.pan;if(!this._private.panningEnabled)return this;switch(s.length){case 1:n.plainObject(s[0])&&(i=s[0],a=i.x,o=i.y,n.number(a)&&(l.x+=a),n.number(o)&&(l.y+=o),this.trigger("pan viewport"));break;case 2:t=s[0],r=s[1],"x"!==t&&"y"!==t||!n.number(r)||(l[t]+=r),this.trigger("pan viewport")}return this.notify({type:"viewport"}),this},fit:function(e,t){var r=this.getFitViewport(e,t);if(r){var n=this._private;n.zoom=r.zoom,n.pan=r.pan,this.trigger("pan zoom viewport"),this.notify({type:"viewport"})}return this},getFitViewport:function(e,t){if(n.number(e)&&void 0===t&&(t=e,e=void 0),this._private.panningEnabled&&this._private.zoomingEnabled){var r;if(n.string(e)){var i=e;e=this.$(i)}else if(n.boundingBox(e)){var a=e;r={x1:a.x1,y1:a.y1,x2:a.x2,y2:a.y2},r.w=r.x2-r.x1,r.h=r.y2-r.y1}else n.elementOrCollection(e)||(e=this.elements());r=r||e.boundingBox();var o,s=this.width(),l=this.height();if(t=n.number(t)?t:0,!isNaN(s)&&!isNaN(l)&&s>0&&l>0&&!isNaN(r.w)&&!isNaN(r.h)&&r.w>0&&r.h>0){o=Math.min((s-2*t)/r.w,(l-2*t)/r.h),o=o>this._private.maxZoom?this._private.maxZoom:o,o=o<this._private.minZoom?this._private.minZoom:o;var u={x:(s-o*(r.x1+r.x2))/2,y:(l-o*(r.y1+r.y2))/2};return{zoom:o,pan:u}}}},minZoom:function(e){return void 0===e?this._private.minZoom:(n.number(e)&&(this._private.minZoom=e),this)},maxZoom:function(e){return void 0===e?this._private.maxZoom:(n.number(e)&&(this._private.maxZoom=e),this)},zoom:function(e){var t,r;if(void 0===e)return this._private.zoom;if(n.number(e))r=e;else if(n.plainObject(e)){if(r=e.level,e.position){var i=e.position,a=this._private.pan,o=this._private.zoom;t={x:i.x*o+a.x,y:i.y*o+a.y}}else e.renderedPosition&&(t=e.renderedPosition);if(t&&!this._private.panningEnabled)return this}if(!this._private.zoomingEnabled)return this;if(!n.number(r)||t&&(!n.number(t.x)||!n.number(t.y)))return this;if(r=r>this._private.maxZoom?this._private.maxZoom:r,r=r<this._private.minZoom?this._private.minZoom:r,t){var s=this._private.pan,l=this._private.zoom,u=r,c={x:-u/l*(t.x-s.x)+t.x,y:-u/l*(t.y-s.y)+t.y};this._private.zoom=r,this._private.pan=c;var d=s.x!==c.x||s.y!==c.y;this.trigger(" zoom "+(d?" pan ":"")+" viewport ")}else this._private.zoom=r,this.trigger("zoom viewport");return this.notify({type:"viewport"}),this},viewport:function(e){var t=this._private,r=!0,i=!0,a=[],o=!1,s=!1;if(!e)return this;if(n.number(e.zoom)||(r=!1),n.plainObject(e.pan)||(i=!1),!r&&!i)return this;if(r){var l=e.zoom;l<t.minZoom||l>t.maxZoom||!t.zoomingEnabled?o=!0:(t.zoom=l,a.push("zoom"))}if(i&&(!o||!e.cancelOnFailedZoom)&&t.panningEnabled){var u=e.pan;n.number(u.x)&&(t.pan.x=u.x,s=!1),n.number(u.y)&&(t.pan.y=u.y,s=!1),s||a.push("pan")}return a.length>0&&(a.push("viewport"),this.trigger(a.join(" ")),this.notify({type:"viewport"})),this},center:function(e){var t=this.getCenterPan(e);return t&&(this._private.pan=t,this.trigger("pan viewport"),this.notify({type:"viewport"})),this},getCenterPan:function(e,t){if(this._private.panningEnabled){if(n.string(e)){var r=e;e=this.elements(r)}else n.elementOrCollection(e)||(e=this.elements());var i=e.boundingBox(),a=this.width(),o=this.height();t=void 0===t?this._private.zoom:t;var s={x:(a-t*(i.x1+i.x2))/2,y:(o-t*(i.y1+i.y2))/2};return s}},reset:function(){return this._private.panningEnabled&&this._private.zoomingEnabled?(this.viewport({pan:{x:0,y:0},zoom:1}),this):this},width:function(){var e=this._private.container;return e?e.clientWidth:1},height:function(){var e=this._private.container;return e?e.clientHeight:1},extent:function(){var e=this._private.pan,t=this._private.zoom,r=this.renderedExtent(),n={x1:(r.x1-e.x)/t,x2:(r.x2-e.x)/t,y1:(r.y1-e.y)/t,y2:(r.y2-e.y)/t};return n.w=n.x2-n.x1,n.h=n.y2-n.y1,n},renderedExtent:function(){var e=this.width(),t=this.height();return{x1:0,y1:0,x2:e,y2:t,w:e,h:t}}};i.centre=i.center,i.autolockNodes=i.autolock,i.autoungrabifyNodes=i.autoungrabify,t.exports=i},{"../is":77}],41:[function(e,t,r){"use strict";var n=e("./util"),i=e("./is"),a=e("./selector"),o=e("./promise"),s=e("./event"),l=e("./animation"),u={data:function(e){var t={field:"data",bindingEvent:"data",allowBinding:!1,allowSetting:!1,allowGetting:!1,settingEvent:"data",settingTriggersEvent:!1,triggerFnName:"trigger",immutableKeys:{},updateStyle:!1,onSet:function(e){},canSet:function(e){return!0}};return e=n.extend({},t,e),function(t,r){var n=e,a=this,o=void 0!==a.length,s=o?a:[a],l=o?a[0]:a;if(i.string(t)){if(n.allowGetting&&void 0===r){var u;return l&&(u=l._private[n.field][t]),u}if(n.allowSetting&&void 0!==r){var c=!n.immutableKeys[t];if(c){for(var d=0,h=s.length;h>d;d++)n.canSet(s[d])&&(s[d]._private[n.field][t]=r);n.updateStyle&&a.updateStyle(),n.onSet(a),n.settingTriggersEvent&&a[n.triggerFnName](n.settingEvent)}}}else if(n.allowSetting&&i.plainObject(t)){var p,v,f=t;for(p in f){v=f[p];var c=!n.immutableKeys[p];if(c)for(var d=0,h=s.length;h>d;d++)n.canSet(s[d])&&(s[d]._private[n.field][p]=v)}n.updateStyle&&a.updateStyle(),n.onSet(a),n.settingTriggersEvent&&a[n.triggerFnName](n.settingEvent)}else if(n.allowBinding&&i.fn(t)){var g=t;a.bind(n.bindingEvent,g)}else if(n.allowGetting&&void 0===t){var u;return l&&(u=l._private[n.field]),u}return a}},removeData:function(e){var t={field:"data",event:"data",triggerFnName:"trigger",triggerEvent:!1,immutableKeys:{}};return e=n.extend({},t,e),function(t){var r=e,n=this,a=void 0!==n.length,o=a?n:[n];if(i.string(t)){for(var s=t.split(/\s+/),l=s.length,u=0;l>u;u++){var c=s[u];if(!i.emptyString(c)){var d=!r.immutableKeys[c];if(d)for(var h=0,p=o.length;p>h;h++)o[h]._private[r.field][c]=void 0}}r.triggerEvent&&n[r.triggerFnName](r.event)}else if(void 0===t){for(var h=0,p=o.length;p>h;h++){var v=o[h]._private[r.field];for(var c in v){var f=!r.immutableKeys[c];f&&(v[c]=void 0)}}r.triggerEvent&&n[r.triggerFnName](r.event)}return n}},event:{regex:/(\w+)(\.\w+)?/,optionalTypeRegex:/(\w+)?(\.\w+)?/,falseCallback:function(){return!1}},on:function(e){var t={unbindSelfOnTrigger:!1,unbindAllBindersOnTrigger:!1};return e=n.extend({},t,e),function(t,r,n,o){var s=this,l=void 0!==s.length,c=l?s:[s],d=i.string(t),h=e;if(i.plainObject(r)?(o=n,n=r,r=void 0):(i.fn(r)||r===!1)&&(o=r,n=void 0,r=void 0),(i.fn(n)||n===!1)&&(o=n,n=void 0),!i.fn(o)&&o!==!1&&d)return s;if(d){var p={};p[t]=o,t=p}for(var v in t)if(o=t[v],o===!1&&(o=u.event.falseCallback),i.fn(o)){v=v.split(/\s+/);for(var f=0;f<v.length;f++){var g=v[f];if(!i.emptyString(g)){var y=g.match(u.event.regex);if(y)for(var m=y[1],b=y[2]?y[2]:void 0,x={callback:o,data:n,delegated:r?!0:!1,selector:r,selObj:new a(r),type:m,namespace:b,unbindSelfOnTrigger:h.unbindSelfOnTrigger,unbindAllBindersOnTrigger:h.unbindAllBindersOnTrigger,binders:c},w=0;w<c.length;w++){var _=c[w]._private;_.listeners=_.listeners||[],_.listeners.push(x)}}}}return s}},eventAliasesOn:function(e){var t=e;t.addListener=t.listen=t.bind=t.on,t.removeListener=t.unlisten=t.unbind=t.off,t.emit=t.trigger,t.pon=t.promiseOn=function(e,t){var r=this,n=Array.prototype.slice.call(arguments,0);return new o(function(e,t){var i=function(t){r.off.apply(r,o),e(t)},a=n.concat([i]),o=a.concat([]);r.on.apply(r,a)})}},off:function(e){var t={};return e=n.extend({},t,e),function(e,t,r){var n=this,a=void 0!==n.length,o=a?n:[n],s=i.string(e);if(0===arguments.length){for(var l=0;l<o.length;l++)o[l]._private.listeners=[];return n}if((i.fn(t)||t===!1)&&(r=t,t=void 0),s){var c={};c[e]=r,e=c}for(var d in e){r=e[d],r===!1&&(r=u.event.falseCallback),d=d.split(/\s+/);for(var h=0;h<d.length;h++){var p=d[h];if(!i.emptyString(p)){var v=p.match(u.event.optionalTypeRegex);if(v)for(var f=v[1]?v[1]:void 0,g=v[2]?v[2]:void 0,l=0;l<o.length;l++)for(var y=o[l]._private.listeners=o[l]._private.listeners||[],m=0;m<y.length;m++){var b=y[m],x=!g||g===b.namespace,w=!f||b.type===f,_=!r||r===b.callback,E=x&&w&&_;E&&(y.splice(m,1),m--)}}}}return n}},trigger:function(e){var t={};return e=n.extend({},t,e),function(t,r,n){var a=this,o=void 0!==a.length,l=o?a:[a],c=i.string(t),d=i.plainObject(t),h=i.event(t),p=this._private.cy||(i.core(this)?this:null),v=p?p.hasCompoundNodes():!1;if(c){var f=t.split(/\s+/);t=[];for(var g=0;g<f.length;g++){var y=f[g];if(!i.emptyString(y)){var m=y.match(u.event.regex),b=m[1],x=m[2]?m[2]:void 0;t.push({type:b,namespace:x})}}}else if(d){var w=t;t=[w]}r?i.array(r)||(r=[r]):r=[];for(var g=0;g<t.length;g++)for(var _=t[g],E=0;E<l.length;E++){var y,D=l[E],S=D._private.listeners=D._private.listeners||[],k=i.element(D),T=k||e.layout;if(h?(y=_,y.cyTarget=y.cyTarget||D,y.cy=y.cy||p):y=new s(_,{cyTarget:D,cy:p,namespace:_.namespace}),_.layout&&(y.layout=_.layout),e.layout&&(y.layout=D),y.cyPosition){var P=y.cyPosition,C=p.zoom(),N=p.pan();y.cyRenderedPosition={x:P.x*C+N.x,y:P.y*C+N.y}}n&&(S=[{namespace:y.namespace,type:y.type,callback:n}]);for(var M=0;M<S.length;M++){var B=S[M],z=!B.namespace||B.namespace===y.namespace,O=B.type===y.type,I=B.delegated?D!==y.cyTarget&&i.element(y.cyTarget)&&B.selObj.matches(y.cyTarget):!0,L=z&&O&&I;if(L){var A=[y];if(A=A.concat(r),B.data?y.data=B.data:y.data=void 0,(B.unbindSelfOnTrigger||B.unbindAllBindersOnTrigger)&&(S.splice(M,1),M--),B.unbindAllBindersOnTrigger)for(var R=B.binders,V=0;V<R.length;V++){var F=R[V];if(F&&F!==D)for(var j=F._private.listeners,q=0;q<j.length;q++){var X=j[q];X===B&&(j.splice(q,1),q--)}}var Y=B.delegated?y.cyTarget:D,$=B.callback.apply(Y,A);($===!1||y.isPropagationStopped())&&(T=!1,$===!1&&(y.stopPropagation(),y.preventDefault()))}}if(T){var H=v?D._private.parent:null,W=null!=H&&0!==H.length;W?(H=H[0],H.trigger(y)):p.trigger(y)}}return a}},animated:function(e){var t={};return e=n.extend({},t,e),function(){var e=this,t=void 0!==e.length,r=t?e:[e],n=this._private.cy||this;if(!n.styleEnabled())return!1;var i=r[0];return i?i._private.animation.current.length>0:void 0}},clearQueue:function(e){var t={};return e=n.extend({},t,e),function(){var e=this,t=void 0!==e.length,r=t?e:[e],n=this._private.cy||this;if(!n.styleEnabled())return this;for(var i=0;i<r.length;i++){var a=r[i];a._private.animation.queue=[]}return this}},delay:function(e){var t={};return e=n.extend({},t,e),function(e,t){var r=this._private.cy||this;return r.styleEnabled()?this.animate({delay:e,duration:e,complete:t}):this}},delayAnimation:function(e){var t={};return e=n.extend({},t,e),function(e,t){var r=this._private.cy||this;return r.styleEnabled()?this.animation({delay:e,duration:e,complete:t}):this}},animation:function(e){var t={};return e=n.extend({},t,e),function(e,t){var r=this,i=void 0!==r.length,a=i?r:[r],o=this._private.cy||this,s=!i,u=!s;if(!o.styleEnabled())return this;var c=o.style();switch(e=n.extend({},e,t),void 0===e.duration&&(e.duration=400),e.duration){case"slow":e.duration=600;break;case"fast":e.duration=200}var d=!0;if(e)for(var h in e){d=!1;break}if(d)return new l(a[0],e);if(u&&(e.style=c.getPropsList(e.style||e.css),e.css=void 0),e.renderedPosition&&u){var p=e.renderedPosition,v=o.pan(),f=o.zoom();e.position={x:(p.x-v.x)/f,y:(p.y-v.y)/f}}if(e.panBy&&s){var g=e.panBy,y=o.pan();e.pan={x:y.x+g.x,y:y.y+g.y}}var m=e.center||e.centre;if(m&&s){var b=o.getCenterPan(m.eles,e.zoom);b&&(e.pan=b)}if(e.fit&&s){var x=e.fit,w=o.getFitViewport(x.eles||x.boundingBox,x.padding);w&&(e.pan=w.pan,e.zoom=w.zoom)}return new l(a[0],e)}},animate:function(e){var t={};return e=n.extend({},t,e),function(e,t){var r=this,i=void 0!==r.length,a=i?r:[r],o=this._private.cy||this;if(!o.styleEnabled())return this;t&&(e=n.extend({},e,t));for(var s=0;s<a.length;s++){var l=a[s],u=l.animated()&&(void 0===e.queue||e.queue),c=l.animation(e,u?{queue:!0}:void 0);c.play()}return this}},stop:function(e){var t={};return e=n.extend({},t,e),function(e,t){var r=this,n=void 0!==r.length,i=n?r:[r],a=this._private.cy||this;if(!a.styleEnabled())return this;for(var o=0;o<i.length;o++){for(var s=i[o],l=s._private,u=l.animation.current,c=0;c<u.length;c++){var d=u[c],h=d._private;t&&(h.duration=0)}e&&(l.animation.queue=[]),t||(l.animation.current=[])}return a.notify({collection:this,type:"draw"}),this}}};t.exports=u},{"./animation":1,"./event":42,"./is":77,"./promise":80,"./selector":81,"./util":94}],42:[function(e,t,r){"use strict";function n(){return!1}function i(){return!0}var a=function(e,t){return this instanceof a?(e&&e.type?(this.originalEvent=e,this.type=e.type,this.isDefaultPrevented=e.defaultPrevented?i:n):this.type=e,t&&(this.type=void 0!==t.type?t.type:this.type,this.cy=t.cy,this.cyTarget=t.cyTarget,this.cyPosition=t.cyPosition,this.cyRenderedPosition=t.cyRenderedPosition,this.namespace=t.namespace,this.layout=t.layout,this.data=t.data,this.message=t.message),void(this.timeStamp=e&&e.timeStamp||Date.now())):new a(e,t)};a.prototype={instanceString:function(){return"event"},preventDefault:function(){this.isDefaultPrevented=i;var e=this.originalEvent;e&&e.preventDefault&&e.preventDefault()},stopPropagation:function(){this.isPropagationStopped=i;var e=this.originalEvent;e&&e.stopPropagation&&e.stopPropagation()},stopImmediatePropagation:function(){this.isImmediatePropagationStopped=i,this.stopPropagation()},isDefaultPrevented:n,isPropagationStopped:n,isImmediatePropagationStopped:n},t.exports=a},{}],43:[function(e,t,r){"use strict";function n(e,t,r){var n=r;if("core"===e)c.prototype[t]=r;else if("collection"===e)u.prototype[t]=r;else if("layout"===e){for(var a=function(e){this.options=e,r.call(this,e),h.plainObject(this._private)||(this._private={}),this._private.cy=e.cy,this._private.listeners=[]},o=a.prototype=Object.create(r.prototype),d=[],v=0;v<d.length;v++){var f=d[v];o[f]=o[f]||function(){return this}}o.start&&!o.run?o.run=function(){return this.start(),this}:!o.start&&o.run&&(o.start=function(){return this.run(),this}),o.stop||(o.stop=function(){var e=this.options;if(e&&e.animate)for(var t=this.animations,r=0;r<t.length;r++)t[r].stop();return this.trigger("layoutstop"),this}),o.destroy||(o.destroy=function(){return this}),o.on=l.on({layout:!0}),o.one=l.on({layout:!0,unbindSelfOnTrigger:!0}),o.once=l.on({layout:!0,unbindAllBindersOnTrigger:!0}),o.off=l.off({layout:!0}),o.trigger=l.trigger({layout:!0}),l.eventAliasesOn(o),n=a}else if("renderer"===e&&"null"!==t&&"base"!==t){var g=i("renderer","base").prototype,y=r.prototype;for(var m in g){var b=g[m],x=null!=y[m];if(x)return void s.error("Can not register renderer `"+t+"` since it overrides `"+m+"` in its prototype");y[m]=b}g.clientFunctions.forEach(function(e){y[e]=y[e]||function(){s.error("Renderer does not implement `renderer."+e+"()` on its prototype")}})}return s.setMap({map:p,keys:[e,t],value:n})}function i(e,t){return s.getMap({map:p,keys:[e,t]})}function a(e,t,r,n,i){return s.setMap({map:v,keys:[e,t,r,n],value:i})}function o(e,t,r,n){return s.getMap({map:v,keys:[e,t,r,n]})}var s=e("./util"),l=e("./define"),u=e("./collection"),c=e("./core"),d=e("./extensions"),h=e("./is"),p={},v={},f=function(){return 2===arguments.length?i.apply(null,arguments):3===arguments.length?n.apply(null,arguments):4===arguments.length?o.apply(null,arguments):5===arguments.length?a.apply(null,arguments):void s.error("Invalid extension access syntax")};c.prototype.extension=f,d.forEach(function(e){e.extensions.forEach(function(t){n(e.type,t.name,t.impl)})}),t.exports=f},{"./collection":23,"./core":34,"./define":41,"./extensions":44,"./is":77,"./util":94}],44:[function(e,t,r){"use strict";t.exports=[{type:"layout",extensions:e("./layout")},{type:"renderer",extensions:e("./renderer")}]},{"./layout":50,"./renderer":72}],45:[function(e,t,r){"use strict";function n(e){this.options=i.extend({},s,e)}var i=e("../../util"),a=e("../../math"),o=e("../../is"),s={fit:!0,directed:!1,padding:30,circle:!1,spacingFactor:1.75,boundingBox:void 0,avoidOverlap:!0,roots:void 0,maximalAdjustments:0,animate:!1,animationDuration:500,animationEasing:void 0,ready:void 0,stop:void 0};n.prototype.run=function(){var e,t=this.options,r=t,n=t.cy,i=r.eles,s=i.nodes().not(":parent"),l=i,u=a.makeBoundingBox(r.boundingBox?r.boundingBox:{x1:0,y1:0,w:n.width(),h:n.height()});if(o.elementOrCollection(r.roots))e=r.roots;else if(o.array(r.roots)){for(var c=[],d=0;d<r.roots.length;d++){var h=r.roots[d],p=n.getElementById(h);c.push(p)}e=n.collection(c)}else if(o.string(r.roots))e=n.$(r.roots);else if(r.directed)e=s.roots();else{for(var v=[],f=s;f.length>0;){var g=n.collection();i.bfs({roots:f[0],visit:function(e,t,r,n,i){g=g.add(r)},directed:!1}),f=f.not(g),v.push(g)}e=n.collection();for(var d=0;d<v.length;d++){var y=v[d],m=y.maxDegree(!1),b=y.filter(function(){return this.degree(!1)===m});e=e.add(b)}}var x=[],w={},_={},E={},D={},S={};l.bfs({roots:e,directed:r.directed,visit:function(e,t,r,n,i){var a=this[0],o=a.id();if(x[t]||(x[t]=[]),x[t].push(a),w[o]=!0,_[o]=t,E[o]=i,D[o]=n,i){var s=i.id(),l=S[s]=S[s]||[];l.push(r)}}});for(var k=[],d=0;d<s.length;d++){var p=s[d];w[p.id()]||k.push(p)}for(var T=3*k.length,P=0;0!==k.length&&T>P;){for(var C=k.shift(),N=C.neighborhood().nodes(),M=!1,d=0;d<N.length;d++){var B=_[N[d].id()];if(void 0!==B){x[B].push(C),M=!0;break}}M||k.push(C),P++}for(;0!==k.length;){var C=k.shift(),M=!1;M||(0===x.length&&x.push([]),x[0].push(C))}var z=function(){for(var e=0;e<x.length;e++)for(var t=x[e],r=0;r<t.length;r++){var n=t[r];n._private.scratch.breadthfirst={depth:e,index:r}}};z();for(var O=function(e){for(var t,r=e.connectedEdges(function(){return this.data("target")===e.id()}),n=e._private.scratch.breadthfirst,i=0,a=0;a<r.length;a++){var o=r[a],s=o.source()[0],l=s._private.scratch.breadthfirst;n.depth<=l.depth&&i<l.depth&&(i=l.depth,t=s)}return t},I=0;I<r.maximalAdjustments;I++){for(var L=x.length,A=[],d=0;L>d;d++)for(var B=x[d],R=B.length,V=0;R>V;V++){var p=B[V],F=p._private.scratch.breadthfirst,j=O(p);j&&(F.intEle=j,A.push(p))}for(var d=0;d<A.length;d++){var p=A[d],F=p._private.scratch.breadthfirst,j=F.intEle,q=j._private.scratch.breadthfirst;x[F.depth].splice(F.index,1);for(var X=q.depth+1;X>x.length-1;)x.push([]);x[X].push(p),F.depth=X,F.index=x[X].length-1}z()}var Y=0;if(r.avoidOverlap){for(var d=0;d<s.length;d++){var $=s[d],H=$.boundingBox(),W=H.w,Z=H.h;Y=Math.max(Y,W,Z)}Y*=r.spacingFactor}for(var U={},G=function(e){if(U[e.id()])return U[e.id()];for(var t=e._private.scratch.breadthfirst.depth,r=e.neighborhood().nodes().not(":parent"),n=0,i=0,a=0;a<r.length;a++){var o=r[a],s=o._private.scratch.breadthfirst,l=s.index,u=s.depth,c=x[u].length;(t>u||0===t)&&(n+=l/c,i++)}return i=Math.max(1,i),n/=i,0===i&&(n=void 0),U[e.id()]=n,n},K=function(e,t){var r=G(e),n=G(t);return r-n},J=0;3>J;J++){for(var d=0;d<x.length;d++)x[d]=x[d].sort(K);z()}for(var Q=0,d=0;d<x.length;d++)Q=Math.max(x[d].length,Q);for(var ee={x:u.x1+u.w/2,y:u.x1+u.h/2},te=function(e,t){var n=e._private.scratch.breadthfirst,i=n.depth,a=n.index,o=x[i].length,s=Math.max(u.w/(o+1),Y),l=Math.max(u.h/(x.length+1),Y),c=Math.min(u.w/2/x.length,u.h/2/x.length);if(c=Math.max(c,Y),r.circle){if(r.circle){var d=c*i+c-(x.length>0&&x[0].length<=3?c/2:0),h=2*Math.PI/x[i].length*a;return 0===i&&1===x[0].length&&(d=1),{x:ee.x+d*Math.cos(h),y:ee.y+d*Math.sin(h)}}return{x:ee.x+(a+1-(o+1)/2)*s,y:(i+1)*l}}var p={x:ee.x+(a+1-(o+1)/2)*s,y:(i+1)*l};return t?p:p},re={},d=x.length-1;d>=0;d--)for(var B=x[d],V=0;V<B.length;V++){var C=B[V];re[C.id()]=te(C,d===x.length-1)}return s.layoutPositions(this,r,function(){return re[this.id()]}),this},t.exports=n},{"../../is":77,"../../math":79,"../../util":94}],46:[function(e,t,r){"use strict";function n(e){this.options=i.extend({},s,e)}var i=e("../../util"),a=e("../../math"),o=e("../../is"),s={fit:!0,padding:30,boundingBox:void 0,avoidOverlap:!0,radius:void 0,startAngle:1.5*Math.PI,sweep:void 0,clockwise:!0,sort:void 0,animate:!1,animationDuration:500,animationEasing:void 0,ready:void 0,stop:void 0};n.prototype.run=function(){var e=this.options,t=e,r=e.cy,n=t.eles,i=void 0!==t.counterclockwise?!t.counterclockwise:t.clockwise,s=n.nodes().not(":parent");t.sort&&(s=s.sort(t.sort));for(var l,u=a.makeBoundingBox(t.boundingBox?t.boundingBox:{x1:0,y1:0,w:r.width(),h:r.height()}),c={x:u.x1+u.w/2,y:u.y1+u.h/2},d=void 0===t.sweep?2*Math.PI-2*Math.PI/s.length:t.sweep,h=d/Math.max(1,s.length-1),p=0,v=0;v<s.length;v++){var f=s[v],g=f.boundingBox(),y=g.w,m=g.h;p=Math.max(p,y,m)}if(l=o.number(t.radius)?t.radius:s.length<=1?0:Math.min(u.h,u.w)/2-p,s.length>1&&t.avoidOverlap){p*=1.75;var b=Math.cos(h)-Math.cos(0),x=Math.sin(h)-Math.sin(0),w=Math.sqrt(p*p/(b*b+x*x));l=Math.max(w,l)}var _=function(e,r){var n=t.startAngle+e*h*(i?1:-1),a=l*Math.cos(n),o=l*Math.sin(n),s={x:c.x+a,y:c.y+o
-};return s};return s.layoutPositions(this,t,_),this},t.exports=n},{"../../is":77,"../../math":79,"../../util":94}],47:[function(e,t,r){"use strict";function n(e){this.options=i.extend({},o,e)}var i=e("../../util"),a=e("../../math"),o={fit:!0,padding:30,startAngle:1.5*Math.PI,sweep:void 0,clockwise:!0,equidistant:!1,minNodeSpacing:10,boundingBox:void 0,avoidOverlap:!0,height:void 0,width:void 0,concentric:function(e){return e.degree()},levelWidth:function(e){return e.maxDegree()/4},animate:!1,animationDuration:500,animationEasing:void 0,ready:void 0,stop:void 0};n.prototype.run=function(){for(var e=this.options,t=e,r=void 0!==t.counterclockwise?!t.counterclockwise:t.clockwise,n=e.cy,i=t.eles,o=i.nodes().not(":parent"),s=a.makeBoundingBox(t.boundingBox?t.boundingBox:{x1:0,y1:0,w:n.width(),h:n.height()}),l={x:s.x1+s.w/2,y:s.y1+s.h/2},u=[],c=t.startAngle,d=0,h=0;h<o.length;h++){var p,v=o[h];p=t.concentric.apply(v,[v]),u.push({value:p,node:v}),v._private.scratch.concentric=p}o.updateStyle();for(var h=0;h<o.length;h++){var v=o[h],f=v.boundingBox();d=Math.max(d,f.w,f.h)}u.sort(function(e,t){return t.value-e.value});for(var g=t.levelWidth(o),y=[[]],m=y[0],h=0;h<u.length;h++){var b=u[h];if(m.length>0){var x=Math.abs(m[0].value-b.value);x>=g&&(m=[],y.push(m))}m.push(b)}var w=d+t.minNodeSpacing;if(!t.avoidOverlap){var _=y.length>0&&y[0].length>1,E=Math.min(s.w,s.h)/2-w,D=E/(y.length+_?1:0);w=Math.min(w,D)}for(var S=0,h=0;h<y.length;h++){var k=y[h],T=void 0===t.sweep?2*Math.PI-2*Math.PI/k.length:t.sweep,P=k.dTheta=T/Math.max(1,k.length-1);if(k.length>1&&t.avoidOverlap){var C=Math.cos(P)-Math.cos(0),N=Math.sin(P)-Math.sin(0),M=Math.sqrt(w*w/(C*C+N*N));S=Math.max(M,S)}k.r=S,S+=w}if(t.equidistant){for(var B=0,S=0,h=0;h<y.length;h++){var k=y[h],z=k.r-S;B=Math.max(B,z)}S=0;for(var h=0;h<y.length;h++){var k=y[h];0===h&&(S=k.r),k.r=S,S+=B}}for(var O={},h=0;h<y.length;h++)for(var k=y[h],P=k.dTheta,S=k.r,I=0;I<k.length;I++){var b=k[I],c=t.startAngle+(r?1:-1)*P*I,L={x:l.x+S*Math.cos(c),y:l.y+S*Math.sin(c)};O[b.node.id()]=L}return o.layoutPositions(this,t,function(){var e=this.id();return O[e]}),this},t.exports=n},{"../../math":79,"../../util":94}],48:[function(e,t,r){"use strict";function n(e){this.options=a.extend({},u,e),this.options.layout=this}var i,a=e("../../util"),o=e("../../math"),s=e("../../thread"),l=e("../../is"),u={ready:function(){},stop:function(){},animate:!0,animationThreshold:250,refresh:20,fit:!0,padding:30,boundingBox:void 0,componentSpacing:100,nodeRepulsion:function(e){return 4e5},nodeOverlap:10,idealEdgeLength:function(e){return 10},edgeElasticity:function(e){return 100},nestingFactor:5,gravity:80,numIter:1e3,initialTemp:200,coolingFactor:.95,minTemp:1,useMultitasking:!0};n.prototype.run=function(){var e=this.options,t=e.cy,r=this,n=this.thread;(!n||n.stopped())&&(n=this.thread=s({disabled:!e.useMultitasking})),r.stopped=!1,r.trigger({type:"layoutstart",layout:r}),i=!0===e.debug?!0:!1;var o=c(t,r,e);i&&p(o),v(o,t);var l=Date.now(),u=!1,d=function(r){r=r||{},u||!r.force&&Date.now()-l<e.animationThreshold||(u=!0,a.requestAnimationFrame(function(){f(o,t,e),!0===e.fit&&t.fit(e.padding),u=!1}))};n.on("message",function(e){var t=e.message;o.layoutNodes=t,d()}),n.pass({layoutInfo:o,options:{animate:e.animate,refresh:e.refresh,componentSpacing:e.componentSpacing,nodeOverlap:e.nodeOverlap,nestingFactor:e.nestingFactor,gravity:e.gravity,numIter:e.numIter,initialTemp:e.initialTemp,coolingFactor:e.coolingFactor,minTemp:e.minTemp}}).run(function(e){var t,r=e.layoutInfo,n=e.options,i=!1,a=function(e,t,r){o(e,t),c(e,t),d(e,t),h(e,t),p(e,t)},o=function(e,t){for(var r=0;r<e.graphSet.length;r++)for(var n=e.graphSet[r],i=n.length,a=0;i>a;a++)for(var o=e.layoutNodes[e.idToIndex[n[a]]],l=a+1;i>l;l++){var u=e.layoutNodes[e.idToIndex[n[l]]];s(o,u,e,t)}},s=function(e,t,r,n){var i=e.cmptId,a=t.cmptId;if(i===a||r.isCompound){var o=t.positionX-e.positionX,s=t.positionY-e.positionY;if(0!==o||0!==s){var c=l(e,t,o,s);if(c>0)var d=n.nodeOverlap*c,h=Math.sqrt(o*o+s*s),p=d*o/h,v=d*s/h;else var f=u(e,o,s),g=u(t,-1*o,-1*s),y=g.x-f.x,m=g.y-f.y,b=y*y+m*m,h=Math.sqrt(b),d=(e.nodeRepulsion+t.nodeRepulsion)/b,p=d*y/h,v=d*m/h;e.isLocked||(e.offsetX-=p,e.offsetY-=v),t.isLocked||(t.offsetX+=p,t.offsetY+=v)}}},l=function(e,t,r,n){if(r>0)var i=e.maxX-t.minX;else var i=t.maxX-e.minX;if(n>0)var a=e.maxY-t.minY;else var a=t.maxY-e.minY;return i>=0&&a>=0?Math.sqrt(i*i+a*a):0},u=function(e,t,r){var n=e.positionX,i=e.positionY,a=e.height||1,o=e.width||1,s=r/t,l=a/o,u={};do{if(0===t&&r>0){u.x=n,u.y=i+a/2;break}if(0===t&&0>r){u.x=n,u.y=i+a/2;break}if(t>0&&s>=-1*l&&l>=s){u.x=n+o/2,u.y=i+o*r/2/t;break}if(0>t&&s>=-1*l&&l>=s){u.x=n-o/2,u.y=i-o*r/2/t;break}if(r>0&&(-1*l>=s||s>=l)){u.x=n+a*t/2/r,u.y=i+a/2;break}if(0>r&&(-1*l>=s||s>=l)){u.x=n-a*t/2/r,u.y=i-a/2;break}}while(!1);return u},c=function(e,t){for(var r=0;r<e.edgeSize;r++){var n=e.layoutEdges[r],i=e.idToIndex[n.sourceId],a=e.layoutNodes[i],o=e.idToIndex[n.targetId],s=e.layoutNodes[o],l=s.positionX-a.positionX,c=s.positionY-a.positionY;if(0===l&&0===c)return;var d=u(a,l,c),h=u(s,-1*l,-1*c),p=h.x-d.x,v=h.y-d.y,f=Math.sqrt(p*p+v*v),g=Math.pow(n.idealLength-f,2)/n.elasticity;if(0!==f)var y=g*p/f,m=g*v/f;else var y=0,m=0;a.isLocked||(a.offsetX+=y,a.offsetY+=m),s.isLocked||(s.offsetX-=y,s.offsetY-=m)}},d=function(e,t){for(var r=1,n=0;n<e.graphSet.length;n++){var i=e.graphSet[n],a=i.length;if(0===n)var o=e.clientHeight/2,s=e.clientWidth/2;else var l=e.layoutNodes[e.idToIndex[i[0]]],u=e.layoutNodes[e.idToIndex[l.parentId]],o=u.positionX,s=u.positionY;for(var c=0;a>c;c++){var d=e.layoutNodes[e.idToIndex[i[c]]];if(!d.isLocked){var h=o-d.positionX,p=s-d.positionY,v=Math.sqrt(h*h+p*p);if(v>r){var f=t.gravity*h/v,g=t.gravity*p/v;d.offsetX+=f,d.offsetY+=g}}}}},h=function(e,t){var r=[],n=0,i=-1;for(r.push.apply(r,e.graphSet[0]),i+=e.graphSet[0].length;i>=n;){var a=r[n++],o=e.idToIndex[a],s=e.layoutNodes[o],l=s.children;if(0<l.length&&!s.isLocked){for(var u=s.offsetX,c=s.offsetY,d=0;d<l.length;d++){var h=e.layoutNodes[e.idToIndex[l[d]]];h.offsetX+=u,h.offsetY+=c,r[++i]=l[d]}s.offsetX=0,s.offsetY=0}}},p=function(e,t){for(var r=0;r<e.nodeSize;r++){var n=e.layoutNodes[r];0<n.children.length&&(n.maxX=void 0,n.minX=void 0,n.maxY=void 0,n.minY=void 0)}for(var r=0;r<e.nodeSize;r++){var n=e.layoutNodes[r];if(!(0<n.children.length||n.isLocked)){var i=v(n.offsetX,n.offsetY,e.temperature);n.positionX+=i.x,n.positionY+=i.y,n.offsetX=0,n.offsetY=0,n.minX=n.positionX-n.width,n.maxX=n.positionX+n.width,n.minY=n.positionY-n.height,n.maxY=n.positionY+n.height,f(n,e)}}for(var r=0;r<e.nodeSize;r++){var n=e.layoutNodes[r];0<n.children.length&&!n.isLocked&&(n.positionX=(n.maxX+n.minX)/2,n.positionY=(n.maxY+n.minY)/2,n.width=n.maxX-n.minX,n.height=n.maxY-n.minY)}},v=function(e,t,r){var n=Math.sqrt(e*e+t*t);if(n>r)var i={x:r*e/n,y:r*t/n};else var i={x:e,y:t};return i},f=function(e,t){var r=e.parentId;if(null!=r){var n=t.layoutNodes[t.idToIndex[r]],i=!1;return(null==n.maxX||e.maxX+n.padRight>n.maxX)&&(n.maxX=e.maxX+n.padRight,i=!0),(null==n.minX||e.minX-n.padLeft<n.minX)&&(n.minX=e.minX-n.padLeft,i=!0),(null==n.maxY||e.maxY+n.padBottom>n.maxY)&&(n.maxY=e.maxY+n.padBottom,i=!0),(null==n.minY||e.minY-n.padTop<n.minY)&&(n.minY=e.minY-n.padTop,i=!0),i?f(n,t):void 0}},g=function(e,t){for(var n=r.layoutNodes,i=[],a=0;a<n.length;a++){var o=n[a],s=o.cmptId,l=i[s]=i[s]||[];l.push(o)}for(var u=0,a=0;a<i.length;a++){var c=i[a];c.x1=1/0,c.x2=-(1/0),c.y1=1/0,c.y2=-(1/0);for(var d=0;d<c.length;d++){var h=c[d];c.x1=Math.min(c.x1,h.positionX-h.width/2),c.x2=Math.max(c.x2,h.positionX+h.width/2),c.y1=Math.min(c.y1,h.positionY-h.height/2),c.y2=Math.max(c.y2,h.positionY+h.height/2)}c.w=c.x2-c.x1,c.h=c.y2-c.y1,u+=c.w*c.h}i.sort(function(e,t){return t.w*t.h-e.w*e.h});for(var p=0,v=0,f=0,g=0,y=Math.sqrt(u)*r.clientWidth/r.clientHeight,a=0;a<i.length;a++){for(var c=i[a],d=0;d<c.length;d++){var h=c[d];h.isLocked||(h.positionX+=p,h.positionY+=v)}p+=c.w+t.componentSpacing,f+=c.w+t.componentSpacing,g=Math.max(g,c.h),f>y&&(v+=g+t.componentSpacing,p=0,f=0,g=0)}},y=function(e){return i?!1:(a(r,n,e),r.temperature=r.temperature*n.coolingFactor,r.temperature<n.minTemp?!1:!0)},m=0;do{for(var b=0;b<n.refresh&&m<n.numIter;){var t=y(m);if(!t)break;b++,m++}n.animate&&broadcast(r.layoutNodes)}while(t&&m+1<n.numIter);return g(r,n),r}).then(function(e){o.layoutNodes=e.layoutNodes,n.stop(),h()});var h=function(){d({force:!0}),r.one("layoutstop",e.stop),r.trigger({type:"layoutstop",layout:r})};return this},n.prototype.stop=function(){return this.stopped=!0,this.thread&&this.thread.stop(),this.trigger("layoutstop"),this},n.prototype.destroy=function(){return this.thread&&this.thread.stop(),this};var c=function(e,t,r){for(var n=r.eles.edges(),i=r.eles.nodes(),a={isCompound:e.hasCompoundNodes(),layoutNodes:[],idToIndex:{},nodeSize:i.size(),graphSet:[],indexToGraph:[],layoutEdges:[],edgeSize:n.size(),temperature:r.initialTemp,clientWidth:e.width(),clientHeight:e.width(),boundingBox:o.makeBoundingBox(r.boundingBox?r.boundingBox:{x1:0,y1:0,w:e.width(),h:e.height()})},s=r.eles.components(),u={},c=0;c<s.length;c++)for(var h=s[c],p=0;p<h.length;p++){var v=h[p];u[v.id()]=c}for(var c=0;c<a.nodeSize;c++){var f=i[c],g=f.boundingBox(),y={};y.isLocked=f.locked(),y.id=f.data("id"),y.parentId=f.data("parent"),y.cmptId=u[f.id()],y.children=[],y.positionX=f.position("x"),y.positionY=f.position("y"),y.offsetX=0,y.offsetY=0,y.height=g.w,y.width=g.h,y.maxX=y.positionX+y.width/2,y.minX=y.positionX-y.width/2,y.maxY=y.positionY+y.height/2,y.minY=y.positionY-y.height/2,y.padLeft=parseFloat(f.style("padding-left")),y.padRight=parseFloat(f.style("padding-right")),y.padTop=parseFloat(f.style("padding-top")),y.padBottom=parseFloat(f.style("padding-bottom")),y.nodeRepulsion=l.fn(r.nodeRepulsion)?r.nodeRepulsion.call(f,f):r.nodeRepulsion,a.layoutNodes.push(y),a.idToIndex[y.id]=c}for(var m=[],b=0,x=-1,w=[],c=0;c<a.nodeSize;c++){var f=a.layoutNodes[c],_=f.parentId;null!=_?a.layoutNodes[a.idToIndex[_]].children.push(f.id):(m[++x]=f.id,w.push(f.id))}for(a.graphSet.push(w);x>=b;){var E=m[b++],D=a.idToIndex[E],v=a.layoutNodes[D],S=v.children;if(S.length>0){a.graphSet.push(S);for(var c=0;c<S.length;c++)m[++x]=S[c]}}for(var c=0;c<a.graphSet.length;c++)for(var k=a.graphSet[c],p=0;p<k.length;p++){var T=a.idToIndex[k[p]];a.indexToGraph[T]=c}for(var c=0;c<a.edgeSize;c++){var P=n[c],C={};C.id=P.data("id"),C.sourceId=P.data("source"),C.targetId=P.data("target");var N=l.fn(r.idealEdgeLength)?r.idealEdgeLength.call(P,P):r.idealEdgeLength,M=l.fn(r.edgeElasticity)?r.edgeElasticity.call(P,P):r.edgeElasticity,B=a.idToIndex[C.sourceId],z=a.idToIndex[C.targetId],O=a.indexToGraph[B],I=a.indexToGraph[z];if(O!=I){for(var L=d(C.sourceId,C.targetId,a),A=a.graphSet[L],R=0,y=a.layoutNodes[B];-1===A.indexOf(y.id);)y=a.layoutNodes[a.idToIndex[y.parentId]],R++;for(y=a.layoutNodes[z];-1===A.indexOf(y.id);)y=a.layoutNodes[a.idToIndex[y.parentId]],R++;N*=R*r.nestingFactor}C.idealLength=N,C.elasticity=M,a.layoutEdges.push(C)}return a},d=function(e,t,r){var n=h(e,t,0,r);return 2>n.count?0:n.graph},h=function(e,t,r,n){var i=n.graphSet[r];if(-1<i.indexOf(e)&&-1<i.indexOf(t))return{count:2,graph:r};for(var a=0,o=0;o<i.length;o++){var s=i[o],l=n.idToIndex[s],u=n.layoutNodes[l].children;if(0!==u.length){var c=n.indexToGraph[n.idToIndex[u[0]]],d=h(e,t,c,n);if(0!==d.count){if(1!==d.count)return d;if(a++,2===a)break}}}return{count:a,graph:r}},p=function(e){if(i){console.debug("layoutNodes:");for(var t=0;t<e.nodeSize;t++){var r=e.layoutNodes[t],n="\nindex: "+t+"\nId: "+r.id+"\nChildren: "+r.children.toString()+"\nparentId: "+r.parentId+"\npositionX: "+r.positionX+"\npositionY: "+r.positionY+"\nOffsetX: "+r.offsetX+"\nOffsetY: "+r.offsetY+"\npadLeft: "+r.padLeft+"\npadRight: "+r.padRight+"\npadTop: "+r.padTop+"\npadBottom: "+r.padBottom;console.debug(n)}console.debug("idToIndex");for(var t in e.idToIndex)console.debug("Id: "+t+"\nIndex: "+e.idToIndex[t]);console.debug("Graph Set");for(var a=e.graphSet,t=0;t<a.length;t++)console.debug("Set : "+t+": "+a[t].toString());for(var n="IndexToGraph",t=0;t<e.indexToGraph.length;t++)n+="\nIndex : "+t+" Graph: "+e.indexToGraph[t];console.debug(n),n="Layout Edges";for(var t=0;t<e.layoutEdges.length;t++){var o=e.layoutEdges[t];n+="\nEdge Index: "+t+" ID: "+o.id+" SouceID: "+o.sourceId+" TargetId: "+o.targetId+" Ideal Length: "+o.idealLength}console.debug(n),n="nodeSize: "+e.nodeSize,n+="\nedgeSize: "+e.edgeSize,n+="\ntemperature: "+e.temperature,console.debug(n)}},v=function(e,t){for(var r=e.clientWidth,n=e.clientHeight,i=0;i<e.nodeSize;i++){var a=e.layoutNodes[i];0!==a.children.length||a.isLocked||(a.positionX=Math.random()*r,a.positionY=Math.random()*n)}},f=function(e,t,r){var n=r.layout,i=r.eles.nodes(),a=e.boundingBox,o={x1:1/0,x2:-(1/0),y1:1/0,y2:-(1/0)};r.boundingBox&&(i.forEach(function(t){var r=e.layoutNodes[e.idToIndex[t.data("id")]];o.x1=Math.min(o.x1,r.positionX),o.x2=Math.max(o.x2,r.positionX),o.y1=Math.min(o.y1,r.positionY),o.y2=Math.max(o.y2,r.positionY)}),o.w=o.x2-o.x1,o.h=o.y2-o.y1),i.positions(function(t,n){var i=e.layoutNodes[e.idToIndex[n.data("id")]];if(r.boundingBox){var s=(i.positionX-o.x1)/o.w,l=(i.positionY-o.y1)/o.h;return{x:a.x1+s*a.w,y:a.y1+l*a.h}}return{x:i.positionX,y:i.positionY}}),!0!==e.ready&&(e.ready=!0,n.one("layoutready",r.ready),n.trigger({type:"layoutready",layout:this}))};t.exports=n},{"../../is":77,"../../math":79,"../../thread":92,"../../util":94}],49:[function(e,t,r){"use strict";function n(e){this.options=i.extend({},o,e)}var i=e("../../util"),a=e("../../math"),o={fit:!0,padding:30,boundingBox:void 0,avoidOverlap:!0,avoidOverlapPadding:10,condense:!1,rows:void 0,cols:void 0,position:function(e){},sort:void 0,animate:!1,animationDuration:500,animationEasing:void 0,ready:void 0,stop:void 0};n.prototype.run=function(){var e=this.options,t=e,r=e.cy,n=t.eles,i=n.nodes().not(":parent");t.sort&&(i=i.sort(t.sort));var o=a.makeBoundingBox(t.boundingBox?t.boundingBox:{x1:0,y1:0,w:r.width(),h:r.height()});if(0===o.h||0===o.w)i.layoutPositions(this,t,function(){return{x:o.x1,y:o.y1}});else{var s=i.size(),l=Math.sqrt(s*o.h/o.w),u=Math.round(l),c=Math.round(o.w/o.h*l),d=function(e){if(null==e)return Math.min(u,c);var t=Math.min(u,c);t==u?u=e:c=e},h=function(e){if(null==e)return Math.max(u,c);var t=Math.max(u,c);t==u?u=e:c=e},p=t.rows,v=null!=t.cols?t.cols:t.columns;if(null!=p&&null!=v)u=p,c=v;else if(null!=p&&null==v)u=p,c=Math.ceil(s/u);else if(null==p&&null!=v)c=v,u=Math.ceil(s/c);else if(c*u>s){var f=d(),g=h();(f-1)*g>=s?d(f-1):(g-1)*f>=s&&h(g-1)}else for(;s>c*u;){var f=d(),g=h();(g+1)*f>=s?h(g+1):d(f+1)}var y=o.w/c,m=o.h/u;if(t.condense&&(y=0,m=0),t.avoidOverlap)for(var b=0;b<i.length;b++){var x=i[b],w=x._private.position;(null==w.x||null==w.y)&&(w.x=0,w.y=0);var _=x.boundingBox(),E=t.avoidOverlapPadding,D=_.w+E,S=_.h+E;y=Math.max(y,D),m=Math.max(m,S)}for(var k={},T=function(e,t){return k["c-"+e+"-"+t]?!0:!1},P=function(e,t){k["c-"+e+"-"+t]=!0},C=0,N=0,M=function(){N++,N>=c&&(N=0,C++)},B={},b=0;b<i.length;b++){var x=i[b],z=t.position(x);if(z&&(void 0!==z.row||void 0!==z.col)){var w={row:z.row,col:z.col};if(void 0===w.col)for(w.col=0;T(w.row,w.col);)w.col++;else if(void 0===w.row)for(w.row=0;T(w.row,w.col);)w.row++;B[x.id()]=w,P(w.row,w.col)}}var O=function(e,t){var r,n;if(t.locked()||t.isFullAutoParent())return!1;var i=B[t.id()];if(i)r=i.col*y+y/2+o.x1,n=i.row*m+m/2+o.y1;else{for(;T(C,N);)M();r=N*y+y/2+o.x1,n=C*m+m/2+o.y1,P(C,N),M()}return{x:r,y:n}};i.layoutPositions(this,t,O)}return this},t.exports=n},{"../../math":79,"../../util":94}],50:[function(e,t,r){"use strict";t.exports=[{name:"breadthfirst",impl:e("./breadthfirst")},{name:"circle",impl:e("./circle")},{name:"concentric",impl:e("./concentric")},{name:"cose",impl:e("./cose")},{name:"grid",impl:e("./grid")},{name:"null",impl:e("./null")},{name:"preset",impl:e("./preset")},{name:"random",impl:e("./random")}]},{"./breadthfirst":45,"./circle":46,"./concentric":47,"./cose":48,"./grid":49,"./null":51,"./preset":52,"./random":53}],51:[function(e,t,r){"use strict";function n(e){this.options=i.extend({},a,e)}var i=e("../../util"),a={ready:function(){},stop:function(){}};n.prototype.run=function(){var e=this.options,t=e.eles,r=this;e.cy;return r.trigger("layoutstart"),t.nodes().positions(function(){return{x:0,y:0}}),r.one("layoutready",e.ready),r.trigger("layoutready"),r.one("layoutstop",e.stop),r.trigger("layoutstop"),this},n.prototype.stop=function(){return this},t.exports=n},{"../../util":94}],52:[function(e,t,r){"use strict";function n(e){this.options=i.extend({},o,e)}var i=e("../../util"),a=e("../../is"),o={positions:void 0,zoom:void 0,pan:void 0,fit:!0,padding:30,animate:!1,animationDuration:500,animationEasing:void 0,ready:void 0,stop:void 0};n.prototype.run=function(){function e(e){if(null==t.positions)return null;if(i)return t.positions.apply(e,[e]);var r=t.positions[e._private.data.id];return null==r?null:r}var t=this.options,r=t.eles,n=r.nodes(),i=a.fn(t.positions);return n.layoutPositions(this,t,function(t,r){var n=e(r);return r.locked()||null==n?!1:n}),this},t.exports=n},{"../../is":77,"../../util":94}],53:[function(e,t,r){"use strict";function n(e){this.options=i.extend({},o,e)}var i=e("../../util"),a=e("../../math"),o={fit:!0,padding:30,boundingBox:void 0,animate:!1,animationDuration:500,animationEasing:void 0,ready:void 0,stop:void 0};n.prototype.run=function(){var e=this.options,t=e.cy,r=e.eles,n=r.nodes().not(":parent"),i=a.makeBoundingBox(e.boundingBox?e.boundingBox:{x1:0,y1:0,w:t.width(),h:t.height()}),o=function(e,t){return{x:i.x1+Math.round(Math.random()*i.w),y:i.y1+Math.round(Math.random()*i.h)}};return n.layoutPositions(this,e,o),this},t.exports=n},{"../../math":79,"../../util":94}],54:[function(e,t,r){"use strict";var n=e("../../../math"),i=e("../../../is"),a=e("../../../util"),o={};o.arrowShapeHeight=.3,o.registerArrowShapes=function(){var e=this.arrowShapes={},t=this,r=function(e,t,r,n,i,a){var o=i.x-r/2-a,s=i.x+r/2+a,l=i.y-r/2-a,u=i.y+r/2+a,c=e>=o&&s>=e&&t>=l&&u>=t;return c},o=function(e,t,r,n,i){var a=e*Math.cos(n)-t*Math.sin(n),o=e*Math.sin(n)+t*Math.cos(n),s=a*r,l=o*r,u=s+i.x,c=l+i.y;return{x:u,y:c}},s=function(e,t,r,n){for(var i=[],a=0;a<e.length;a+=2){var s=e[a],l=e[a+1];i.push(o(s,l,t,r,n))}return i},l=function(e){for(var t=[],r=0;r<e.length;r++){var n=e[r];t.push(n.x,n.y)}return t},u=function(o,u){i.string(u)&&(u=e[u]),e[o]=a.extend({name:o,points:[-.15,-.3,.15,-.3,.15,.3,-.15,.3],collide:function(e,t,r,i,a,o){var u=l(s(this.points,r+2*o,i,a)),c=n.pointInsidePolygonPoints(e,t,u);return c},roughCollide:r,draw:function(e,r,n,i){var a=s(this.points,r,n,i);t.arrowShapeImpl("polygon")(e,a)},spacing:function(e){return 0},gap:function(e){return 2*e._private.style.width.pfValue}},u)};u("none",{collide:a.falsify,roughCollide:a.falsify,draw:a.noop,spacing:a.zeroify,gap:a.zeroify}),u("triangle",{points:[-.15,-.3,0,0,.15,-.3]}),u("arrow","triangle"),u("triangle-backcurve",{points:e.triangle.points,controlPoint:[0,-.15],roughCollide:r,draw:function(e,r,n,i){var a=s(this.points,r,n,i),l=this.controlPoint,u=o(l[0],l[1],r,n,i);t.arrowShapeImpl(this.name)(e,a,u)},gap:function(e){return e._private.style.width.pfValue}}),u("triangle-tee",{points:[-.15,-.3,0,0,.15,-.3,-.15,-.3],pointsTee:[-.15,-.4,-.15,-.5,.15,-.5,.15,-.4],collide:function(e,t,r,i,a,o){var u=l(s(this.points,r+2*o,i,a)),c=l(s(this.pointsTee,r+2*o,i,a)),d=n.pointInsidePolygonPoints(e,t,u)||n.pointInsidePolygonPoints(e,t,c);return d},draw:function(e,r,n,i){var a=s(this.points,r,n,i),o=s(this.pointsTee,r,n,i);t.arrowShapeImpl(this.name)(e,a,o)}}),u("vee",{points:[-.15,-.3,0,0,.15,-.3,0,-.15],gap:function(e){return e._private.style.width.pfValue}}),u("half-triangle-overshot",{points:[0,-.25,-.5,-.25,.5,.25],leavePathOpen:!0,matchEdgeWidth:!0}),u("circle",{radius:.15,collide:function(e,t,r,n,i,a){var o=i,s=Math.pow(o.x-e,2)+Math.pow(o.y-t,2)<=Math.pow((r+2*a)*this.radius,2);return s},draw:function(e,r,n,i){t.arrowShapeImpl(this.name)(e,i.x,i.y,this.radius*r)},spacing:function(e){return t.getArrowWidth(e._private.style.width.pfValue)*this.radius}}),u("inhibitor",{points:[-.25,0,-.25,-.1,.25,-.1,.25,0],spacing:function(e){return 1},gap:function(e){return 1}}),u("tee","inhibitor"),u("square",{points:[-.15,0,.15,0,.15,-.3,-.15,-.3]}),u("diamond",{points:[-.15,-.15,0,-.3,.15,-.15,0,0],gap:function(e){return e._private.style.width.pfValue}})},t.exports=o},{"../../../is":77,"../../../math":79,"../../../util":94}],55:[function(e,t,r){"use strict";var n={},i=function(e){e.eleEache=null},a=function(e){return e.eleEache||(e.eleEache={nodes:e.cy.nodes(),edges:e.cy.edges()}),e.eleEache};n.getCachedElements=function(){return a(this)},n.getCachedNodes=function(){return a(this).nodes},n.getCachedEdges=function(){return a(this).edges},n.updateElementsCache=function(){var e=this;return i(e),a(e)},t.exports=n},{}],56:[function(e,t,r){"use strict";function n(e,t){var r=function(e,t,r,n){return i.qbezierAt(e,t,r,n)},n=e._private,a=n.rstyle.bezierPts;a.push({x:r(t[0],t[2],t[4],.05),y:r(t[1],t[3],t[5],.05)}),a.push({x:r(t[0],t[2],t[4],.25),y:r(t[1],t[3],t[5],.25)}),a.push({x:r(t[0],t[2],t[4],.4),y:r(t[1],t[3],t[5],.4)}),a.push({x:r(t[0],t[2],t[4],.5),y:r(t[1],t[3],t[5],.5)}),a.push({x:r(t[0],t[2],t[4],.6),y:r(t[1],t[3],t[5],.6)}),a.push({x:r(t[0],t[2],t[4],.75),y:r(t[1],t[3],t[5],.75)}),a.push({x:r(t[0],t[2],t[4],.95),y:r(t[1],t[3],t[5],.95)})}var i=e("../../../math"),a=e("../../../is"),o=e("../../../collection/zsort"),s={};s.projectIntoViewport=function(e,t){var r=this.findContainerClientCoords(),n=r[0],i=r[1],a=e-n,o=t-i;return a-=this.cy.pan().x,o-=this.cy.pan().y,a/=this.cy.zoom(),o/=this.cy.zoom(),[a,o]},s.findContainerClientCoords=function(){var e=this.container,t=this.containerBB=this.containerBB||e.getBoundingClientRect();return[t.left,t.top,t.right-t.left,t.bottom-t.top]},s.invalidateContainerClientCoordsCache=function(){this.containerBB=null},s.findNearestElement=function(e,t,r,n){function a(n){var i=n._private;if("no"!==i.style.events.strValue){var a=n.outerWidth()+2*f,o=n.outerHeight()+2*f,s=a/2,c=o/2,h=i.position;if(h.x-s<=e&&e<=h.x+s&&h.y-c<=t&&t<=h.y+c){var p=!r||n.visible()&&!n.transparent();if(r&&!p)return;var v=u.nodeShapes[l.getNodeShape(n)];v.checkPoint(e,t,0,a,o,h.x,h.y)&&d.push(n)}}}function o(n){var o=n._private;if("no"!==o.style.events.strValue){var s,c,h=o.rscratch,f=o.style,g=f.width.pfValue/2+v,y=g*g,m=2*g,b=o.source,x=o.target,w=!1,_=function(){if(void 0!==c)return c;if(!r)return c=!0,!0;var e=n.visible()&&!n.transparent();return e?(c=!0,!0):(c=!1,!1)};if("segments"===h.edgeType||"straight"===h.edgeType||"haystack"===h.edgeType)for(var E=h.allpts,D=0;D+3<E.length;D+=2)(w=i.inLineVicinity(e,t,E[D],E[D+1],E[D+2],E[D+3],m))&&_()&&y>(s=i.sqDistanceToFiniteLine(e,t,E[D],E[D+1],E[D+2],E[D+3]))&&d.push(n);else if("bezier"===h.edgeType||"multibezier"===h.edgeType||"self"===h.edgeType||"compound"===h.edgeType)for(var E=h.allpts,D=0;D+5<h.allpts.length;D+=4)(w=i.inBezierVicinity(e,t,E[D],E[D+1],E[D+2],E[D+3],E[D+4],E[D+5],m))&&_()&&y>(s=i.sqDistanceToQuadraticBezier(e,t,E[D],E[D+1],E[D+2],E[D+3],E[D+4],E[D+5]))&&d.push(n);if(w&&_()&&0===d.length||d[d.length-1]!==n)for(var b=b||o.source,x=x||o.target,S=f.width.pfValue,k=l.getArrowWidth(S),T=[{name:"source",x:h.arrowStartX,y:h.arrowStartY,angle:h.srcArrowAngle},{name:"target",x:h.arrowEndX,y:h.arrowEndY,angle:h.tgtArrowAngle},{name:"mid-source",x:h.midX,y:h.midY,angle:h.midsrcArrowAngle},{name:"mid-target",x:h.midX,y:h.midY,angle:h.midtgtArrowAngle}],D=0;D<T.length;D++){var P=T[D],C=u.arrowShapes[f[P.name+"-arrow-shape"].value];if(C.roughCollide(e,t,k,P.angle,{x:P.x,y:P.y},v)&&C.collide(e,t,k,P.angle,{x:P.x,y:P.y},v)){d.push(n);break}}p&&d.length>0&&d[d.length-1]===n&&(a(b),a(x))}}function s(r){var n=r._private,a=g;if("no"!==n.style["text-events"].strValue)if("edges"===n.group&&"autorotate"===n.style["edge-text-rotation"].strValue){var o=n.rstyle,s=o.labelWidth+2*a,l=o.labelHeight+2*a,u=o.labelX,c=o.labelY,h=n.rscratch.labelAngle,p=Math.cos(h),v=Math.sin(h),f=function(e,t){return e-=u,t-=c,{x:e*p-t*v+u,y:e*v+t*p+c}},y=u-s/2,m=u+s/2,b=c-l/2,x=c+l/2,w=f(y,b),_=f(y,x),E=f(m,b),D=f(m,x),S=[w.x,w.y,E.x,E.y,D.x,D.y,_.x,_.y];i.pointInsidePolygonPoints(e,t,S)&&d.push(r)}else{var k=r.boundingBox({includeLabels:!0,includeNodes:!1,includeEdges:!1});k.x1-=a,k.y1-=a,k.x2+=a,k.y2+=a,k.w=k.x2-k.x1,k.h=k.y2-k.y1,i.inBoundingBox(k,e,t)&&d.push(r)}}for(var l=this,u=this,c=u.getCachedZSortedEles(),d=[],h=u.cy.zoom(),p=u.cy.hasCompoundNodes(),v=(n?24:8)/h,f=(n?8:2)/h,g=(n?8:2)/h,y=c.length-1;y>=0;y--){var m=c[y],b=m._private;if(d.length>0)break;"nodes"===b.group?a(m):o(m),s(m)}return d.length>0?d[d.length-1]:null},s.getAllInBox=function(e,t,r,n){var a=this.getCachedNodes(),o=this.getCachedEdges(),s=[],l=Math.min(e,r),u=Math.max(e,r),c=Math.min(t,n),d=Math.max(t,n);e=l,r=u,t=c,n=d;for(var h=i.makeBoundingBox({x1:e,y1:t,x2:r,y2:n}),p=0;p<a.length;p++){var v=a[p],f=v.boundingBox({includeNodes:!0,includeEdges:!1,includeLabels:!1});i.boundingBoxesIntersect(h,f)&&s.push(a[p])}for(var g=0;g<o.length;g++){var y=o[g],m=y._private,b=m.rscratch;if((null==b.startX||null==b.startY||i.inBoundingBox(h,b.startX,b.startY))&&(null==b.endX||null==b.endY||i.inBoundingBox(h,b.endX,b.endY)))if("bezier"===b.edgeType||"multibezier"===b.edgeType||"self"===b.edgeType||"compound"===b.edgeType||"segments"===b.edgeType||"haystack"===b.edgeType){for(var x=m.rstyle.bezierPts||m.rstyle.linePts||m.rstyle.haystackPts,w=!0,p=0;p<x.length;p++)if(!i.pointInBoundingBox(h,x[p])){w=!1;break}w&&s.push(y)}else("haystack"===b.edgeType||"straight"===b.edgeType)&&s.push(y)}return s},s.getNodeShape=function(e){var t=this,r=e._private.style,n=r.shape.value;if(e.isParent())return"rectangle"===n||"roundrectangle"===n?n:"rectangle";if("polygon"===n){var i=r["shape-polygon-points"].value;return t.nodeShapes.makePolygon(i).name}return n},s.updateCachedZSortedEles=function(){this.getCachedZSortedEles(!0)},s.getCachedZSortedEles=function(e){var t=this.lastZOrderCachedNodes,r=this.lastZOrderCachedEdges,n=this.getCachedNodes(),i=this.getCachedEdges(),a=[];if(!e&&t&&r&&t===n&&r===i)a=this.cachedZSortedEles;else{for(var s=0;s<n.length;s++){var l=n[s];(l.animated()||l.visible()&&!l.transparent())&&a.push(l)}for(var s=0;s<i.length;s++){var u=i[s];(u.animated()||u.visible()&&!u.transparent())&&a.push(u)}a.sort(o),this.cachedZSortedEles=a}return this.lastZOrderCachedNodes=n,this.lastZOrderCachedEdges=i,a},s.projectLines=function(e){var t=e._private,r=t.rscratch,i=r.edgeType;if("multibezier"===i||"bezier"===i||"self"===i||"compound"===i)for(var a=(t.rstyle.bezierPts=[],0);a+5<r.allpts.length;a+=4)n(e,r.allpts.slice(a,a+6));else if("segments"===i)for(var o=t.rstyle.linePts=[],a=0;a+1<r.allpts.length;a+=2)o.push({x:r.allpts[a],y:r.allpts[a+1]});else if("haystack"===i){var s=r.haystackPts;t.rstyle.haystackPts=[{x:s[0],y:s[1]},{x:s[2],y:s[3]}]}},s.projectBezier=s.projectLines,s.recalculateNodeLabelProjection=function(e){var t=e._private.style.label.strValue;if(t&&!t.match(/^\s+$/)){var r,n,i=e.outerWidth(),a=e.outerHeight(),o=e._private.position,s=e._private.style["text-halign"].strValue,l=e._private.style["text-valign"].strValue,u=e._private.rscratch,c=e._private.rstyle;switch(s){case"left":r=o.x-i/2;break;case"right":r=o.x+i/2;break;default:r=o.x}switch(l){case"top":n=o.y-a/2;break;case"bottom":n=o.y+a/2;break;default:n=o.y}u.labelX=r,u.labelY=n,c.labelX=r,c.labelY=n,this.applyLabelDimensions(e)}},s.recalculateEdgeLabelProjection=function(e){var t=e._private.style.label.strValue;if(t&&!t.match(/^\s+$/)){var r,n,i=e._private,a=i.rscratch,o=i.rstyle;r=a.midX,n=a.midY,a.labelX=r,a.labelY=n,o.labelX=r,o.labelY=n,this.applyLabelDimensions(e)}},s.applyLabelDimensions=function(e){var t=e._private.rscratch,r=e._private.rstyle,n=this.getLabelText(e),i=this.calculateLabelDimensions(e,n);r.labelWidth=i.width,t.labelWidth=i.width,r.labelHeight=i.height,t.labelHeight=i.height},s.getLabelText=function(e){var t=e._private.style,r=e._private.style.label.strValue,n=t["text-transform"].value,i=e._private.rscratch;if("none"==n||("uppercase"==n?r=r.toUpperCase():"lowercase"==n&&(r=r.toLowerCase())),"wrap"===t["text-wrap"].value){if(i.labelWrapKey===i.labelKey)return i.labelWrapCachedText;for(var a=r.split("\n"),o=t["text-max-width"].pfValue,s=[],l=0;l<a.length;l++){var u=a[l],c=this.calculateLabelDimensions(e,u,"line="+u),d=c.width;if(d>o){for(var h=u.split(/\s+/),p="",v=0;v<h.length;v++){var f=h[v],g=0===p.length?f:p+" "+f,y=this.calculateLabelDimensions(e,g,"testLine="+g),m=y.width;o>=m?p+=f+" ":(s.push(p),p=f+" ")}p.match(/^\s+$/)||s.push(p)}else s.push(u)}i.labelWrapCachedLines=s,i.labelWrapCachedText=r=s.join("\n"),i.labelWrapKey=i.labelKey}return r},s.calculateLabelDimensions=function(e,t,r){var n=this,i=e._private.style,a=i["font-style"].strValue,o=i["font-size"].pfValue+"px",s=i["font-family"].strValue,l=i["font-weight"].strValue,u=e._private.labelKey;r&&(u+="$@$"+r);var c=n.labelDimCache||(n.labelDimCache={});if(c[u])return c[u];var d=this.labelCalcDiv;d||(d=this.labelCalcDiv=document.createElement("div"),document.body.appendChild(d));var h=d.style;return h.fontFamily=s,h.fontStyle=a,h.fontSize=o,h.fontWeight=l,h.position="absolute",h.left="-9999px",h.top="-9999px",h.zIndex="-1",h.visibility="hidden",h.pointerEvents="none",h.padding="0",h.lineHeight="1","wrap"===i["text-wrap"].value?h.whiteSpace="pre":h.whiteSpace="normal",d.textContent=t,c[u]={width:d.clientWidth,height:d.clientHeight},c[u]},s.recalculateRenderedStyle=function(e){for(var t=[],r=[],n={},i=0;i<e.length;i++){var a=e[i],o=a._private,s=o.style,l=o.rscratch,u=o.rstyle,c=o.data.id,d=null!=l.boundingBoxKey&&o.boundingBoxKey===l.boundingBoxKey,h=null!=l.labelKey&&o.labelKey===l.labelKey,p=d&&h;if("nodes"===o.group){var v=o.position,f=null!=u.nodeX&&null!=u.nodeY&&v.x===u.nodeX&&v.y===u.nodeY,g=null!=u.nodeW&&u.nodeW===s.width.pfValue,y=null!=u.nodeH&&u.nodeH===s.height.pfValue;f&&p&&g&&y||r.push(a),u.nodeX=v.x,u.nodeY=v.y,u.nodeW=s.width.pfValue,u.nodeH=s.height.pfValue}else{var m=o.source._private.position,b=o.target._private.position,x=null!=u.srcX&&null!=u.srcY&&m.x===u.srcX&&m.y===u.srcY,w=null!=u.tgtX&&null!=u.tgtY&&b.x===u.tgtX&&b.y===u.tgtY,_=x&&w;if(!_||!p)if("bezier"===l.edgeType||"straight"===l.edgeType||"self"===l.edgeType||"compound"===l.edgeType){if(!n[c]){t.push(a),n[c]=!0;for(var E=a.parallelEdges(),i=0;i<E.length;i++){var D=E[i],S=D._private.data.id;n[S]||(t.push(D),n[S]=!0)}}}else t.push(a);u.srcX=m.x,u.srcY=m.y,u.tgtX=b.x,u.tgtY=b.y}l.boundingBoxKey=o.boundingBoxKey,l.labelKey=o.labelKey}this.recalculateEdgeProjections(t),this.recalculateLabelProjections(r,t)},s.recalculateLabelProjections=function(e,t){for(var r=0;r<e.length;r++)this.recalculateNodeLabelProjection(e[r]);for(var r=0;r<t.length;r++)this.recalculateEdgeLabelProjection(t[r])},s.recalculateEdgeProjections=function(e){this.findEdgeControlPoints(e)},s.findEdgeControlPoints=function(e){if(e&&0!==e.length){for(var t,r=this,n=r.cy,o=n.hasCompoundNodes(),s={},l=[],u=[],c=[],d=0;d<e.length;d++){var h=e[d],p=h._private,v=p.data,f=p.style,g=f["curve-style"].value,y="unbundled-bezier"===g||"segments"===g;if("none"!==f.display.value)if("autorotate"===f["edge-text-rotation"].strValue&&c.push(h),"haystack"!==g){var m=v.source,b=v.target;t=m>b?b+"$-$"+m:m+"$-$"+b,y&&(t="unbundled$-$"+v.id),null==s[t]&&(s[t]=[],l.push(t)),s[t].push(h),y&&(s[t].hasUnbundled=!0)}else u.push(h)}for(var x,w,_,E,D,S,k,T,P,C,N,M,B,z,O=0;O<l.length;O++){t=l[O];var I=s[t];if(I.sort(function(e,t){return e._private.index-t._private.index}),x=I[0]._private.source,w=I[0]._private.target,_=x._private,E=w._private,_.data.id>E.data.id){var L=x;x=w,w=L}if(D=_.position,S=E.position,k=x.outerWidth(),T=x.outerHeight(),P=w.outerWidth(),C=w.outerHeight(),N=r.nodeShapes[this.getNodeShape(x)],M=r.nodeShapes[this.getNodeShape(w)],z=!1,I.length>1&&x!==w||I.hasUnbundled){var A=N.intersectLine(D.x,D.y,k,T,S.x,S.y,0),R=M.intersectLine(S.x,S.y,P,C,D.x,D.y,0),V={x1:A[0],x2:R[0],y1:A[1],y2:R[1]},F=R[1]-A[1],j=R[0]-A[0],q=Math.sqrt(j*j+F*F),X={
-x:j,y:F},Y={x:X.x/q,y:X.y/q};B={x:-Y.y,y:Y.x},(M.checkPoint(A[0],A[1],0,P,C,S.x,S.y)||N.checkPoint(R[0],R[1],0,k,T,D.x,D.y))&&(B={},z=!0)}for(var h,$,H,d=0;d<I.length;d++){h=I[d],$=h._private,H=$.rscratch;var W=H.lastEdgeIndex,Z=d,U=H.lastNumEdges,G=I.length,K=$.style,f=K,g=K["curve-style"].value,J=K["control-point-distances"],Q=K["control-point-weights"],ee=J&&Q?Math.min(J.value.length,Q.value.length):1,te=K["control-point-step-size"].pfValue,re=void 0!==J?J.pfValue[0]:void 0,ne=Q.value[0],y="unbundled-bezier"===g||"segments"===g,ie=$.source!==x;ie&&y&&(re*=-1);var ae=H.lastSrcCtlPtX,oe=D.x,se=H.lastSrcCtlPtY,le=D.y,ue=H.lastSrcCtlPtW,ce=x.outerWidth(),de=H.lastSrcCtlPtH,he=x.outerHeight(),pe=H.lastTgtCtlPtX,ve=S.x,fe=H.lastTgtCtlPtY,ge=S.y,ye=H.lastTgtCtlPtW,me=w.outerWidth(),be=H.lastTgtCtlPtH,xe=w.outerHeight(),we=H.lastW,_e=K["control-point-step-size"].pfValue;if(z?H.badBezier=!0:H.badBezier=!1,ae!==oe||se!==le||ue!==ce||de!==he||pe!==ve||fe!==ge||ye!==me||be!==xe||we!==_e||!(W===Z&&U===G||y)){if(H.lastSrcCtlPtX=oe,H.lastSrcCtlPtY=le,H.lastSrcCtlPtW=ce,H.lastSrcCtlPtH=he,H.lastTgtCtlPtX=ve,H.lastTgtCtlPtY=ge,H.lastTgtCtlPtW=me,H.lastTgtCtlPtH=xe,H.lastEdgeIndex=Z,H.lastNumEdges=G,H.lastWidth=_e,x===w){H.edgeType="self";var Ee=d,De=te;y&&(Ee=0,De=re),H.ctrlpts=[D.x,D.y-(1+Math.pow(T,1.12)/100)*De*(Ee/3+1),D.x-(1+Math.pow(k,1.12)/100)*De*(Ee/3+1),D.y]}else if(o&&(x.isParent()||x.isChild()||w.isParent()||w.isChild())&&(x.parents().anySame(w)||w.parents().anySame(x))){H.edgeType="compound",H.badBezier=!1;var Ee=d,De=te;y&&(Ee=0,De=re);var Se=50,ke={x:D.x-k/2,y:D.y-T/2},Te={x:S.x-P/2,y:S.y-C/2},Pe={x:Math.min(ke.x,Te.x),y:Math.min(ke.y,Te.y)},Ce=.5,Ne=Math.max(Ce,Math.log(.01*k)),Me=Math.max(Ce,Math.log(.01*P));H.ctrlpts=[Pe.x,Pe.y-(1+Math.pow(Se,1.12)/100)*De*(Ee/3+1)*Ne,Pe.x-(1+Math.pow(Se,1.12)/100)*De*(Ee/3+1)*Me,Pe.y]}else if("segments"===g){H.edgeType="segments",H.segpts=[];for(var Be=K["segment-weights"].pfValue,ze=K["segment-distances"].pfValue,Oe=Math.min(Be.length,ze.length),Ie=0;Oe>Ie;Ie++){var Le=Be[Ie],Ae=ze[Ie],Re=1-Le,Ve=Le,Fe={x:V.x1*Re+V.x2*Ve,y:V.y1*Re+V.y2*Ve};H.segpts.push(Fe.x+B.x*Ae,Fe.y+B.y*Ae)}}else if(I.length%2!==1||d!==Math.floor(I.length/2)||y){var je=y;H.edgeType=je?"multibezier":"bezier",H.ctrlpts=[];for(var qe=0;ee>qe;qe++){var Xe,Ye=(.5-I.length/2+d)*te,$e=i.signum(Ye);je&&(re=J?J.pfValue[qe]:te,ne=Q.value[qe]),Xe=y?re:void 0!==re?$e*re:void 0;var He=void 0!==Xe?Xe:Ye,Re=!ie||y?1-ne:ne,Ve=!ie||y?ne:1-ne,Fe={x:V.x1*Re+V.x2*Ve,y:V.y1*Re+V.y2*Ve};H.ctrlpts.push(Fe.x+B.x*He,Fe.y+B.y*He)}}else H.edgeType="straight";this.findEndpoints(h);var We=!a.number(H.startX)||!a.number(H.startY),Ze=!a.number(H.arrowStartX)||!a.number(H.arrowStartY),Ue=!a.number(H.endX)||!a.number(H.endY),Ge=!a.number(H.arrowEndX)||!a.number(H.arrowEndY),Ke=3,Je=this.getArrowWidth(K.width.pfValue)*this.arrowShapeHeight,Qe=Ke*Je;if("bezier"===H.edgeType){var et=i.distance({x:H.ctrlpts[0],y:H.ctrlpts[1]},{x:H.startX,y:H.startY}),tt=Qe>et,rt=i.distance({x:H.ctrlpts[0],y:H.ctrlpts[1]},{x:H.endX,y:H.endY}),nt=Qe>rt,it=!1;if(We||Ze||tt){it=!0;var at={x:H.ctrlpts[0]-D.x,y:H.ctrlpts[1]-D.y},ot=Math.sqrt(at.x*at.x+at.y*at.y),st={x:at.x/ot,y:at.y/ot},lt=Math.max(k,T),ut={x:H.ctrlpts[0]+2*st.x*lt,y:H.ctrlpts[1]+2*st.y*lt},ct=N.intersectLine(D.x,D.y,k,T,ut.x,ut.y,0);tt?(H.ctrlpts[0]=H.ctrlpts[0]+st.x*(Qe-et),H.ctrlpts[1]=H.ctrlpts[1]+st.y*(Qe-et)):(H.ctrlpts[0]=ct[0]+st.x*Qe,H.ctrlpts[1]=ct[1]+st.y*Qe)}if(Ue||Ge||nt){it=!0;var at={x:H.ctrlpts[0]-S.x,y:H.ctrlpts[1]-S.y},ot=Math.sqrt(at.x*at.x+at.y*at.y),st={x:at.x/ot,y:at.y/ot},lt=Math.max(k,T),ut={x:H.ctrlpts[0]+2*st.x*lt,y:H.ctrlpts[1]+2*st.y*lt},dt=M.intersectLine(S.x,S.y,P,C,ut.x,ut.y,0);nt?(H.ctrlpts[0]=H.ctrlpts[0]+st.x*(Qe-rt),H.ctrlpts[1]=H.ctrlpts[1]+st.y*(Qe-rt)):(H.ctrlpts[0]=dt[0]+st.x*Qe,H.ctrlpts[1]=dt[1]+st.y*Qe)}it&&this.findEndpoints(h)}if("multibezier"===H.edgeType||"bezier"===H.edgeType||"self"===H.edgeType||"compound"===H.edgeType){H.allpts=[],H.allpts.push(H.startX,H.startY);for(var qe=0;qe+1<H.ctrlpts.length;qe+=2)H.allpts.push(H.ctrlpts[qe],H.ctrlpts[qe+1]),qe+3<H.ctrlpts.length&&H.allpts.push((H.ctrlpts[qe]+H.ctrlpts[qe+2])/2,(H.ctrlpts[qe+1]+H.ctrlpts[qe+3])/2);H.allpts.push(H.endX,H.endY);var ht,pt;"bezier"===H.edgeType?(H.midX=i.qbezierAt(H.arrowStartX,H.ctrlpts[0],H.arrowEndX,.5),H.midY=i.qbezierAt(H.arrowStartY,H.ctrlpts[1],H.arrowEndY,.5)):H.ctrlpts.length/2%2===0?(ht=H.allpts.length/2-1,H.midX=H.allpts[ht],H.midY=H.allpts[ht+1]):(ht=H.allpts.length/2-3,pt=.5,H.midX=i.qbezierAt(H.allpts[ht],H.allpts[ht+2],H.allpts[ht+4],pt),H.midY=i.qbezierAt(H.allpts[ht+1],H.allpts[ht+3],H.allpts[ht+5],pt))}else if("straight"===H.edgeType)H.allpts=[H.startX,H.startY,H.endX,H.endY],H.midX=(H.arrowStartX+H.arrowEndX)/2,H.midY=(H.arrowStartY+H.arrowEndY)/2;else if("segments"===H.edgeType)if(H.allpts=[],H.allpts.push(H.startX,H.startY),H.allpts.push.apply(H.allpts,H.segpts),H.allpts.push(H.endX,H.endY),H.segpts.length%4===0){var vt=H.segpts.length/2,ft=vt-2;H.midX=(H.segpts[ft]+H.segpts[vt])/2,H.midY=(H.segpts[ft+1]+H.segpts[vt+1])/2}else{var ft=H.segpts.length/2-1;H.midX=H.segpts[ft],H.midY=H.segpts[ft+1]}this.projectLines(h),this.calculateArrowAngles(h),this.recalculateEdgeLabelProjection(h)}}}for(var d=0;d<u.length;d++){var h=u[d],p=h._private,f=p.style,gt=p.rscratch,H=gt;if(!gt.haystack){var yt=2*Math.random()*Math.PI;gt.source={x:Math.cos(yt),y:Math.sin(yt)};var yt=2*Math.random()*Math.PI;gt.target={x:Math.cos(yt),y:Math.sin(yt)}}var x=p.source,w=p.target,D=x._private.position,S=w._private.position,k=x.width(),P=w.width(),T=x.height(),C=w.height(),lt=f["haystack-radius"].value,mt=lt/2;H.haystackPts=H.allpts=[H.source.x*k*mt+D.x,H.source.y*T*mt+D.y,H.target.x*P*mt+S.x,H.target.y*C*mt+S.y],H.midX=(H.allpts[0]+H.allpts[2])/2,H.midY=(H.allpts[1]+H.allpts[3])/2,gt.edgeType="haystack",gt.haystack=!0,this.projectLines(h),this.calculateArrowAngles(h),this.recalculateEdgeLabelProjection(h)}for(var d=0;d<c.length;d++){var h=c[d],H=h._private.rscratch;H.labelAngle=Math.atan(H.midDispY/H.midDispX)}return s}};var l=function(e,t){return Math.atan2(t,e)-Math.PI/2};s.calculateArrowAngles=function(e){var t,r,n,a,o,s,u=e._private.rscratch,c="haystack"===u.edgeType,d="multibezier"===u.edgeType,h="segments"===u.edgeType,p="compound"===u.edgeType,v="self"===u.edgeType,f=e.source().position(),g=e.target().position();c?(n=u.haystackPts[0],a=u.haystackPts[1],o=u.haystackPts[2],s=u.haystackPts[3]):(n=u.arrowStartX,a=u.arrowStartY,o=u.arrowEndX,s=u.arrowEndY),t=f.x-n,r=f.y-a,u.srcArrowAngle=l(t,r);var y=u.midX,m=u.midY;if(c&&(y=(n+o)/2,m=(a+s)/2),t=o-n,r=s-a,v)t=-1,r=1;else if(h){var b=u.allpts;if(b.length/2%2===0){var x=b.length/2,w=x-2;t=b[x]-b[w],r=b[x+1]-b[w+1]}else{var x=b.length/2-1,w=x-2,_=x+2;t=b[x]-b[w],r=b[x+1]-b[w+1]}}else if(d||p){var E,D,S,k,b=u.allpts,T=u.ctrlpts;if(T.length/2%2===0){var P=b.length/2-1,C=P+2,N=C+2;E=i.qbezierAt(b[P],b[C],b[N],0),D=i.qbezierAt(b[P+1],b[C+1],b[N+1],0),S=i.qbezierAt(b[P],b[C],b[N],1e-4),k=i.qbezierAt(b[P+1],b[C+1],b[N+1],1e-4)}else{var C=b.length/2-1,P=C-2,N=C+2;E=i.qbezierAt(b[P],b[C],b[N],.4999),D=i.qbezierAt(b[P+1],b[C+1],b[N+1],.4999),S=i.qbezierAt(b[P],b[C],b[N],.5),k=i.qbezierAt(b[P+1],b[C+1],b[N+1],.5)}t=S-E,r=k-D}if(u.midtgtArrowAngle=l(t,r),u.midDispX=t,u.midDispY=r,t*=-1,r*=-1,h){var b=u.allpts;if(b.length/2%2===0);else{var x=b.length/2-1,_=x+2;t=-(b[_]-b[x]),r=-(b[_+1]-b[x+1])}}u.midsrcArrowAngle=l(t,r),t=g.x-o,r=g.y-s,u.tgtArrowAngle=l(t,r)},s.findEndpoints=function(e){var t,r,n,o=this,s=e.source()[0],l=e.target()[0],u=s._private,c=l._private,d=u.position,h=c.position,p=e._private.style["target-arrow-shape"].value,v=e._private.style["source-arrow-shape"].value,f=e._private.rscratch,g=f.edgeType,y="bezier"===g||"multibezier"===g||"self"===g||"compound"===g,m="bezier"!==g,b="straight"===g||"segments"===g,x="segments"===g;if(y){var w=[f.ctrlpts[0],f.ctrlpts[1]],_=m?[f.ctrlpts[f.ctrlpts.length-2],f.ctrlpts[f.ctrlpts.length-1]]:w;r=_,n=w}else if(b){var E=x?f.segpts.slice(0,2):[h.x,h.y],D=x?f.segpts.slice(f.segpts.length-2):[d.x,d.y];r=D,n=E}t=o.nodeShapes[this.getNodeShape(l)].intersectLine(h.x,h.y,l.outerWidth(),l.outerHeight(),r[0],r[1],0);var S=i.shortenIntersection(t,r,o.arrowShapes[p].spacing(e)),k=i.shortenIntersection(t,r,o.arrowShapes[p].gap(e));f.endX=k[0],f.endY=k[1],f.arrowEndX=S[0],f.arrowEndY=S[1],t=o.nodeShapes[this.getNodeShape(s)].intersectLine(d.x,d.y,s.outerWidth(),s.outerHeight(),n[0],n[1],0);var T=i.shortenIntersection(t,n,o.arrowShapes[v].spacing(e)),P=i.shortenIntersection(t,n,o.arrowShapes[v].gap(e));f.startX=P[0],f.startY=P[1],f.arrowStartX=T[0],f.arrowStartY=T[1],b&&(a.number(f.startX)&&a.number(f.startY)&&a.number(f.endX)&&a.number(f.endY)?f.badLine=!1:f.badLine=!0)},s.getArrowWidth=s.getArrowHeight=function(e){var t=this.arrowWidthCache=this.arrowWidthCache||{},r=t[e];return r?r:(r=Math.max(Math.pow(13.37*e,.9),29),t[e]=r,r)},t.exports=s},{"../../../collection/zsort":29,"../../../is":77,"../../../math":79}],57:[function(e,t,r){"use strict";var n={};n.getCachedImage=function(e,t){var r=this,n=r.imageCache=r.imageCache||{};if(n[e]&&n[e].image)return n[e].image;var i=n[e]=n[e]||{},a=i.image=new Image;return a.addEventListener("load",t),a.src=e,a},t.exports=n},{}],58:[function(e,t,r){"use strict";var n=e("../../../is"),i=e("../../../util"),a=function(){},o=a,s=o.prototype;s.clientFunctions=["redrawHint","render","renderTo","matchCanvasSize","nodeShapeImpl","arrowShapeImpl"],s.init=function(e){var t=this;t.options=e,t.cy=e.cy,t.container=e.cy.container(),t.selection=[void 0,void 0,void 0,void 0,0],t.hoverData={down:null,last:null,downTime:null,triggerMode:null,dragging:!1,initialPan:[null,null],capture:!1},t.dragData={possibleDragElements:[]},t.touchData={start:null,capture:!1,startPosition:[null,null,null,null,null,null],singleTouchStartTime:null,singleTouchMoved:!0,now:[null,null,null,null,null,null],earlier:[null,null,null,null,null,null]},t.redraws=0,t.showFps=e.showFps,t.hideEdgesOnViewport=e.hideEdgesOnViewport,t.hideLabelsOnViewport=e.hideLabelsOnViewport,t.textureOnViewport=e.textureOnViewport,t.wheelSensitivity=e.wheelSensitivity,t.motionBlurEnabled=e.motionBlur,t.forcedPixelRatio=e.pixelRatio,t.motionBlur=!0,t.motionBlurOpacity=e.motionBlurOpacity,t.motionBlurTransparency=1-t.motionBlurOpacity,t.motionBlurPxRatio=1,t.mbPxRBlurry=1,t.minMbLowQualFrames=4,t.fullQualityMb=!1,t.clearedForMotionBlur=[],t.desktopTapThreshold=e.desktopTapThreshold,t.desktopTapThreshold2=e.desktopTapThreshold*e.desktopTapThreshold,t.touchTapThreshold=e.touchTapThreshold,t.touchTapThreshold2=e.touchTapThreshold*e.touchTapThreshold,t.tapholdDuration=500,t.bindings=[],t.registerNodeShapes(),t.registerArrowShapes(),t.load()},s.notify=function(e){var t,r=this;t=n.array(e.type)?e.type:[e.type];for(var i=0;i<t.length;i++){var a=t[i];switch(a){case"destroy":return void r.destroy();case"add":case"remove":case"load":r.updateElementsCache();break;case"viewport":r.redrawHint("select",!0);break;case"style":r.updateCachedZSortedEles()}("load"===a||"resize"===a)&&(r.invalidateContainerClientCoordsCache(),r.matchCanvasSize(r.container))}r.redrawHint("eles",!0),r.redrawHint("drag",!0),this.startRenderLoop(),this.redraw()},s.destroy=function(){this.destroyed=!0,this.cy.stopAnimationLoop();for(var e=0;e<this.bindings.length;e++){var t=this.bindings[e],r=t;r.target.removeEventListener(r.event,r.handler,r.useCapture)}if(this.removeObserver&&this.removeObserver.disconnect(),this.labelCalcDiv)try{document.body.removeChild(this.labelCalcDiv)}catch(n){}},[e("./arrow-shapes"),e("./cached-eles"),e("./coord-ele-math"),e("./images"),e("./load-listeners"),e("./node-shapes"),e("./redraw")].forEach(function(e){i.extend(s,e)}),t.exports=o},{"../../../is":77,"../../../util":94,"./arrow-shapes":54,"./cached-eles":55,"./coord-ele-math":56,"./images":57,"./load-listeners":59,"./node-shapes":60,"./redraw":61}],59:[function(e,t,r){"use strict";var n=e("../../../is"),i=e("../../../util"),a=e("../../../event"),o=e("../../../collection"),s={};s.registerBinding=function(e,t,r,n){this.bindings.push({target:e,event:t,handler:r,useCapture:n}),e.addEventListener(t,r,n)},s.nodeIsDraggable=function(e){return 0!==e._private.style.opacity.value&&"visible"==e._private.style.visibility.value&&"element"==e._private.style.display.value&&!e.locked()&&e.grabbable()?!0:!1},s.load=function(){var e=this,t=function(t,r,n,o){null==t&&(t=e.cy);for(var s=0;s<r.length;s++){var l=r[s],u=a(n,i.extend({type:l},o));t.trigger(u)}},r=function(e){return e.shiftKey||e.metaKey||e.ctrlKey},s=function(t){var r;if(t.addToList&&e.cy.hasCompoundNodes()){if(!t.addToList.hasId){t.addToList.hasId={};for(var n=0;n<t.addToList.length;n++){var i=t.addToList[n];t.addToList.hasId[i.id()]=!0}}r=t.addToList.hasId}return r||{}},l=function(e,t){if(e._private.cy.hasCompoundNodes()&&(null!=t.inDragLayer||null!=t.addToList))for(var r=s(t),n=e.descendants(),i=0;i<n.size();i++){var a=n[i],o=a._private;t.inDragLayer&&(o.rscratch.inDragLayer=!0),t.addToList&&!r[a.id()]&&(t.addToList.push(a),r[a.id()]=!0,o.grabbed=!0);for(var l=o.edges,u=0;t.inDragLayer&&u<l.length;u++)l[u]._private.rscratch.inDragLayer=!0}},u=function(e,t){var r=e._private,n=s(t);t.inDragLayer&&(r.rscratch.inDragLayer=!0),t.addToList&&!n[e.id()]&&(t.addToList.push(e),n[e.id()]=!0,r.grabbed=!0);for(var i=r.edges,a=0;t.inDragLayer&&a<i.length;a++)i[a]._private.rscratch.inDragLayer=!0;l(e,t),d(e,{inDragLayer:t.inDragLayer})},c=function(e){if(e)for(var t=0;t<e.length;t++){var r=e[t]._private;if("nodes"===r.group){r.rscratch.inDragLayer=!1,r.grabbed=!1;for(var n=r.edges,i=0;i<n.length;i++)n[i]._private.rscratch.inDragLayer=!1;d(e[t],{inDragLayer:!1})}else"edges"===r.group&&(r.rscratch.inDragLayer=!1)}},d=function(e,t){if(null!=t.inDragLayer||null!=t.addToList){var r=e;if(e._private.cy.hasCompoundNodes()){for(;r.parent().nonempty();)r=r.parent()[0];if(r!=e){for(var n=r.descendants().merge(r).unmerge(e).unmerge(e.descendants()),i=n.connectedEdges(),a=s(t),o=0;o<n.size();o++)void 0!==t.inDragLayer&&(n[o]._private.rscratch.inDragLayer=t.inDragLayer),t.addToList&&!a[n[o].id()]&&(t.addToList.push(n[o]),a[n[o].id()]=!0,n[o]._private.grabbed=!0);for(var l=0;void 0!==t.inDragLayer&&l<i.length;l++)i[l]._private.rscratch.inDragLayer=t.inDragLayer}}}};"undefined"!=typeof MutationObserver?(e.removeObserver=new MutationObserver(function(t){for(var r=0;r<t.length;r++){var n=t[r],i=n.removedNodes;if(i)for(var a=0;a<i.length;a++){var o=i[a];if(o===e.container){e.destroy();break}}}}),e.container.parentNode&&e.removeObserver.observe(e.container.parentNode,{childList:!0})):e.registerBinding(e.container,"DOMNodeRemoved",function(t){e.destroy()}),e.registerBinding(window,"resize",i.debounce(function(t){e.invalidateContainerClientCoordsCache(),e.matchCanvasSize(e.container),e.redrawHint("eles",!0),e.redraw()},100));for(var h=function(t){e.registerBinding(t,"scroll",function(t){e.invalidateContainerClientCoordsCache()})},p=e.cy.container();h(p),p.parentNode;)p=p.parentNode;e.registerBinding(e.container,"contextmenu",function(e){e.preventDefault()});var v=function(){return 0!==e.selection[4]};e.registerBinding(e.container,"mousedown",function(r){r.preventDefault(),e.hoverData.capture=!0,e.hoverData.which=r.which;var n=e.cy,i=e.projectIntoViewport(r.clientX,r.clientY),o=e.selection,s=e.findNearestElement(i[0],i[1],!0,!1),l=e.dragData.possibleDragElements;e.hoverData.mdownPos=i;var c=function(){e.hoverData.tapholdCancelled=!1,clearTimeout(e.hoverData.tapholdTimeout),e.hoverData.tapholdTimeout=setTimeout(function(){if(!e.hoverData.tapholdCancelled){var t=e.hoverData.down;t?t.trigger(a(r,{type:"taphold",cyPosition:{x:i[0],y:i[1]}})):n.trigger(a(r,{type:"taphold",cyPosition:{x:i[0],y:i[1]}}))}},e.tapholdDuration)};if(3==r.which){e.hoverData.cxtStarted=!0;var d=a(r,{type:"cxttapstart",cyPosition:{x:i[0],y:i[1]}});s?(s.activate(),s.trigger(d),e.hoverData.down=s):n.trigger(d),e.hoverData.downTime=(new Date).getTime(),e.hoverData.cxtDragged=!1}else if(1==r.which){if(s&&s.activate(),null!=s&&e.nodeIsDraggable(s)){var h=a(r,{type:"grab",cyPosition:{x:i[0],y:i[1]}});if(s.isNode()&&!s.selected())l=e.dragData.possibleDragElements=[],u(s,{addToList:l}),s.trigger(h);else if(s.isNode()&&s.selected()){l=e.dragData.possibleDragElements=[];for(var p=n.$(function(){return this.isNode()&&this.selected()}),v=0;v<p.length;v++)e.nodeIsDraggable(p[v])&&u(p[v],{addToList:l});s.trigger(h)}e.redrawHint("eles",!0),e.redrawHint("drag",!0)}e.hoverData.down=s,e.hoverData.downTime=(new Date).getTime(),t(s,["mousedown","tapstart","vmousedown"],r,{cyPosition:{x:i[0],y:i[1]}}),null==s?(o[4]=1,e.data.bgActivePosistion={x:i[0],y:i[1]},e.redrawHint("select",!0),e.redraw()):s.isEdge()&&(o[4]=1),c()}o[0]=o[2]=i[0],o[1]=o[3]=i[1]},!1),e.registerBinding(window,"mousemove",function(i){var s=!1,l=e.hoverData.capture;if(!l){var c=e.findContainerClientCoords();if(!(i.clientX>c[0]&&i.clientX<c[0]+e.canvasWidth&&i.clientY>c[1]&&i.clientY<c[1]+e.canvasHeight))return;for(var d=e.container,h=i.target,p=h.parentNode,v=!1;p;){if(p===d){v=!0;break}p=p.parentNode}if(!v)return}var f=e.cy,g=f.zoom(),y=e.projectIntoViewport(i.clientX,i.clientY),m=e.selection,b=null;e.hoverData.draggingEles||(b=e.findNearestElement(y[0],y[1],!0,!1));var x=e.hoverData.last,w=e.hoverData.down,_=[y[0]-m[2],y[1]-m[3]],E=e.dragData.possibleDragElements,D=m[2]-m[0],S=D*D,k=m[3]-m[1],T=k*k,P=S+T,C=P*g*g,N=r(i);e.hoverData.tapholdCancelled=!0;var M=function(){var t=e.hoverData.dragDelta=e.hoverData.dragDelta||[];0===t.length?(t.push(_[0]),t.push(_[1])):(t[0]+=_[0],t[1]+=_[1])};if(s=!0,t(b,["mousemove","vmousemove","tapdrag"],i,{cyPosition:{x:y[0],y:y[1]}}),3===e.hoverData.which){var B=a(i,{type:"cxtdrag",cyPosition:{x:y[0],y:y[1]}});w?w.trigger(B):f.trigger(B),e.hoverData.cxtDragged=!0,e.hoverData.cxtOver&&b===e.hoverData.cxtOver||(e.hoverData.cxtOver&&e.hoverData.cxtOver.trigger(a(i,{type:"cxtdragout",cyPosition:{x:y[0],y:y[1]}})),e.hoverData.cxtOver=b,b&&b.trigger(a(i,{type:"cxtdragover",cyPosition:{x:y[0],y:y[1]}})))}else if(e.hoverData.dragging){if(s=!0,f.panningEnabled()&&f.userPanningEnabled()){var z;if(e.hoverData.justStartedPan){var O=e.hoverData.mdownPos;z={x:(y[0]-O[0])*g,y:(y[1]-O[1])*g},e.hoverData.justStartedPan=!1}else z={x:_[0]*g,y:_[1]*g};f.panBy(z),e.hoverData.dragged=!0}y=e.projectIntoViewport(i.clientX,i.clientY)}else if(1!=m[4]||null!=w&&!w.isEdge()){if(w&&w.isEdge()&&w.active()&&w.unactivate(),b!=x&&(x&&t(x,["mouseout","tapdragout"],i,{cyPosition:{x:y[0],y:y[1]}}),b&&t(b,["mouseover","tapdragover"],i,{cyPosition:{x:y[0],y:y[1]}}),e.hoverData.last=b),w&&w.isNode()&&e.nodeIsDraggable(w))if(C>=e.desktopTapThreshold2){var I=!e.dragData.didDrag;I&&e.redrawHint("eles",!0),e.dragData.didDrag=!0;for(var L=[],A=0;A<E.length;A++){var R=E[A];if(e.hoverData.draggingEles||u(R,{inDragLayer:!0}),R.isNode()&&e.nodeIsDraggable(R)&&R.grabbed()){var V=R._private.position;if(L.push(R),n.number(_[0])&&n.number(_[1])){var F=!R.isParent();if(F&&(V.x+=_[0],V.y+=_[1]),I){var j=e.hoverData.dragDelta;F&&n.number(j[0])&&n.number(j[1])&&(V.x+=j[0],V.y+=j[1])}}}}e.hoverData.draggingEles=!0;var q=o(f,L);q.updateCompoundBounds(),q.trigger("position drag"),e.redrawHint("drag",!0),e.redraw()}else M();s=!0}else e.hoverData.dragging||!f.boxSelectionEnabled()||!N&&f.panningEnabled()&&f.userPanningEnabled()?!e.hoverData.selecting&&f.panningEnabled()&&f.userPanningEnabled()&&(e.hoverData.dragging=!0,e.hoverData.justStartedPan=!0,m[4]=0,e.data.bgActivePosistion={x:y[0],y:y[1]},e.redrawHint("select",!0),e.redraw()):(e.data.bgActivePosistion=void 0,e.hoverData.selecting=!0,e.redrawHint("select",!0),e.redraw()),w&&w.isEdge()&&w.active()&&w.unactivate();return m[2]=y[0],m[3]=y[1],s?(i.stopPropagation&&i.stopPropagation(),i.preventDefault&&i.preventDefault(),!1):void 0},!1),e.registerBinding(window,"mouseup",function(n){var i=e.hoverData.capture;if(i){e.hoverData.capture=!1;var s=e.cy,l=e.projectIntoViewport(n.clientX,n.clientY),u=e.selection,d=e.findNearestElement(l[0],l[1],!0,!1),h=e.dragData.possibleDragElements,p=e.hoverData.down,v=r(n);if(e.data.bgActivePosistion&&(e.redrawHint("select",!0),e.redraw()),e.hoverData.tapholdCancelled=!0,e.data.bgActivePosistion=void 0,p&&p.unactivate(),3===e.hoverData.which){var f=a(n,{type:"cxttapend",cyPosition:{x:l[0],y:l[1]}});if(p?p.trigger(f):s.trigger(f),!e.hoverData.cxtDragged){var g=a(n,{type:"cxttap",cyPosition:{x:l[0],y:l[1]}});p?p.trigger(g):s.trigger(g)}e.hoverData.cxtDragged=!1,e.hoverData.which=null}else if(1===e.hoverData.which){if(null!=p||e.dragData.didDrag||e.hoverData.selecting||e.hoverData.dragged||r(n)||(s.$(function(){return this.selected()}).unselect(),h.length>0&&e.redrawHint("eles",!0),e.dragData.possibleDragElements=h=[]),t(d,["mouseup","tapend","vmouseup"],n,{cyPosition:{x:l[0],y:l[1]}}),e.dragData.didDrag||e.hoverData.dragged||t(d,["click","tap","vclick"],n,{cyPosition:{x:l[0],y:l[1]}}),d!=p||e.dragData.didDrag||e.hoverData.selecting||null!=d&&d._private.selectable&&(e.hoverData.dragging||("additive"===s.selectionType()||v?d.selected()?d.unselect():d.select():v||(s.$(":selected").unmerge(d).unselect(),d.select())),e.redrawHint("eles",!0)),e.hoverData.selecting){var y=[],m=e.getAllInBox(u[0],u[1],u[2],u[3]);e.redrawHint("select",!0),m.length>0&&e.redrawHint("eles",!0);for(var b=0;b<m.length;b++)m[b]._private.selectable&&y.push(m[b]);var x=o(s,y);"additive"===s.selectionType()?x.select():(v||s.$(":selected").unmerge(x).unselect(),x.select()),e.redraw()}e.hoverData.dragging&&(e.hoverData.dragging=!1,e.redrawHint("select",!0),e.redrawHint("eles",!0),e.redraw()),u[4]||(e.redrawHint("drag",!0),e.redrawHint("eles",!0),c(h),p&&p.trigger("free"))}u[4]=0,e.hoverData.down=null,e.hoverData.cxtStarted=!1,e.hoverData.draggingEles=!1,e.hoverData.selecting=!1,e.dragData.didDrag=!1,e.hoverData.dragged=!1,e.hoverData.dragDelta=[]}},!1);var f=function(t){if(!e.scrollingPage){var r=e.cy,n=e.projectIntoViewport(t.clientX,t.clientY),i=[n[0]*r.zoom()+r.pan().x,n[1]*r.zoom()+r.pan().y];if(e.hoverData.draggingEles||e.hoverData.dragging||e.hoverData.cxtStarted||v())return void t.preventDefault();if(r.panningEnabled()&&r.userPanningEnabled()&&r.zoomingEnabled()&&r.userZoomingEnabled()){t.preventDefault(),e.data.wheelZooming=!0,clearTimeout(e.data.wheelTimeout),e.data.wheelTimeout=setTimeout(function(){e.data.wheelZooming=!1,e.redrawHint("eles",!0),e.redraw()},150);var a=t.deltaY/-250||t.wheelDeltaY/1e3||t.wheelDelta/1e3;a*=e.wheelSensitivity;var o=1===t.deltaMode;o&&(a*=33),r.zoom({level:r.zoom()*Math.pow(10,a),renderedPosition:{x:i[0],y:i[1]}})}}};e.registerBinding(e.container,"wheel",f,!0),e.registerBinding(window,"scroll",function(t){e.scrollingPage=!0,clearTimeout(e.scrollingPageTimeout),e.scrollingPageTimeout=setTimeout(function(){e.scrollingPage=!1},250)},!0),e.registerBinding(e.container,"mouseout",function(t){var r=e.projectIntoViewport(t.clientX,t.clientY);e.cy.trigger(a(t,{type:"mouseout",cyPosition:{x:r[0],y:r[1]}}))},!1),e.registerBinding(e.container,"mouseover",function(t){var r=e.projectIntoViewport(t.clientX,t.clientY);e.cy.trigger(a(t,{type:"mouseover",cyPosition:{x:r[0],y:r[1]}}))},!1);var g,y,m,b,x,w,_,E,D,S,k,T,P,C,N=function(e,t,r,n){return Math.sqrt((r-e)*(r-e)+(n-t)*(n-t))},M=function(e,t,r,n){return(r-e)*(r-e)+(n-t)*(n-t)};e.registerBinding(e.container,"touchstart",C=function(r){e.touchData.capture=!0,e.data.bgActivePosistion=void 0;var n=e.cy,i=e.getCachedNodes(),o=e.getCachedEdges(),s=e.touchData.now,l=e.touchData.earlier;if(r.touches[0]){var c=e.projectIntoViewport(r.touches[0].clientX,r.touches[0].clientY);s[0]=c[0],s[1]=c[1]}if(r.touches[1]){var c=e.projectIntoViewport(r.touches[1].clientX,r.touches[1].clientY);s[2]=c[0],s[3]=c[1]}if(r.touches[2]){var c=e.projectIntoViewport(r.touches[2].clientX,r.touches[2].clientY);s[4]=c[0],s[5]=c[1]}if(r.touches[1]){var d=function(e){for(var t=0;t<e.length;t++)e[t]._private.grabbed=!1,e[t]._private.rscratch.inDragLayer=!1,e[t].active()&&e[t].unactivate()};d(i),d(o);var h=e.findContainerClientCoords();D=h[0],S=h[1],k=h[2],T=h[3],g=r.touches[0].clientX-D,y=r.touches[0].clientY-S,m=r.touches[1].clientX-D,b=r.touches[1].clientY-S,P=g>=0&&k>=g&&m>=0&&k>=m&&y>=0&&T>=y&&b>=0&&T>=b;var p=n.pan(),v=n.zoom();x=N(g,y,m,b),w=M(g,y,m,b),_=[(g+m)/2,(y+b)/2],E=[(_[0]-p.x)/v,(_[1]-p.y)/v];var f=200,C=f*f;if(C>w&&!r.touches[2]){var B=e.findNearestElement(s[0],s[1],!0,!0),z=e.findNearestElement(s[2],s[3],!0,!0);return B&&B.isNode()?(B.activate().trigger(a(r,{type:"cxttapstart",cyPosition:{x:s[0],y:s[1]}})),e.touchData.start=B):z&&z.isNode()?(z.activate().trigger(a(r,{type:"cxttapstart",cyPosition:{x:s[0],y:s[1]}})),e.touchData.start=z):(n.trigger(a(r,{type:"cxttapstart",cyPosition:{x:s[0],y:s[1]}})),e.touchData.start=null),e.touchData.start&&(e.touchData.start._private.grabbed=!1),e.touchData.cxt=!0,e.touchData.cxtDragged=!1,e.data.bgActivePosistion=void 0,void e.redraw()}}if(r.touches[2]);else if(r.touches[1]);else if(r.touches[0]){var O=e.findNearestElement(s[0],s[1],!0,!0);if(null!=O&&(O.activate(),e.touchData.start=O,O.isNode()&&e.nodeIsDraggable(O))){var I=e.dragData.touchDragEles=[];if(e.redrawHint("eles",!0),e.redrawHint("drag",!0),O.selected())for(var L=n.$(function(){return this.isNode()&&this.selected()}),A=0;A<L.length;A++){var R=L[A];e.nodeIsDraggable(R)&&u(R,{addToList:I})}else u(O,{addToList:I});O.trigger(a(r,{type:"grab",cyPosition:{x:s[0],y:s[1]}}))}t(O,["touchstart","tapstart","vmousedown"],r,{cyPosition:{x:s[0],y:s[1]}}),null==O&&(e.data.bgActivePosistion={x:c[0],y:c[1]},e.redrawHint("select",!0),e.redraw());for(var V=0;V<s.length;V++)l[V]=s[V],e.touchData.startPosition[V]=s[V];e.touchData.singleTouchMoved=!1,e.touchData.singleTouchStartTime=+new Date,clearTimeout(e.touchData.tapholdTimeout),e.touchData.tapholdTimeout=setTimeout(function(){e.touchData.singleTouchMoved!==!1||e.pinching||(t(e.touchData.start,["taphold"],r,{cyPosition:{x:s[0],y:s[1]}}),e.touchData.start||n.$(":selected").unselect())},e.tapholdDuration)}},!1);var B;e.registerBinding(window,"touchmove",B=function(r){var i=e.selection,s=e.touchData.capture,l=e.cy,c=e.touchData.now,d=e.touchData.earlier,h=l.zoom();if(r.touches[0]){var p=e.projectIntoViewport(r.touches[0].clientX,r.touches[0].clientY);c[0]=p[0],c[1]=p[1]}if(r.touches[1]){var p=e.projectIntoViewport(r.touches[1].clientX,r.touches[1].clientY);c[2]=p[0],c[3]=p[1]}if(r.touches[2]){var p=e.projectIntoViewport(r.touches[2].clientX,r.touches[2].clientY);c[4]=p[0],c[5]=p[1]}for(var v=[],f=0;f<c.length;f++)v[f]=c[f]-d[f];var _=e.touchData.startPosition,k=c[0]-_[0],T=k*k,C=c[1]-_[1],B=C*C,z=T+B,O=z*h*h;if(s&&e.touchData.cxt){r.preventDefault();var I=r.touches[0].clientX-D,L=r.touches[0].clientY-S,A=r.touches[1].clientX-D,R=r.touches[1].clientY-S,V=M(I,L,A,R),F=V/w,j=150,q=j*j,X=1.5,Y=X*X;if(F>=Y||V>=q){e.touchData.cxt=!1,e.touchData.start&&(e.touchData.start.unactivate(),e.touchData.start=null),e.data.bgActivePosistion=void 0,e.redrawHint("select",!0);var $=a(r,{type:"cxttapend",cyPosition:{x:c[0],y:c[1]}});e.touchData.start?e.touchData.start.trigger($):l.trigger($)}}if(s&&e.touchData.cxt){var $=a(r,{type:"cxtdrag",cyPosition:{x:c[0],y:c[1]}});e.data.bgActivePosistion=void 0,e.redrawHint("select",!0),e.touchData.start?e.touchData.start.trigger($):l.trigger($),e.touchData.start&&(e.touchData.start._private.grabbed=!1),e.touchData.cxtDragged=!0;var H=e.findNearestElement(c[0],c[1],!0,!0);e.touchData.cxtOver&&H===e.touchData.cxtOver||(e.touchData.cxtOver&&e.touchData.cxtOver.trigger(a(r,{type:"cxtdragout",cyPosition:{x:c[0],y:c[1]}})),e.touchData.cxtOver=H,H&&H.trigger(a(r,{type:"cxtdragover",cyPosition:{x:c[0],y:c[1]}})))}else if(s&&r.touches[2]&&l.boxSelectionEnabled())r.preventDefault(),e.data.bgActivePosistion=void 0,this.lastThreeTouch=+new Date,e.touchData.selecting=!0,e.redrawHint("select",!0),i&&0!==i.length&&void 0!==i[0]?(i[2]=(c[0]+c[2]+c[4])/3,i[3]=(c[1]+c[3]+c[5])/3):(i[0]=(c[0]+c[2]+c[4])/3,i[1]=(c[1]+c[3]+c[5])/3,i[2]=(c[0]+c[2]+c[4])/3+1,i[3]=(c[1]+c[3]+c[5])/3+1),i[4]=1,e.touchData.selecting=!0,e.redraw();else if(s&&r.touches[1]&&l.zoomingEnabled()&&l.panningEnabled()&&l.userZoomingEnabled()&&l.userPanningEnabled()){r.preventDefault(),e.data.bgActivePosistion=void 0,e.redrawHint("select",!0);var W=e.dragData.touchDragEles;if(W){e.redrawHint("drag",!0);for(var Z=0;Z<W.length;Z++)W[Z]._private.grabbed=!1,W[Z]._private.rscratch.inDragLayer=!1}var I=r.touches[0].clientX-D,L=r.touches[0].clientY-S,A=r.touches[1].clientX-D,R=r.touches[1].clientY-S,U=N(I,L,A,R),G=U/x;if(1!=G&&P){var K=I-g,J=L-y,Q=A-m,ee=R-b,te=(K+Q)/2,re=(J+ee)/2,ne=l.zoom(),ie=ne*G,ae=l.pan(),oe=E[0]*ne+ae.x,se=E[1]*ne+ae.y,le={x:-ie/ne*(oe-ae.x-te)+oe,y:-ie/ne*(se-ae.y-re)+se};if(e.touchData.start){var W=e.dragData.touchDragEles;if(W)for(var Z=0;Z<W.length;Z++){var ue=W[Z]._private;ue.grabbed=!1,ue.rscratch.inDragLayer=!1}var ce=e.touchData.start._private;ce.active=!1,ce.grabbed=!1,ce.rscratch.inDragLayer=!1,e.redrawHint("drag",!0),e.touchData.start.trigger("free").trigger("unactivate")}l.viewport({zoom:ie,pan:le,cancelOnFailedZoom:!0}),x=U,g=I,y=L,m=A,b=R,e.pinching=!0}if(r.touches[0]){var p=e.projectIntoViewport(r.touches[0].clientX,r.touches[0].clientY);c[0]=p[0],c[1]=p[1]}if(r.touches[1]){var p=e.projectIntoViewport(r.touches[1].clientX,r.touches[1].clientY);c[2]=p[0],c[3]=p[1]}if(r.touches[2]){var p=e.projectIntoViewport(r.touches[2].clientX,r.touches[2].clientY);c[4]=p[0],c[5]=p[1]}}else if(r.touches[0]){var de=e.touchData.start,he=e.touchData.last,H=H||e.findNearestElement(c[0],c[1],!0,!0);if(null!=de&&r.preventDefault(),null!=de&&"nodes"==de._private.group&&e.nodeIsDraggable(de))if(O>=e.touchTapThreshold2){for(var W=e.dragData.touchDragEles,pe=!e.dragData.didDrag,ve=0;ve<W.length;ve++){var fe=W[ve];if(pe&&u(fe,{inDragLayer:!0}),e.nodeIsDraggable(fe)&&fe.isNode()&&fe.grabbed()){e.dragData.didDrag=!0;var ge=fe._private.position,ye=!fe.isParent();if(ye&&n.number(v[0])&&n.number(v[1])&&(ge.x+=v[0],ge.y+=v[1]),pe){e.redrawHint("eles",!0);var me=e.touchData.dragDelta;ye&&n.number(me[0])&&n.number(me[1])&&(ge.x+=me[0],ge.y+=me[1])}}}var be=o(l,W);be.updateCompoundBounds(),be.trigger("position drag"),e.hoverData.draggingEles=!0,e.redrawHint("drag",!0),e.touchData.startPosition[0]==d[0]&&e.touchData.startPosition[1]==d[1]&&e.redrawHint("eles",!0),e.redraw()}else{var me=e.touchData.dragDelta=e.touchData.dragDelta||[];0===me.length?(me.push(v[0]),me.push(v[1])):(me[0]+=v[0],me[1]+=v[1])}t(de||H,["touchmove","tapdrag","vmousemove"],r,{cyPosition:{x:c[0],y:c[1]}}),H!=he&&(he&&he.trigger(a(r,{type:"tapdragout",cyPosition:{x:c[0],y:c[1]}})),H&&H.trigger(a(r,{type:"tapdragover",cyPosition:{x:c[0],y:c[1]}}))),e.touchData.last=H;for(var Z=0;Z<c.length;Z++)c[Z]&&e.touchData.startPosition[Z]&&O>e.touchTapThreshold2&&(e.touchData.singleTouchMoved=!0);if(s&&(null==de||de.isEdge())&&l.panningEnabled()&&l.userPanningEnabled()){r.preventDefault(),e.swipePanning?l.panBy({x:v[0]*h,y:v[1]*h}):O>=e.touchTapThreshold2&&(e.swipePanning=!0,l.panBy({x:k*h,y:C*h}),de&&(de.unactivate(),e.data.bgActivePosistion||(e.data.bgActivePosistion={x:c[0],y:c[1]}),e.redrawHint("select",!0),e.touchData.start=null));var p=e.projectIntoViewport(r.touches[0].clientX,r.touches[0].clientY);c[0]=p[0],c[1]=p[1]}}for(var f=0;f<c.length;f++)d[f]=c[f]},!1);var z;e.registerBinding(window,"touchcancel",z=function(t){var r=e.touchData.start;e.touchData.capture=!1,r&&r.unactivate()});var O;if(e.registerBinding(window,"touchend",O=function(r){var n=e.touchData.start,i=e.touchData.capture;if(i){e.touchData.capture=!1,r.preventDefault();var s=e.selection;e.swipePanning=!1,e.hoverData.draggingEles=!1;var l=e.cy,u=l.zoom(),d=e.touchData.now,h=e.touchData.earlier;if(r.touches[0]){var p=e.projectIntoViewport(r.touches[0].clientX,r.touches[0].clientY);d[0]=p[0],d[1]=p[1]}if(r.touches[1]){var p=e.projectIntoViewport(r.touches[1].clientX,r.touches[1].clientY);d[2]=p[0],d[3]=p[1]}if(r.touches[2]){var p=e.projectIntoViewport(r.touches[2].clientX,r.touches[2].clientY);d[4]=p[0],d[5]=p[1]}n&&n.unactivate();var v;if(e.touchData.cxt){if(v=a(r,{
-type:"cxttapend",cyPosition:{x:d[0],y:d[1]}}),n?n.trigger(v):l.trigger(v),!e.touchData.cxtDragged){var f=a(r,{type:"cxttap",cyPosition:{x:d[0],y:d[1]}});n?n.trigger(f):l.trigger(f)}return e.touchData.start&&(e.touchData.start._private.grabbed=!1),e.touchData.cxt=!1,e.touchData.start=null,void e.redraw()}if(!r.touches[2]&&l.boxSelectionEnabled()&&e.touchData.selecting){e.touchData.selecting=!1;var g=[],y=e.getAllInBox(s[0],s[1],s[2],s[3]);s[0]=void 0,s[1]=void 0,s[2]=void 0,s[3]=void 0,s[4]=0,e.redrawHint("select",!0);for(var m=0;m<y.length;m++)y[m]._private.selectable&&g.push(y[m]);var b=o(l,g);b.select(),b.length>0?e.redrawHint("eles",!0):e.redraw()}var x=!1;if(null!=n&&(n._private.active=!1,x=!0,n.unactivate()),r.touches[2])e.data.bgActivePosistion=void 0,e.redrawHint("select",!0);else if(r.touches[1]);else if(r.touches[0]);else if(!r.touches[0]){e.data.bgActivePosistion=void 0,e.redrawHint("select",!0);var w=e.dragData.touchDragEles;if(null!=n){var _=n._private.grabbed;c(w),e.redrawHint("drag",!0),e.redrawHint("eles",!0),_&&n.trigger("free"),t(n,["touchend","tapend","vmouseup"],r,{cyPosition:{x:d[0],y:d[1]}}),n.unactivate(),e.touchData.start=null}else{var E=e.findNearestElement(d[0],d[1],!0,!0);t(E,["touchend","tapend","vmouseup"],r,{cyPosition:{x:d[0],y:d[1]}})}var D=e.touchData.startPosition[0]-d[0],S=D*D,k=e.touchData.startPosition[1]-d[1],T=k*k,P=S+T,C=P*u*u;null!=n&&!e.dragData.didDrag&&n._private.selectable&&C<e.touchTapThreshold2&&!e.pinching&&("single"===l.selectionType()?(l.$(":selected").unmerge(n).unselect(),n.select()):n.selected()?n.unselect():n.select(),x=!0,e.redrawHint("eles",!0)),e.touchData.singleTouchMoved||t(n,["tap","vclick"],r,{cyPosition:{x:d[0],y:d[1]}}),e.touchData.singleTouchMoved=!0}for(var N=0;N<d.length;N++)h[N]=d[N];e.dragData.didDrag=!1,0===r.touches.length&&(e.touchData.dragDelta=[]),x&&n&&n.updateStyle(!1),r.touches.length<2&&(e.pinching=!1,e.redrawHint("eles",!0),e.redraw())}},!1),"undefined"==typeof TouchEvent){var I=[],L=function(e){return{clientX:e.clientX,clientY:e.clientY,force:1,identifier:e.pointerId,pageX:e.pageX,pageY:e.pageY,radiusX:e.width/2,radiusY:e.height/2,screenX:e.screenX,screenY:e.screenY,target:e.target}},A=function(e){return{event:e,touch:L(e)}},R=function(e){I.push(A(e))},V=function(e){for(var t=0;t<I.length;t++){var r=I[t];if(r.event.pointerId===e.pointerId)return void I.splice(t,1)}},F=function(e){var t=I.filter(function(t){return t.event.pointerId===e.pointerId})[0];t.event=e,t.touch=L(e)},j=function(e){e.touches=I.map(function(e){return e.touch})},q=function(e){return"mouse"===e.pointerType||4===e.pointerType};e.registerBinding(e.container,"pointerdown",function(e){q(e)||(e.preventDefault(),R(e),j(e),C(e))}),e.registerBinding(e.container,"pointerup",function(e){q(e)||(V(e),j(e),O(e))}),e.registerBinding(e.container,"pointercancel",function(e){q(e)||(V(e),j(e),z(e))}),e.registerBinding(e.container,"pointermove",function(e){q(e)||(e.preventDefault(),F(e),j(e),B(e))})}},t.exports=s},{"../../../collection":23,"../../../event":42,"../../../is":77,"../../../util":94}],60:[function(e,t,r){"use strict";var n=e("../../../math"),i={};i.registerNodeShapes=function(){function e(e,i){return t[e]={name:e,points:i,draw:function(e,t,n,i,a){r.nodeShapeImpl("polygon")(e,t,n,i,a,this.points)},intersectLine:function(e,t,r,i,a,o,s){return n.polygonIntersectLine(a,o,this.points,e,t,r/2,i/2,s)},checkPoint:function(r,i,a,o,s,l,u){return n.pointInsidePolygon(r,i,t[e].points,l,u,o,s,[0,-1],a)}}}var t=this.nodeShapes={},r=this;t.ellipse={name:"ellipse",draw:function(e,t,n,i,a){r.nodeShapeImpl(this.name)(e,t,n,i,a)},intersectLine:function(e,t,r,i,a,o,s){return n.intersectLineEllipse(a,o,e,t,r/2+s,i/2+s)},checkPoint:function(e,t,r,n,i,a,o){return e-=a,t-=o,e/=n/2+r,t/=i/2+r,1>=e*e+t*t}},e("triangle",n.generateUnitNgonPointsFitToSquare(3,0)),e("square",n.generateUnitNgonPointsFitToSquare(4,0)),t.rectangle=t.square,t.roundrectangle={name:"roundrectangle",points:n.generateUnitNgonPointsFitToSquare(4,0),draw:function(e,t,n,i,a){r.nodeShapeImpl(this.name)(e,t,n,i,a)},intersectLine:function(e,t,r,i,a,o,s){return n.roundRectangleIntersectLine(a,o,e,t,r,i,s)},checkPoint:function(e,t,r,i,a,o,s){var l=n.getRoundRectangleRadius(i,a);if(n.pointInsidePolygon(e,t,this.points,o,s,i,a-2*l,[0,-1],r))return!0;if(n.pointInsidePolygon(e,t,this.points,o,s,i-2*l,a,[0,-1],r))return!0;var u=function(e,t,r,n,i,a,o){return e-=r,t-=n,e/=i/2+o,t/=a/2+o,1>=e*e+t*t};return u(e,t,o-i/2+l,s-a/2+l,2*l,2*l,r)?!0:u(e,t,o+i/2-l,s-a/2+l,2*l,2*l,r)?!0:u(e,t,o+i/2-l,s+a/2-l,2*l,2*l,r)?!0:u(e,t,o-i/2+l,s+a/2-l,2*l,2*l,r)?!0:!1}},e("diamond",[0,1,1,0,0,-1,-1,0]),e("pentagon",n.generateUnitNgonPointsFitToSquare(5,0)),e("hexagon",n.generateUnitNgonPointsFitToSquare(6,0)),e("heptagon",n.generateUnitNgonPointsFitToSquare(7,0)),e("octagon",n.generateUnitNgonPointsFitToSquare(8,0));var i=new Array(20),a=n.generateUnitNgonPoints(5,0),o=n.generateUnitNgonPoints(5,Math.PI/5),s=.5*(3-Math.sqrt(5));s*=1.57;for(var l=0;l<o.length/2;l++)o[2*l]*=s,o[2*l+1]*=s;for(var l=0;5>l;l++)i[4*l]=a[2*l],i[4*l+1]=a[2*l+1],i[4*l+2]=o[2*l],i[4*l+3]=o[2*l+1];i=n.fitPolygonToSquare(i),e("star",i),e("vee",[-1,-1,0,-.333,1,-1,0,1]),e("rhomboid",[-1,-1,.333,-1,1,1,-.333,1]),t.makePolygon=function(r){var n,i=r.join("$"),a="polygon-"+i;return(n=t[a])?n:e(a,r)}},t.exports=i},{"../../../math":79}],61:[function(e,t,r){"use strict";var n=e("../../../util"),i={};i.timeToRender=function(){return this.redrawTotalTime/this.redrawCount};var a=1e3/60,o=1e3;i.redraw=function(e){e=e||n.staticEmptyObject();var t=this,r=e.forcedContext;void 0===t.averageRedrawTime&&(t.averageRedrawTime=0),void 0===t.lastRedrawTime&&(t.lastRedrawTime=0);var i=t.lastRedrawTime;i=a>i?a:i,i=o>i?i:o,void 0===t.lastDrawTime&&(t.lastDrawTime=0);var s=Date.now(),l=s-t.lastDrawTime,u=l>=i;return r||u&&!t.currentlyDrawing?(t.requestedFrame=!0,t.currentlyDrawing=!0,void(t.renderOptions=e)):void(t.skipFrame=!0)},i.startRenderLoop=function(){var e=this,t=function(){if(!e.destroyed){if(e.requestedFrame&&!e.skipFrame){var r=n.performanceNow();e.render(e.renderOptions);var i=e.lastRedrawTime=n.performanceNow();void 0===e.averageRedrawTime&&(e.averageRedrawTime=i-r),void 0===e.redrawCount&&(e.redrawCount=0),e.redrawCount++,void 0===e.redrawTotalTime&&(e.redrawTotalTime=0);var a=i-r;e.redrawTotalTime+=a,e.lastRedrawTime=a,e.averageRedrawTime=e.averageRedrawTime/2+a/2,e.requestedFrame=!1}e.skipFrame=!1,n.requestAnimationFrame(t)}};n.requestAnimationFrame(t)},t.exports=i},{"../../../util":94}],62:[function(e,t,r){"use strict";var n,i={};i.arrowShapeImpl=function(e){return(n||(n={polygon:function(e,t){for(var r=0;r<t.length;r++){var n=t[r];e.lineTo(n.x,n.y)}},"triangle-backcurve":function(e,t,r){for(var n,i=0;i<t.length;i++){var a=t[i];0===i&&(n=a),e.lineTo(a.x,a.y)}e.quadraticCurveTo(r.x,r.y,n.x,n.y)},"triangle-tee":function(e,t,r){for(var n=t,i=0;i<n.length;i++){var a=n[i];e.lineTo(a.x,a.y)}var o=r,s=r[0];e.moveTo(s.x,s.y);for(var i=0;i<o.length;i++){var a=o[i];e.lineTo(a.x,a.y)}},circle:function(e,t,r,n){e.arc(t,r,n,0,2*Math.PI,!1)}}))[e]},t.exports=i},{}],63:[function(e,t,r){"use strict";var n={};n.drawEdge=function(e,t,r){var n=t._private.rscratch,i=this.usePaths();if(!(n.badBezier||n.badLine||isNaN(n.allpts[0]))){var a=t._private.style;if(!(a.width.pfValue<=0)){var o=a["overlay-padding"].pfValue,s=a["overlay-opacity"].value,l=a["overlay-color"].value;if(r){if(0===s)return;this.strokeStyle(e,l[0],l[1],l[2],s),e.lineCap="round","self"!=n.edgeType||i||(e.lineCap="butt")}else{var u=a["line-color"].value;this.strokeStyle(e,u[0],u[1],u[2],a.opacity.value),e.lineCap="butt"}var c=a.width.pfValue+(r?2*o:0),d=r?"solid":a["line-style"].value;e.lineWidth=c;var h=a["shadow-blur"].pfValue,p=a["shadow-opacity"].value,v=a["shadow-color"].value,f=a["shadow-offset-x"].pfValue,g=a["shadow-offset-y"].pfValue;this.shadowStyle(e,v,r?0:p,h,f,g),this.drawEdgePath(t,e,n.allpts,d,c),this.drawArrowheads(e,t,r),this.shadowStyle(e,"transparent",0)}}},n.drawEdgePath=function(e,t,r,n,i){var a,o=e._private.rscratch,s=t,l=!1,u=this.usePaths();if(u){var c=r.join("$"),d=o.pathCacheKey&&o.pathCacheKey===c;d?(a=t=o.pathCache,l=!0):(a=t=new Path2D,o.pathCacheKey=c,o.pathCache=a)}if(s.setLineDash)switch(n){case"dotted":s.setLineDash([1,1]);break;case"dashed":s.setLineDash([6,3]);break;case"solid":s.setLineDash([])}if(!l)switch(t.beginPath&&t.beginPath(),t.moveTo(r[0],r[1]),o.edgeType){case"bezier":case"self":case"compound":case"multibezier":if(!o.badBezier)for(var h=2;h+3<r.length;h+=4)t.quadraticCurveTo(r[h],r[h+1],r[h+2],r[h+3]);break;case"straight":case"segments":case"haystack":if(!o.badLine)for(var h=2;h+1<r.length;h+=2)t.lineTo(r[h],r[h+1])}t=s,u?t.stroke(a):t.stroke(),t.setLineDash&&t.setLineDash([])},n.drawArrowheads=function(e,t,r){if(!r){var n=t._private.rscratch,i="haystack"===n.edgeType;i||this.drawArrowhead(e,t,"source",n.arrowStartX,n.arrowStartY,n.srcArrowAngle),this.drawArrowhead(e,t,"mid-target",n.midX,n.midY,n.midtgtArrowAngle),this.drawArrowhead(e,t,"mid-source",n.midX,n.midY,n.midsrcArrowAngle),i||this.drawArrowhead(e,t,"target",n.arrowEndX,n.arrowEndY,n.tgtArrowAngle)}},n.drawArrowhead=function(e,t,r,n,i,a){if(!(isNaN(n)||null==n||isNaN(i)||null==i||isNaN(a)||null==a)){var o=this,s=t._private.style,l=s[r+"-arrow-shape"].value;if("none"!==l){var u=e.globalCompositeOperation,c="hollow"===s[r+"-arrow-fill"].value?"both":"filled",d=s[r+"-arrow-fill"].value;"half-triangle-overshot"===l&&(d="hollow",c="hollow"),(1!==s.opacity.value||"hollow"===d)&&(e.globalCompositeOperation="destination-out",o.fillStyle(e,255,255,255,1),o.strokeStyle(e,255,255,255,1),o.drawArrowShape(t,r,e,c,s.width.pfValue,s[r+"-arrow-shape"].value,n,i,a),e.globalCompositeOperation=u);var h=s[r+"-arrow-color"].value;o.fillStyle(e,h[0],h[1],h[2],s.opacity.value),o.strokeStyle(e,h[0],h[1],h[2],s.opacity.value),o.drawArrowShape(t,r,e,d,s.width.pfValue,s[r+"-arrow-shape"].value,n,i,a)}}},n.drawArrowShape=function(e,t,r,n,i,a,o,s,l){var u,c=this,d=this.usePaths(),h=e._private.rscratch,p=!1,v=r,f={x:o,y:s},g=this.getArrowWidth(i),y=c.arrowShapes[a];if(d){var m=g+"$"+a+"$"+l+"$"+o+"$"+s;h.arrowPathCacheKey=h.arrowPathCacheKey||{},h.arrowPathCache=h.arrowPathCache||{};var b=h.arrowPathCacheKey[t]===m;b?(u=r=h.arrowPathCache[t],p=!0):(u=r=new Path2D,h.arrowPathCacheKey[t]=m,h.arrowPathCache[t]=u)}r.beginPath&&r.beginPath(),p||y.draw(r,g,l,f),!y.leavePathOpen&&r.closePath&&r.closePath(),r=v,("filled"===n||"both"===n)&&(d?r.fill(u):r.fill()),("hollow"===n||"both"===n)&&(r.lineWidth=y.matchEdgeWidth?i:1,r.lineJoin="miter",d?r.stroke(u):r.stroke())},t.exports=n},{}],64:[function(e,t,r){"use strict";var n={};n.safeDrawImage=function(e,t,r,n,i,a,o,s,l,u){var c=this;try{e.drawImage(t,r,n,i,a,o,s,l,u)}catch(d){c.data.canvasNeedsRedraw[c.NODE]=!0,c.data.canvasNeedsRedraw[c.DRAG]=!0,c.drawingImage=!0,c.redraw()}},n.drawInscribedImage=function(e,t,r){var n=this,i=r._private.position.x,a=r._private.position.y,o=r._private.style,s=o["background-fit"].value,l=o["background-position-x"],u=o["background-position-y"],c=o["background-repeat"].value,d=r.width(),h=r.height(),p=r._private.rscratch,v=o["background-clip"].value,f="node"===v,g=o["background-image-opacity"].value,y=t.width||t.cachedW,m=t.height||t.cachedH;(null==y||null==m)&&(document.body.appendChild(t),y=t.cachedW=t.width||t.offsetWidth,m=t.cachedH=t.height||t.offsetHeight,document.body.removeChild(t));var b=y,x=m,w=o["background-width"];"auto"!==w.value&&(b="%"===w.units?w.value/100*d:w.pfValue);var _=o["background-height"];if("auto"!==_.value&&(x="%"===_.units?_.value/100*h:_.pfValue),0!==b&&0!==x){if("contain"===s){var E=Math.min(d/b,h/x);b*=E,x*=E}else if("cover"===s){var E=Math.max(d/b,h/x);b*=E,x*=E}var D=i-d/2;D+="%"===l.units?(d-b)*l.value/100:l.pfValue;var S=a-h/2;S+="%"===u.units?(h-x)*u.value/100:u.pfValue,p.pathCache&&(D-=i,S-=a,i=0,a=0);var k=e.globalAlpha;if(e.globalAlpha=g,"no-repeat"===c)f&&(e.save(),p.pathCache?e.clip(p.pathCache):(n.nodeShapes[n.getNodeShape(r)].draw(e,i,a,d,h),e.clip())),n.safeDrawImage(e,t,0,0,y,m,D,S,b,x),f&&e.restore();else{var T=e.createPattern(t,c);e.fillStyle=T,n.nodeShapes[n.getNodeShape(r)].draw(e,i,a,d,h),e.translate(D,S),e.fill(),e.translate(-D,-S)}e.globalAlpha=k}},t.exports=n},{}],65:[function(e,t,r){"use strict";function n(e,t,r,n,i,a){var a=a||5;e.beginPath(),e.moveTo(t+a,r),e.lineTo(t+n-a,r),e.quadraticCurveTo(t+n,r,t+n,r+a),e.lineTo(t+n,r+i-a),e.quadraticCurveTo(t+n,r+i,t+n-a,r+i),e.lineTo(t+a,r+i),e.quadraticCurveTo(t,r+i,t,r+i-a),e.lineTo(t,r+a),e.quadraticCurveTo(t,r,t+a,r),e.closePath(),e.fill()}var i=e("../../../is"),a={};a.drawEdgeText=function(e,t){var r=t._private.style.label.strValue;if(r&&!r.match(/^\s+$/)&&(!this.hideEdgesOnViewport||!(this.dragData.didDrag||this.pinching||this.hoverData.dragging||this.data.wheel||this.swipePanning))){var n=t._private.style["font-size"].pfValue*t.cy().zoom(),a=t._private.style["min-zoomed-font-size"].pfValue;if(!(a>n)){e.textAlign="center",e.textBaseline="middle";var o=t._private.rscratch;if(i.number(o.labelX)&&i.number(o.labelY)){var s,l=t._private.style,u="autorotate"===l["edge-text-rotation"].strValue;u?(s=o.labelAngle,e.translate(o.labelX,o.labelY),e.rotate(s),this.drawText(e,t,0,0),e.rotate(-s),e.translate(-o.labelX,-o.labelY)):this.drawText(e,t,o.labelX,o.labelY)}}}},a.drawNodeText=function(e,t){var r=t._private.style.label.strValue;if(r&&!r.match(/^\s+$/)){var n=t._private.style["font-size"].pfValue*t.cy().zoom(),a=t._private.style["min-zoomed-font-size"].pfValue;if(!(a>n)){var o=t._private.style["text-halign"].strValue,s=t._private.style["text-valign"].strValue,l=t._private.rscratch;if(i.number(l.labelX)&&i.number(l.labelY)){switch(o){case"left":e.textAlign="right";break;case"right":e.textAlign="left";break;default:e.textAlign="center"}switch(s){case"top":e.textBaseline="bottom";break;case"bottom":e.textBaseline="top";break;default:e.textBaseline="middle"}this.drawText(e,t,l.labelX,l.labelY)}}}},a.getFontCache=function(e){var t;this.fontCaches=this.fontCaches||[];for(var r=0;r<this.fontCaches.length;r++)if(t=this.fontCaches[r],t.context===e)return t;return t={context:e},this.fontCaches.push(t),t},a.setupTextStyle=function(e,t){var r=t.effectiveOpacity(),n=t._private.style,i=n["font-style"].strValue,a=n["font-size"].pfValue+"px",o=n["font-family"].strValue,s=n["font-weight"].strValue,l=n["text-opacity"].value*n.opacity.value*r,u=n["text-outline-opacity"].value*l,c=n.color.value,d=n["text-outline-color"].value,h=n["text-shadow-blur"].pfValue,p=n["text-shadow-opacity"].value,v=n["text-shadow-color"].value,f=n["text-shadow-offset-x"].pfValue,g=n["text-shadow-offset-y"].pfValue,y=t._private.fontKey,m=this.getFontCache(e);m.key!==y&&(e.font=i+" "+s+" "+a+" "+o,m.key=y);var b=this.getLabelText(t);return e.lineJoin="round",this.fillStyle(e,c[0],c[1],c[2],l),this.strokeStyle(e,d[0],d[1],d[2],u),this.shadowStyle(e,v,p,h,f,g),b},a.drawText=function(e,t,r,i){var a=t._private,o=a.style,s=a.rstyle,l=a.rscratch,u=t.effectiveOpacity();if(0!==u&&0!==o["text-opacity"].value){var c=this.setupTextStyle(e,t),d=o["text-halign"].value,h=o["text-valign"].value;if(t.isEdge()&&(d="center",h="center"),t.isNode()){var p=o["padding-left"].pfValue,v=o["padding-right"].pfValue,f=o["padding-top"].pfValue,g=o["padding-bottom"].pfValue;r+=p/2,r-=v/2,i+=f/2,i-=g/2}if(null!=c&&!isNaN(r)&&!isNaN(i)){var y=o["text-background-opacity"].value,m=o["text-border-opacity"].value,b=o["text-border-width"].pfValue;if(y>0||b>0&&m>0){var x=4+b/2;t.isNode()&&("top"===h?i-=x:"bottom"===h&&(i+=x),"left"===d?r-=x:"right"===d&&(r+=x));var w=s.labelWidth,_=s.labelHeight,E=r;d&&("center"==d?E-=w/2:"left"==d&&(E-=w));var D=i;if(t.isNode()?"top"==h?D-=_:"center"==h&&(D-=_/2):D-=_/2,"autorotate"===o["edge-text-rotation"].strValue?(i=0,w+=4,E=r-w/2,D=i-_/2):(E-=x,D-=x,_+=2*x,w+=2*x),y>0){var S=e.fillStyle,k=o["text-background-color"].value;e.fillStyle="rgba("+k[0]+","+k[1]+","+k[2]+","+y*u+")";var T=o["text-background-shape"].strValue;"roundrectangle"==T?n(e,E,D,w,_,2):e.fillRect(E,D,w,_),e.fillStyle=S}if(b>0&&m>0){var P=e.strokeStyle,C=e.lineWidth,N=o["text-border-color"].value,M=o["text-border-style"].value;if(e.strokeStyle="rgba("+N[0]+","+N[1]+","+N[2]+","+m*u+")",e.lineWidth=b,e.setLineDash)switch(M){case"dotted":e.setLineDash([1,1]);break;case"dashed":e.setLineDash([4,2]);break;case"double":e.lineWidth=b/4,e.setLineDash([]);break;case"solid":e.setLineDash([])}if(e.strokeRect(E,D,w,_),"double"===M){var B=b/2;e.strokeRect(E+B,D+B,w-2*B,_-2*B)}e.setLineDash&&e.setLineDash([]),e.lineWidth=C,e.strokeStyle=P}}var z=2*o["text-outline-width"].pfValue;if(z>0&&(e.lineWidth=z),"wrap"===o["text-wrap"].value){var O=l.labelWrapCachedLines,I=s.labelHeight/O.length;switch(h){case"top":i-=(O.length-1)*I;break;case"bottom":break;default:case"center":i-=(O.length-1)*I/2}for(var L=0;L<O.length;L++)z>0&&e.strokeText(O[L],r,i),e.fillText(O[L],r,i),i+=I}else z>0&&e.strokeText(c,r,i),e.fillText(c,r,i);this.shadowStyle(e,"transparent",0)}}},t.exports=a},{"../../../is":77}],66:[function(e,t,r){"use strict";var n=e("../../../is"),i={};i.drawNode=function(e,t,r){var i,a,o=this,s=t._private.style,l=t._private.rscratch,u=t._private,c=u.position;if(n.number(c.x)&&n.number(c.y)){var d,h=this.usePaths(),p=e,v=!1,f=s["overlay-padding"].pfValue,g=s["overlay-opacity"].value,y=s["overlay-color"].value;if(!r||0!==g){var m=t.effectiveOpacity();if(0!==m)if(i=t.width()+s["padding-left"].pfValue+s["padding-right"].pfValue,a=t.height()+s["padding-top"].pfValue+s["padding-bottom"].pfValue,e.lineWidth=s["border-width"].pfValue,void 0!==r&&r)g>0&&(this.fillStyle(e,y[0],y[1],y[2],g),o.nodeShapes.roundrectangle.draw(e,t._private.position.x,t._private.position.y,i+2*f,a+2*f),e.fill());else{var b,x=s["background-image"].value[2]||s["background-image"].value[1];if(void 0!==x){b=this.getCachedImage(x,function(){o.data.canvasNeedsRedraw[o.NODE]=!0,o.data.canvasNeedsRedraw[o.DRAG]=!0,o.drawingImage=!0,o.redraw()});var w=u.backgrounding;u.backgrounding=!b.complete,w!==u.backgrounding&&t.updateStyle(!1)}var _=s["background-color"].value,E=s["border-color"].value,D=s["border-style"].value;this.fillStyle(e,_[0],_[1],_[2],s["background-opacity"].value*m),this.strokeStyle(e,E[0],E[1],E[2],s["border-opacity"].value*m);var S=s["shadow-blur"].pfValue,k=s["shadow-opacity"].value,T=s["shadow-color"].value,P=s["shadow-offset-x"].pfValue,C=s["shadow-offset-y"].pfValue;if(this.shadowStyle(e,T,k,S,P,C),e.lineJoin="miter",e.setLineDash)switch(D){case"dotted":e.setLineDash([1,1]);break;case"dashed":e.setLineDash([4,2]);break;case"solid":case"double":e.setLineDash([])}var N=s.shape.strValue;if(h){var M=N+"$"+i+"$"+a;e.translate(c.x,c.y),l.pathCacheKey===M?(d=e=l.pathCache,v=!0):(d=e=new Path2D,l.pathCacheKey=M,l.pathCache=d)}if(!v){var B=c;h&&(B={x:0,y:0}),o.nodeShapes[this.getNodeShape(t)].draw(e,B.x,B.y,i,a)}e=p,h?e.fill(d):e.fill(),this.shadowStyle(e,"transparent",0),void 0!==x&&b.complete&&this.drawInscribedImage(e,b,t);var z=s["background-blacken"].value,O=s["border-width"].pfValue;if(this.hasPie(t)&&(this.drawPie(e,t,m),(0!==z||0!==O)&&(h||o.nodeShapes[this.getNodeShape(t)].draw(e,c.x,c.y,i,a))),z>0?(this.fillStyle(e,0,0,0,z),h?e.fill(d):e.fill()):0>z&&(this.fillStyle(e,255,255,255,-z),h?e.fill(d):e.fill()),O>0&&(h?e.stroke(d):e.stroke(),"double"===D)){e.lineWidth=s["border-width"].pfValue/3;var I=e.globalCompositeOperation;e.globalCompositeOperation="destination-out",h?e.stroke(d):e.stroke(),e.globalCompositeOperation=I}h&&e.translate(-c.x,-c.y),e.setLineDash&&e.setLineDash([])}}}},i.hasPie=function(e){return e=e[0],e._private.hasPie},i.drawPie=function(e,t,r){t=t[0];var n=t._private,i=t.cy().style(),a=n.style,o=a["pie-size"],s=t.width(),l=t.height(),u=n.position.x,c=n.position.y,d=Math.min(s,l)/2,h=0,p=this.usePaths();p&&(u=0,c=0),"%"===o.units?d=d*o.value/100:void 0!==o.pfValue&&(d=o.pfValue/2);for(var v=1;v<=i.pieBackgroundN;v++){var f=a["pie-"+v+"-background-size"].value,g=a["pie-"+v+"-background-color"].value,y=a["pie-"+v+"-background-opacity"].value*r,m=f/100;m+h>1&&(m=1-h);var b=1.5*Math.PI+2*Math.PI*h,x=2*Math.PI*m,w=b+x;0===f||h>=1||h+m>1||(e.beginPath(),e.moveTo(u,c),e.arc(u,c,d,b,w),e.closePath(),this.fillStyle(e,g[0],g[1],g[2],y),e.fill(),h+=m)}},t.exports=i},{"../../../is":77}],67:[function(e,t,r){"use strict";var n={},i=e("../../../util"),a=e("../../../math"),o=100;n.getPixelRatio=function(){var e=this.data.contexts[0];if(null!=this.forcedPixelRatio)return this.forcedPixelRatio;var t=e.backingStorePixelRatio||e.webkitBackingStorePixelRatio||e.mozBackingStorePixelRatio||e.msBackingStorePixelRatio||e.oBackingStorePixelRatio||e.backingStorePixelRatio||1;return(window.devicePixelRatio||1)/t},n.paintCache=function(e){for(var t,r=this.paintCaches=this.paintCaches||[],n=!0,i=0;i<r.length;i++)if(t=r[i],t.context===e){n=!1;break}return n&&(t={context:e},r.push(t)),t},n.fillStyle=function(e,t,r,n,i){e.fillStyle="rgba("+t+","+r+","+n+","+i+")"},n.strokeStyle=function(e,t,r,n,i){e.strokeStyle="rgba("+t+","+r+","+n+","+i+")"},n.shadowStyle=function(e,t,r,n,i,a){var o=this.cy.zoom(),s=this.paintCache(e);(0!==s.shadowOpacity||0!==r)&&(s.shadowOpacity=r,r>0?(e.shadowBlur=n*o,e.shadowColor="rgba("+t[0]+","+t[1]+","+t[2]+","+r+")",e.shadowOffsetX=i*o,e.shadowOffsetY=a*o):(e.shadowBlur=0,e.shadowColor="transparent"))},n.matchCanvasSize=function(e){var t=this,r=t.data,n=e.clientWidth,i=e.clientHeight,a=t.getPixelRatio(),o=t.motionBlurPxRatio;(e===t.data.bufferCanvases[t.MOTIONBLUR_BUFFER_NODE]||e===t.data.bufferCanvases[t.MOTIONBLUR_BUFFER_DRAG])&&(a=o);var s,l=n*a,u=i*a;if(l!==t.canvasWidth||u!==t.canvasHeight){t.fontCaches=null;var c=r.canvasContainer;c.style.width=n+"px",c.style.height=i+"px";for(var d=0;d<t.CANVAS_LAYERS;d++)s=r.canvases[d],(s.width!==l||s.height!==u)&&(s.width=l,s.height=u,s.style.width=n+"px",s.style.height=i+"px");for(var d=0;d<t.BUFFER_COUNT;d++)s=r.bufferCanvases[d],(s.width!==l||s.height!==u)&&(s.width=l,s.height=u,s.style.width=n+"px",s.style.height=i+"px");t.textureMult=1,1>=a&&(s=r.bufferCanvases[t.TEXTURE_BUFFER],t.textureMult=2,s.width=l*t.textureMult,s.height=u*t.textureMult),t.canvasWidth=l,t.canvasHeight=u}},n.renderTo=function(e,t,r,n){this.render({forcedContext:e,forcedZoom:t,forcedPan:r,drawAllLayers:!0,forcedPxRatio:n})},n.render=function(e){function t(e,t,r,n,i){var a=e.globalCompositeOperation;e.globalCompositeOperation="destination-out",h.fillStyle(e,255,255,255,h.motionBlurTransparency),e.fillRect(t,r,n,i),e.globalCompositeOperation=a}function r(e,r){var n,i,a,o;h.clearingMotionBlur||e!==f.bufferContexts[h.MOTIONBLUR_BUFFER_NODE]&&e!==f.bufferContexts[h.MOTIONBLUR_BUFFER_DRAG]?(n=C,i=T,a=h.canvasWidth,o=h.canvasHeight):(n={x:P.x*b,y:P.y*b},i=k*b,a=h.canvasWidth*b,o=h.canvasHeight*b),e.setTransform(1,0,0,1,0,0),"motionBlur"===r?t(e,0,0,a,o):s||void 0!==r&&!r||e.clearRect(0,0,a,o),l||(e.translate(n.x,n.y),e.scale(i,i)),d&&e.translate(d.x,d.y),c&&e.scale(c,c)}function n(e,t){for(var r=e.eles,n=0;n<r.length;n++){var i=r[n];i.isNode()?(h.drawNode(t,i),q||h.drawNodeText(t,i),h.drawNode(t,i,!0)):j||(h.drawEdge(t,i),q||h.drawEdgeText(t,i),h.drawEdge(t,i,!0))}}e=e||i.staticEmptyObject();var s=e.forcedContext,l=e.drawAllLayers,u=e.drawOnlyNodeLayer,c=e.forcedZoom,d=e.forcedPan,h=this,p=void 0===e.forcedPxRatio?this.getPixelRatio():e.forcedPxRatio,v=h.cy,f=h.data,g=f.canvasNeedsRedraw,y=h.textureOnViewport&&!s&&(h.pinching||h.hoverData.dragging||h.swipePanning||h.data.wheelZooming),m=void 0!==e.motionBlur?e.motionBlur:h.motionBlur,b=h.motionBlurPxRatio,x=v.hasCompoundNodes(),w=h.hoverData.draggingEles,_=h.hoverData.selecting||h.touchData.selecting?!0:!1;m=m&&!s&&h.motionBlurEnabled&&!_;var E=m;!s&&h.motionBlurTimeout&&clearTimeout(h.motionBlurTimeout),m&&(null==h.mbFrames&&(h.mbFrames=0),h.drawingImage||h.mbFrames++,h.mbFrames<3&&(E=!1),h.mbFrames>h.minMbLowQualFrames&&(h.motionBlurPxRatio=h.mbPxRBlurry)),h.clearingMotionBlur&&(h.motionBlurPxRatio=1),h.textureDrawLastFrame&&!y&&(g[h.NODE]=!0,g[h.SELECT_BOX]=!0);var D=h.getCachedEdges(),S=v.style()._private.coreStyle,k=v.zoom(),T=void 0!==c?c:k,P=v.pan(),C={x:P.x,y:P.y},N={zoom:k,pan:{x:P.x,y:P.y}},M=h.prevViewport,B=void 0===M||N.zoom!==M.zoom||N.pan.x!==M.pan.x||N.pan.y!==M.pan.y;B||w&&!x||(h.motionBlurPxRatio=1),d&&(C=d),T*=p,C.x*=p,C.y*=p;var z={drag:{nodes:[],edges:[],eles:[]},nondrag:{nodes:[],edges:[],eles:[]}};if(y||(h.textureDrawLastFrame=!1),y){h.textureDrawLastFrame=!0;var O;if(!h.textureCache){h.textureCache={},O=h.textureCache.bb=v.elements().boundingBox(),h.textureCache.texture=h.data.bufferCanvases[h.TEXTURE_BUFFER];var I=h.data.bufferContexts[h.TEXTURE_BUFFER];I.setTransform(1,0,0,1,0,0),I.clearRect(0,0,h.canvasWidth*h.textureMult,h.canvasHeight*h.textureMult),h.render({forcedContext:I,drawOnlyNodeLayer:!0,forcedPxRatio:p*h.textureMult});var N=h.textureCache.viewport={zoom:v.zoom(),pan:v.pan(),width:h.canvasWidth,height:h.canvasHeight};N.mpan={x:(0-N.pan.x)/N.zoom,y:(0-N.pan.y)/N.zoom}}g[h.DRAG]=!1,g[h.NODE]=!1;var L=f.contexts[h.NODE],A=h.textureCache.texture,N=h.textureCache.viewport;O=h.textureCache.bb,L.setTransform(1,0,0,1,0,0),m?t(L,0,0,N.width,N.height):L.clearRect(0,0,N.width,N.height);var R=S["outside-texture-bg-color"].value,V=S["outside-texture-bg-opacity"].value;h.fillStyle(L,R[0],R[1],R[2],V),L.fillRect(0,0,N.width,N.height);var k=v.zoom();r(L,!1),L.clearRect(N.mpan.x,N.mpan.y,N.width/N.zoom/p,N.height/N.zoom/p),L.drawImage(A,N.mpan.x,N.mpan.y,N.width/N.zoom/p,N.height/N.zoom/p)}else h.textureOnViewport&&!s&&(h.textureCache=null);var F=h.pinching||h.hoverData.dragging||h.swipePanning||h.data.wheelZooming||h.hoverData.draggingEles,j=h.hideEdgesOnViewport&&F,q=h.hideLabelsOnViewport&&F;if(g[h.DRAG]||g[h.NODE]||l||u){j||h.findEdgeControlPoints(D);for(var X=h.getCachedZSortedEles(),Y=v.extent(),$=0;$<X.length;$++){var H,W=X[$],O=s?null:W.boundingBox(),Z=s?!0:a.boundingBoxesIntersect(Y,O);Z&&(H=W._private.rscratch.inDragLayer?z.drag:z.nondrag,H.eles.push(W))}}var U=[];if(U[h.NODE]=!g[h.NODE]&&m&&!h.clearedForMotionBlur[h.NODE]||h.clearingMotionBlur,U[h.NODE]&&(h.clearedForMotionBlur[h.NODE]=!0),U[h.DRAG]=!g[h.DRAG]&&m&&!h.clearedForMotionBlur[h.DRAG]||h.clearingMotionBlur,U[h.DRAG]&&(h.clearedForMotionBlur[h.DRAG]=!0),g[h.NODE]||l||u||U[h.NODE]){var G=m&&!U[h.NODE]&&1!==b,L=s||(G?h.data.bufferContexts[h.MOTIONBLUR_BUFFER_NODE]:f.contexts[h.NODE]),K=m&&!G?"motionBlur":void 0;r(L,K),n(z.nondrag,L),l||m||(g[h.NODE]=!1)}if(!u&&(g[h.DRAG]||l||U[h.DRAG])){var G=m&&!U[h.DRAG]&&1!==b,L=s||(G?h.data.bufferContexts[h.MOTIONBLUR_BUFFER_DRAG]:f.contexts[h.DRAG]);r(L,m&&!G?"motionBlur":void 0),n(z.drag,L),l||m||(g[h.DRAG]=!1)}if(h.showFps||!u&&g[h.SELECT_BOX]&&!l){var L=s||f.contexts[h.SELECT_BOX];if(r(L),1==h.selection[4]&&(h.hoverData.selecting||h.touchData.selecting)){var k=h.cy.zoom(),J=S["selection-box-border-width"].value/k;L.lineWidth=J,L.fillStyle="rgba("+S["selection-box-color"].value[0]+","+S["selection-box-color"].value[1]+","+S["selection-box-color"].value[2]+","+S["selection-box-opacity"].value+")",L.fillRect(h.selection[0],h.selection[1],h.selection[2]-h.selection[0],h.selection[3]-h.selection[1]),J>0&&(L.strokeStyle="rgba("+S["selection-box-border-color"].value[0]+","+S["selection-box-border-color"].value[1]+","+S["selection-box-border-color"].value[2]+","+S["selection-box-opacity"].value+")",L.strokeRect(h.selection[0],h.selection[1],h.selection[2]-h.selection[0],h.selection[3]-h.selection[1]))}if(f.bgActivePosistion&&!h.hoverData.selecting){var k=h.cy.zoom(),Q=f.bgActivePosistion;L.fillStyle="rgba("+S["active-bg-color"].value[0]+","+S["active-bg-color"].value[1]+","+S["active-bg-color"].value[2]+","+S["active-bg-opacity"].value+")",L.beginPath(),L.arc(Q.x,Q.y,S["active-bg-size"].pfValue/k,0,2*Math.PI),L.fill()}var ee=h.lastRedrawTime;if(h.showFps&&ee){ee=Math.round(ee);var te=Math.round(1e3/ee);L.setTransform(1,0,0,1,0,0),L.fillStyle="rgba(255, 0, 0, 0.75)",L.strokeStyle="rgba(255, 0, 0, 0.75)",L.lineWidth=1,L.fillText("1 frame = "+ee+" ms = "+te+" fps",0,20);var re=60;L.strokeRect(0,30,250,20),L.fillRect(0,30,250*Math.min(te/re,1),20)}l||(g[h.SELECT_BOX]=!1)}if(m&&1!==b){var ne=f.contexts[h.NODE],ie=h.data.bufferCanvases[h.MOTIONBLUR_BUFFER_NODE],ae=f.contexts[h.DRAG],oe=h.data.bufferCanvases[h.MOTIONBLUR_BUFFER_DRAG],se=function(e,r,n){e.setTransform(1,0,0,1,0,0),n||!E?e.clearRect(0,0,h.canvasWidth,h.canvasHeight):t(e,0,0,h.canvasWidth,h.canvasHeight);var i=b;e.drawImage(r,0,0,h.canvasWidth*i,h.canvasHeight*i,0,0,h.canvasWidth,h.canvasHeight)};(g[h.NODE]||U[h.NODE])&&(se(ne,ie,U[h.NODE]),g[h.NODE]=!1),(g[h.DRAG]||U[h.DRAG])&&(se(ae,oe,U[h.DRAG]),g[h.DRAG]=!1)}h.currentlyDrawing=!1,h.prevViewport=N,h.clearingMotionBlur&&(h.clearingMotionBlur=!1,h.motionBlurCleared=!0,h.motionBlur=!0),m&&(h.motionBlurTimeout=setTimeout(function(){h.motionBlurTimeout=null,h.clearedForMotionBlur[h.NODE]=!1,h.clearedForMotionBlur[h.DRAG]=!1,h.motionBlur=!1,h.clearingMotionBlur=!y,h.mbFrames=0,g[h.NODE]=!0,g[h.DRAG]=!0,h.redraw()},o)),h.drawingImage=!1,s||h.initrender||(h.initrender=!0,v.trigger("initrender")),s||v.triggerOnRender()},t.exports=n},{"../../../math":79,"../../../util":94}],68:[function(e,t,r){"use strict";var n=e("../../../math"),i={};i.drawPolygonPath=function(e,t,r,n,i,a){var o=n/2,s=i/2;e.beginPath&&e.beginPath(),e.moveTo(t+o*a[0],r+s*a[1]);for(var l=1;l<a.length/2;l++)e.lineTo(t+o*a[2*l],r+s*a[2*l+1]);e.closePath()},i.drawRoundRectanglePath=function(e,t,r,i,a,o){var s=i/2,l=a/2,u=n.getRoundRectangleRadius(i,a);e.beginPath&&e.beginPath(),e.moveTo(t,r-l),e.arcTo(t+s,r-l,t+s,r,u),e.arcTo(t+s,r+l,t,r+l,u),e.arcTo(t-s,r+l,t-s,r,u),e.arcTo(t-s,r-l,t,r-l,u),e.lineTo(t,r-l),e.closePath()};for(var a=Math.sin(0),o=Math.cos(0),s={},l={},u=Math.PI/40,c=0*Math.PI;c<2*Math.PI;c+=u)s[c]=Math.sin(c),l[c]=Math.cos(c);i.drawEllipsePath=function(e,t,r,n,i){if(e.beginPath&&e.beginPath(),e.ellipse)e.ellipse(t,r,n/2,i/2,0,0,2*Math.PI);else for(var c,d,h=n/2,p=i/2,v=0*Math.PI;v<2*Math.PI;v+=u)c=t-h*s[v]*a+h*l[v]*o,d=r+p*l[v]*a+p*s[v]*o,0===v?e.moveTo(c,d):e.lineTo(c,d);e.closePath()},t.exports=i},{"../../../math":79}],69:[function(e,t,r){"use strict";var n=e("../../../is"),i={};i.createBuffer=function(e,t){var r=document.createElement("canvas");return r.width=e,r.height=t,[r,r.getContext("2d")]},i.bufferCanvasImage=function(e){var t=this.cy,r=t.elements().boundingBox(),i=e.full?Math.ceil(r.w):this.container.clientWidth,a=e.full?Math.ceil(r.h):this.container.clientHeight,o=1;if(void 0!==e.scale)i*=e.scale,a*=e.scale,o=e.scale;else if(n.number(e.maxWidth)||n.number(e.maxHeight)){var s=1/0,l=1/0;n.number(e.maxWidth)&&(s=o*e.maxWidth/i),n.number(e.maxHeight)&&(l=o*e.maxHeight/a),o=Math.min(s,l),i*=o,a*=o}var u=document.createElement("canvas");u.width=i,u.height=a,u.style.width=i+"px",u.style.height=a+"px";var c=u.getContext("2d");if(i>0&&a>0)if(c.clearRect(0,0,i,a),e.bg&&(c.fillStyle=e.bg,c.rect(0,0,i,a),c.fill()),c.globalCompositeOperation="source-over",e.full)this.render({forcedContext:c,drawAllLayers:!0,forcedZoom:o,forcedPan:{x:-r.x1*o,y:-r.y1*o},forcedPxRatio:1});else{var d=t.pan(),h={x:d.x*o,y:d.y*o},p=t.zoom()*o;this.render({forcedContext:c,drawAllLayers:!0,forcedZoom:p,forcedPan:h,forcedPxRatio:1})}return u},i.png=function(e){return this.bufferCanvasImage(e).toDataURL("image/png")},i.jpg=function(e){return this.bufferCanvasImage(e).toDataURL("image/jpeg")},t.exports=i},{"../../../is":77}],70:[function(e,t,r){"use strict";function n(e){var t=this;t.data={canvases:new Array(s.CANVAS_LAYERS),contexts:new Array(s.CANVAS_LAYERS),canvasNeedsRedraw:new Array(s.CANVAS_LAYERS),bufferCanvases:new Array(s.BUFFER_COUNT),bufferContexts:new Array(s.CANVAS_LAYERS)},t.data.canvasContainer=document.createElement("div");var r=t.data.canvasContainer.style;t.data.canvasContainer.setAttribute("style","-webkit-tap-highlight-color: rgba(0,0,0,0);"),r.position="relative",r.zIndex="0",r.overflow="hidden";var n=e.cy.container();n.appendChild(t.data.canvasContainer),n.setAttribute("style",(n.getAttribute("style")||"")+"-webkit-tap-highlight-color: rgba(0,0,0,0);");
-for(var i=0;i<s.CANVAS_LAYERS;i++){var o=t.data.canvases[i]=document.createElement("canvas");t.data.contexts[i]=o.getContext("2d"),o.setAttribute("style","-webkit-user-select: none; -moz-user-select: -moz-none; user-select: none; -webkit-tap-highlight-color: rgba(0,0,0,0); outline-style: none;"+(a.ms()?" -ms-touch-action: none; touch-action: none; ":"")),o.style.position="absolute",o.setAttribute("data-id","layer"+i),o.style.zIndex=String(s.CANVAS_LAYERS-i),t.data.canvasContainer.appendChild(o),t.data.canvasNeedsRedraw[i]=!1}t.data.topCanvas=t.data.canvases[0],t.data.canvases[s.NODE].setAttribute("data-id","layer"+s.NODE+"-node"),t.data.canvases[s.SELECT_BOX].setAttribute("data-id","layer"+s.SELECT_BOX+"-selectbox"),t.data.canvases[s.DRAG].setAttribute("data-id","layer"+s.DRAG+"-drag");for(var i=0;i<s.BUFFER_COUNT;i++)t.data.bufferCanvases[i]=document.createElement("canvas"),t.data.bufferContexts[i]=t.data.bufferCanvases[i].getContext("2d"),t.data.bufferCanvases[i].style.position="absolute",t.data.bufferCanvases[i].setAttribute("data-id","buffer"+i),t.data.bufferCanvases[i].style.zIndex=String(-i-1),t.data.bufferCanvases[i].style.visibility="hidden";t.pathsEnabled=!0}var i=e("../../../util"),a=e("../../../is"),o=n,s=n.prototype;s.CANVAS_LAYERS=3,s.SELECT_BOX=0,s.DRAG=1,s.NODE=2,s.BUFFER_COUNT=3,s.TEXTURE_BUFFER=0,s.MOTIONBLUR_BUFFER_NODE=1,s.MOTIONBLUR_BUFFER_DRAG=2,s.redrawHint=function(e,t){var r=this;switch(e){case"eles":r.data.canvasNeedsRedraw[s.NODE]=t;break;case"drag":r.data.canvasNeedsRedraw[s.DRAG]=t;break;case"select":r.data.canvasNeedsRedraw[s.SELECT_BOX]=t}};var l="undefined"!=typeof Path2D;s.path2dEnabled=function(e){return void 0===e?this.pathsEnabled:void(this.pathsEnabled=e?!0:!1)},s.usePaths=function(){return l&&this.pathsEnabled},[e("./arrow-shapes"),e("./drawing-edges"),e("./drawing-images"),e("./drawing-label-text"),e("./drawing-nodes"),e("./drawing-redraw"),e("./drawing-shapes"),e("./export-image"),e("./node-shapes")].forEach(function(e){i.extend(s,e)}),t.exports=o},{"../../../is":77,"../../../util":94,"./arrow-shapes":62,"./drawing-edges":63,"./drawing-images":64,"./drawing-label-text":65,"./drawing-nodes":66,"./drawing-redraw":67,"./drawing-shapes":68,"./export-image":69,"./node-shapes":71}],71:[function(e,t,r){"use strict";var n,i={};i.nodeShapeImpl=function(e){var t=this;return(n||(n={ellipse:function(e,r,n,i,a){t.drawEllipsePath(e,r,n,i,a)},polygon:function(e,r,n,i,a,o){t.drawPolygonPath(e,r,n,i,a,o)},roundrectangle:function(e,r,n,i,a){t.drawRoundRectanglePath(e,r,n,i,a,10)}}))[e]},t.exports=i},{}],72:[function(e,t,r){"use strict";t.exports=[{name:"null",impl:e("./null")},{name:"base",impl:e("./base")},{name:"canvas",impl:e("./canvas")}]},{"./base":58,"./canvas":70,"./null":73}],73:[function(e,t,r){"use strict";function n(e){this.options=e,this.notifications=0}var i=function(){};n.prototype={recalculateRenderedStyle:i,notify:function(){this.notifications++},init:i},t.exports=n},{}],74:[function(e,t,r){"use strict";var n=e("./is"),i=e("./util"),a=e("./thread"),o=e("./promise"),s=e("./define"),l=function(t){if(!(this instanceof l))return new l(t);this._private={pass:[]};var r=4;if(n.number(t),"undefined"!=typeof navigator&&null!=navigator.hardwareConcurrency)t=navigator.hardwareConcurrency;else try{t=e("os").cpus().length}catch(i){t=r}for(var o=0;t>o;o++)this[o]=new a;this.length=t},u=l.prototype;i.extend(u,{instanceString:function(){return"fabric"},require:function(e,t){for(var r=0;r<this.length;r++){var n=this[r];n.require(e,t)}return this},random:function(){var e=Math.round((this.length-1)*Math.random()),t=this[e];return t},run:function(e){var t=this._private.pass.shift();return this.random().pass(t).run(e)},message:function(e){return this.random().message(e)},broadcast:function(e){for(var t=0;t<this.length;t++){var r=this[t];r.message(e)}return this},stop:function(){for(var e=0;e<this.length;e++){var t=this[e];t.stop()}return this},pass:function(e){var t=this._private.pass;if(!n.array(e))throw"Only arrays may be used with fabric.pass()";return t.push(e),this},spreadSize:function(){var e=Math.ceil(this._private.pass[0].length/this.length);return e=Math.max(1,e)},spread:function(e){for(var t=this,r=t._private,n=t.spreadSize(),i=r.pass.shift().concat([]),a=[],s=0;s<this.length;s++){var l=this[s],u=i.splice(0,n),c=l.pass(u).run(e);a.push(c);var d=0===i.length;if(d)break}return o.all(a).then(function(e){for(var t=[],r=0,n=0;n<e.length;n++)for(var i=e[n],a=0;a<i.length;a++){var o=i[a];t[r++]=o}return t})},map:function(e){var t=this;return t.require(e,"_$_$_fabmap"),t.spread(function(e){var t=[],r=resolve;resolve=function(e){t.push(e)};for(var n=0;n<e.length;n++){var i=t.length,a=_$_$_fabmap(e[n]),o=i===t.length;o&&t.push(a)}return resolve=r,t})},filter:function(e){var t=this._private,r=t.pass[0];return this.map(e).then(function(e){for(var t=[],n=0;n<r.length;n++){var i=r[n],a=e[n];a&&t.push(i)}return t})},sort:function(e){var t=this,r=this._private.pass[0].length,n=this.spreadSize();return e=e||function(e,t){return t>e?-1:e>t?1:0},t.require(e,"_$_$_cmp"),t.spread(function(e){var t=e.sort(_$_$_cmp);resolve(t)}).then(function(t){for(var i=function(n,i,a){i=Math.min(i,r),a=Math.min(a,r);for(var o=n,s=i,l=[],u=o;a>u;u++){var c=t[n],d=t[i];s>n&&(i>=a||e(c,d)<=0)?(l.push(c),n++):(l.push(d),i++)}for(var u=0;u<l.length;u++){var h=o+u;t[h]=l[u]}},a=n;r>a;a*=2)for(var o=0;r>o;o+=2*a)i(o,o+a,o+2*a);return t})}});var c=function(e){return e=e||{},function(t,r){var n=this._private.pass.shift();return this.random().pass(n)[e.threadFn](t,r)}};i.extend(u,{randomMap:c({threadFn:"map"}),reduce:c({threadFn:"reduce"}),reduceRight:c({threadFn:"reduceRight"})});var d=u;d.promise=d.run,d.terminate=d.halt=d.stop,d.include=d.require,i.extend(u,{on:s.on(),one:s.on({unbindSelfOnTrigger:!0}),off:s.off(),trigger:s.trigger()}),s.eventAliasesOn(u),t.exports=l},{"./define":41,"./is":77,"./promise":80,"./thread":92,"./util":94,os:void 0}],75:[function(e,t,r){"use strict";(function(){var e,n,i,a,o,s,l,u,c,d,h,p,v,f,g;i=Math.floor,d=Math.min,n=function(e,t){return t>e?-1:e>t?1:0},c=function(e,t,r,a,o){var s;if(null==r&&(r=0),null==o&&(o=n),0>r)throw new Error("lo must be non-negative");for(null==a&&(a=e.length);a>r;)s=i((r+a)/2),o(t,e[s])<0?a=s:r=s+1;return[].splice.apply(e,[r,r-r].concat(t)),t},s=function(e,t,r){return null==r&&(r=n),e.push(t),f(e,0,e.length-1,r)},o=function(e,t){var r,i;return null==t&&(t=n),r=e.pop(),e.length?(i=e[0],e[0]=r,g(e,0,t)):i=r,i},u=function(e,t,r){var i;return null==r&&(r=n),i=e[0],e[0]=t,g(e,0,r),i},l=function(e,t,r){var i;return null==r&&(r=n),e.length&&r(e[0],t)<0&&(i=[e[0],t],t=i[0],e[0]=i[1],g(e,0,r)),t},a=function(e,t){var r,a,o,s,l,u;for(null==t&&(t=n),s=function(){u=[];for(var t=0,r=i(e.length/2);r>=0?r>t:t>r;r>=0?t++:t--)u.push(t);return u}.apply(this).reverse(),l=[],a=0,o=s.length;o>a;a++)r=s[a],l.push(g(e,r,t));return l},v=function(e,t,r){var i;return null==r&&(r=n),i=e.indexOf(t),-1!==i?(f(e,0,i,r),g(e,i,r)):void 0},h=function(e,t,r){var i,o,s,u,c;if(null==r&&(r=n),o=e.slice(0,t),!o.length)return o;for(a(o,r),c=e.slice(t),s=0,u=c.length;u>s;s++)i=c[s],l(o,i,r);return o.sort(r).reverse()},p=function(e,t,r){var i,s,l,u,h,p,v,f,g,y;if(null==r&&(r=n),10*t<=e.length){if(u=e.slice(0,t).sort(r),!u.length)return u;for(l=u[u.length-1],f=e.slice(t),h=0,v=f.length;v>h;h++)i=f[h],r(i,l)<0&&(c(u,i,0,null,r),u.pop(),l=u[u.length-1]);return u}for(a(e,r),y=[],s=p=0,g=d(t,e.length);g>=0?g>p:p>g;s=g>=0?++p:--p)y.push(o(e,r));return y},f=function(e,t,r,i){var a,o,s;for(null==i&&(i=n),a=e[r];r>t&&(s=r-1>>1,o=e[s],i(a,o)<0);)e[r]=o,r=s;return e[r]=a},g=function(e,t,r){var i,a,o,s,l;for(null==r&&(r=n),a=e.length,l=t,o=e[t],i=2*t+1;a>i;)s=i+1,a>s&&!(r(e[i],e[s])<0)&&(i=s),e[t]=e[i],t=i,i=2*t+1;return e[t]=o,f(e,l,t,r)},e=function(){function e(e){this.cmp=null!=e?e:n,this.nodes=[]}return e.push=s,e.pop=o,e.replace=u,e.pushpop=l,e.heapify=a,e.updateItem=v,e.nlargest=h,e.nsmallest=p,e.prototype.push=function(e){return s(this.nodes,e,this.cmp)},e.prototype.pop=function(){return o(this.nodes,this.cmp)},e.prototype.peek=function(){return this.nodes[0]},e.prototype.contains=function(e){return-1!==this.nodes.indexOf(e)},e.prototype.replace=function(e){return u(this.nodes,e,this.cmp)},e.prototype.pushpop=function(e){return l(this.nodes,e,this.cmp)},e.prototype.heapify=function(){return a(this.nodes,this.cmp)},e.prototype.updateItem=function(e){return v(this.nodes,e,this.cmp)},e.prototype.clear=function(){return this.nodes=[]},e.prototype.empty=function(){return 0===this.nodes.length},e.prototype.size=function(){return this.nodes.length},e.prototype.clone=function(){var t;return t=new e,t.nodes=this.nodes.slice(0),t},e.prototype.toArray=function(){return this.nodes.slice(0)},e.prototype.insert=e.prototype.push,e.prototype.top=e.prototype.peek,e.prototype.front=e.prototype.peek,e.prototype.has=e.prototype.contains,e.prototype.copy=e.prototype.clone,e}(),function(e,n){return"function"==typeof define&&define.amd?define([],n):"object"==typeof r?t.exports=n():e.Heap=n()}(this,function(){return e})}).call(this)},{}],76:[function(e,t,r){"use strict";var n=e("./window"),i=e("./is"),a=e("./core"),o=e("./extension"),s=e("./jquery-plugin"),l=e("./stylesheet"),u=e("./thread"),c=e("./fabric"),d=function(e){return void 0===e&&(e={}),i.plainObject(e)?new a(e):i.string(e)?o.apply(o,arguments):void 0};d.version="2.5.4",n&&n.jQuery&&s(n.jQuery,d),d.registerJquery=function(e){s(e,d)},d.stylesheet=d.Stylesheet=l,d.thread=d.Thread=u,d.fabric=d.Fabric=c,t.exports=d},{"./core":34,"./extension":43,"./fabric":74,"./is":77,"./jquery-plugin":78,"./stylesheet":91,"./thread":92,"./window":100}],77:[function(e,t,r){"use strict";var n=e("./window"),i=n?n.navigator:null,a="string",o=typeof{},s="function",l=typeof HTMLElement,u=function(e){return e&&e.instanceString&&c.fn(e.instanceString)?e.instanceString():null},c={defined:function(e){return null!=e},string:function(e){return null!=e&&typeof e==a},fn:function(e){return null!=e&&typeof e===s},array:function(e){return Array.isArray?Array.isArray(e):null!=e&&e instanceof Array},plainObject:function(e){return null!=e&&typeof e===o&&!c.array(e)&&e.constructor===Object},object:function(e){return null!=e&&typeof e===o},number:function(e){return null!=e&&"number"==typeof e&&!isNaN(e)},integer:function(e){return c.number(e)&&Math.floor(e)===e},bool:function(e){return null!=e&&typeof e==typeof!0},htmlElement:function(e){return"undefined"===l?void 0:null!=e&&e instanceof HTMLElement},elementOrCollection:function(e){return c.element(e)||c.collection(e)},element:function(e){return"collection"===u(e)&&e._private.single},collection:function(e){return"collection"===u(e)&&!e._private.single},core:function(e){return"core"===u(e)},style:function(e){return"style"===u(e)},stylesheet:function(e){return"stylesheet"===u(e)},event:function(e){return"event"===u(e)},thread:function(e){return"thread"===u(e)},fabric:function(e){return"fabric"===u(e)},emptyString:function(e){return e?c.string(e)&&(""===e||e.match(/^\s+$/))?!0:!1:!0},nonemptyString:function(e){return e&&c.string(e)&&""!==e&&!e.match(/^\s+$/)?!0:!1},domElement:function(e){return"undefined"==typeof HTMLElement?!1:e instanceof HTMLElement},boundingBox:function(e){return c.plainObject(e)&&c.number(e.x1)&&c.number(e.x2)&&c.number(e.y1)&&c.number(e.y2)},promise:function(e){return c.object(e)&&c.fn(e.then)},touch:function(){return n&&("ontouchstart"in n||n.DocumentTouch&&document instanceof DocumentTouch)},gecko:function(){return"undefined"!=typeof InstallTrigger||"MozAppearance"in document.documentElement.style},webkit:function(){return"undefined"!=typeof webkitURL||"WebkitAppearance"in document.documentElement.style},chromium:function(){return"undefined"!=typeof chrome},khtml:function(){return i&&i.vendor.match(/kde/i)},khtmlEtc:function(){return c.khtml()||c.webkit()||c.chromium()},ms:function(){return i&&i.userAgent.match(/msie|trident|edge/i)},windows:function(){return i&&i.appVersion.match(/Win/i)},mac:function(){return i&&i.appVersion.match(/Mac/i)},linux:function(){return i&&i.appVersion.match(/Linux/i)},unix:function(){return i&&i.appVersion.match(/X11/i)}};t.exports=c},{"./window":100}],78:[function(e,t,r){"use strict";var n=e("./is"),i=function(e){var t=e[0]._cyreg=e[0]._cyreg||{};return t},a=function(e,t){e&&(e.fn.cytoscape||(e.fn.cytoscape=function(r){var a=e(this);if("get"===r)return i(a).cy;if(n.fn(r)){var o=r,s=i(a).cy;if(s&&s.isReady())s.trigger("ready",[],o);else{var l=i(a),u=l.readies=l.readies||[];u.push(o)}}else if(n.plainObject(r))return a.each(function(){var n=e.extend({},r,{container:e(this)[0]});t(n)})},e.cytoscape=t,null==e.fn.cy&&null==e.cy&&(e.fn.cy=e.fn.cytoscape,e.cy=e.cytoscape)))};t.exports=a},{"./is":77}],79:[function(e,t,r){"use strict";var n={};n.signum=function(e){return e>0?1:0>e?-1:0},n.distance=function(e,t){return Math.sqrt(n.sqDistance(e,t))},n.sqDistance=function(e,t){var r=t.x-e.x,n=t.y-e.y;return r*r+n*n},n.qbezierAt=function(e,t,r,n){return(1-n)*(1-n)*e+2*(1-n)*n*t+n*n*r},n.qbezierPtAt=function(e,t,r,i){return{x:n.qbezierAt(e.x,t.x,r.x,i),y:n.qbezierAt(e.y,t.y,r.y,i)}},n.makeBoundingBox=function(e){if(null!=e.x1&&null!=e.y1){if(null!=e.x2&&null!=e.y2&&e.x2>=e.x1&&e.y2>=e.y1)return{x1:e.x1,y1:e.y1,x2:e.x2,y2:e.y2,w:e.x2-e.x1,h:e.y2-e.y1};if(null!=e.w&&null!=e.h&&e.w>=0&&e.h>=0)return{x1:e.x1,y1:e.y1,x2:e.x1+e.w,y2:e.y1+e.h,w:e.w,h:e.h}}},n.boundingBoxesIntersect=function(e,t){return e.x1>t.x2?!1:t.x1>e.x2?!1:e.x2<t.x1?!1:t.x2<e.x1?!1:e.y2<t.y1?!1:t.y2<e.y1?!1:e.y1>t.y2?!1:t.y1>e.y2?!1:!0},n.inBoundingBox=function(e,t,r){return e.x1<=t&&t<=e.x2&&e.y1<=r&&r<=e.y2},n.pointInBoundingBox=function(e,t){return this.inBoundingBox(e,t.x,t.y)},n.roundRectangleIntersectLine=function(e,t,r,n,i,a,o){var s,l=this.getRoundRectangleRadius(i,a),u=i/2,c=a/2,d=r-u+l-o,h=n-c-o,p=r+u-l+o,v=h;if(s=this.finiteLinesIntersect(e,t,r,n,d,h,p,v,!1),s.length>0)return s;var f=r+u+o,g=n-c+l-o,y=f,m=n+c-l+o;if(s=this.finiteLinesIntersect(e,t,r,n,f,g,y,m,!1),s.length>0)return s;var b=r-u+l-o,x=n+c+o,w=r+u-l+o,_=x;if(s=this.finiteLinesIntersect(e,t,r,n,b,x,w,_,!1),s.length>0)return s;var E=r-u-o,D=n-c+l-o,S=E,k=n+c-l+o;if(s=this.finiteLinesIntersect(e,t,r,n,E,D,S,k,!1),s.length>0)return s;var T,P=r-u+l,C=n-c+l;if(T=this.intersectLineCircle(e,t,r,n,P,C,l+o),T.length>0&&T[0]<=P&&T[1]<=C)return[T[0],T[1]];var N=r+u-l,M=n-c+l;if(T=this.intersectLineCircle(e,t,r,n,N,M,l+o),T.length>0&&T[0]>=N&&T[1]<=M)return[T[0],T[1]];var B=r+u-l,z=n+c-l;if(T=this.intersectLineCircle(e,t,r,n,B,z,l+o),T.length>0&&T[0]>=B&&T[1]>=z)return[T[0],T[1]];var O=r-u+l,I=n+c-l;return T=this.intersectLineCircle(e,t,r,n,O,I,l+o),T.length>0&&T[0]<=O&&T[1]>=I?[T[0],T[1]]:[]},n.inLineVicinity=function(e,t,r,n,i,a,o){var s=o,l=Math.min(r,i),u=Math.max(r,i),c=Math.min(n,a),d=Math.max(n,a);return e>=l-s&&u+s>=e&&t>=c-s&&d+s>=t},n.inBezierVicinity=function(e,t,r,n,i,a,o,s,l){var u={x1:Math.min(r,o,i)-l,x2:Math.max(r,o,i)+l,y1:Math.min(n,s,a)-l,y2:Math.max(n,s,a)+l};return e<u.x1||e>u.x2||t<u.y1||t>u.y2?!1:!0},n.solveCubic=function(e,t,r,n,i){t/=e,r/=e,n/=e;var a,o,s,l,u,c,d,h;return o=(3*r-t*t)/9,s=-(27*n)+t*(9*r-2*(t*t)),s/=54,a=o*o*o+s*s,i[1]=0,d=t/3,a>0?(u=s+Math.sqrt(a),u=0>u?-Math.pow(-u,1/3):Math.pow(u,1/3),c=s-Math.sqrt(a),c=0>c?-Math.pow(-c,1/3):Math.pow(c,1/3),i[0]=-d+u+c,d+=(u+c)/2,i[4]=i[2]=-d,d=Math.sqrt(3)*(-c+u)/2,i[3]=d,void(i[5]=-d)):(i[5]=i[3]=0,0===a?(h=0>s?-Math.pow(-s,1/3):Math.pow(s,1/3),i[0]=-d+2*h,void(i[4]=i[2]=-(h+d))):(o=-o,l=o*o*o,l=Math.acos(s/Math.sqrt(l)),h=2*Math.sqrt(o),i[0]=-d+h*Math.cos(l/3),i[2]=-d+h*Math.cos((l+2*Math.PI)/3),void(i[4]=-d+h*Math.cos((l+4*Math.PI)/3))))},n.sqDistanceToQuadraticBezier=function(e,t,r,n,i,a,o,s){var l=1*r*r-4*r*i+2*r*o+4*i*i-4*i*o+o*o+n*n-4*n*a+2*n*s+4*a*a-4*a*s+s*s,u=9*r*i-3*r*r-3*r*o-6*i*i+3*i*o+9*n*a-3*n*n-3*n*s-6*a*a+3*a*s,c=3*r*r-6*r*i+r*o-r*e+2*i*i+2*i*e-o*e+3*n*n-6*n*a+n*s-n*t+2*a*a+2*a*t-s*t,d=1*r*i-r*r+r*e-i*e+n*a-n*n+n*t-a*t,h=[];this.solveCubic(l,u,c,d,h);for(var p=1e-7,v=[],f=0;6>f;f+=2)Math.abs(h[f+1])<p&&h[f]>=0&&h[f]<=1&&v.push(h[f]);v.push(1),v.push(0);for(var g,y,m,b,x=-1,w=0;w<v.length;w++)y=Math.pow(1-v[w],2)*r+2*(1-v[w])*v[w]*i+v[w]*v[w]*o,m=Math.pow(1-v[w],2)*n+2*(1-v[w])*v[w]*a+v[w]*v[w]*s,b=Math.pow(y-e,2)+Math.pow(m-t,2),x>=0?x>b&&(x=b,g=v[w]):(x=b,g=v[w]);return x},n.sqDistanceToFiniteLine=function(e,t,r,n,i,a){var o=[e-r,t-n],s=[i-r,a-n],l=s[0]*s[0]+s[1]*s[1],u=o[0]*o[0]+o[1]*o[1],c=o[0]*s[0]+o[1]*s[1],d=c*c/l;return 0>c?u:d>l?(e-i)*(e-i)+(t-a)*(t-a):u-d},n.pointInsidePolygonPoints=function(e,t,r){for(var n,i,a,o,s,l=0,u=0,c=0;c<r.length/2;c++)if(n=r[2*c],i=r[2*c+1],c+1<r.length/2?(a=r[2*(c+1)],o=r[2*(c+1)+1]):(a=r[2*(c+1-r.length/2)],o=r[2*(c+1-r.length/2)+1]),n==e&&a==e);else{if(!(n>=e&&e>=a||e>=n&&a>=e))continue;s=(e-n)/(a-n)*(o-i)+i,s>t&&l++,t>s&&u++}return l%2===0?!1:!0},n.pointInsidePolygon=function(e,t,r,i,a,o,s,l,u){var c,d=new Array(r.length);null!=l[0]?(c=Math.atan(l[1]/l[0]),l[0]<0?c+=Math.PI/2:c=-c-Math.PI/2):c=l;for(var h=Math.cos(-c),p=Math.sin(-c),v=0;v<d.length/2;v++)d[2*v]=o/2*(r[2*v]*h-r[2*v+1]*p),d[2*v+1]=s/2*(r[2*v+1]*h+r[2*v]*p),d[2*v]+=i,d[2*v+1]+=a;var f;if(u>0){var g=this.expandPolygon(d,-u);f=this.joinLines(g)}else f=d;return n.pointInsidePolygonPoints(e,t,f)},n.joinLines=function(e){for(var t,r,n,i,a,o,s,l,u=new Array(e.length/2),c=0;c<e.length/4;c++){t=e[4*c],r=e[4*c+1],n=e[4*c+2],i=e[4*c+3],c<e.length/4-1?(a=e[4*(c+1)],o=e[4*(c+1)+1],s=e[4*(c+1)+2],l=e[4*(c+1)+3]):(a=e[0],o=e[1],s=e[2],l=e[3]);var d=this.finiteLinesIntersect(t,r,n,i,a,o,s,l,!0);u[2*c]=d[0],u[2*c+1]=d[1]}return u},n.expandPolygon=function(e,t){for(var r,n,i,a,o=new Array(2*e.length),s=0;s<e.length/2;s++){r=e[2*s],n=e[2*s+1],s<e.length/2-1?(i=e[2*(s+1)],a=e[2*(s+1)+1]):(i=e[0],a=e[1]);var l=a-n,u=-(i-r),c=Math.sqrt(l*l+u*u),d=l/c,h=u/c;o[4*s]=r+d*t,o[4*s+1]=n+h*t,o[4*s+2]=i+d*t,o[4*s+3]=a+h*t}return o},n.intersectLineEllipse=function(e,t,r,n,i,a){var o=r-e,s=n-t;o/=i,s/=a;var l=Math.sqrt(o*o+s*s),u=l-1;if(0>u)return[];var c=u/l;return[(r-e)*c+e,(n-t)*c+t]},n.intersectLineCircle=function(e,t,r,n,i,a,o){var s=[r-e,n-t],l=[i,a],u=[e-i,t-a],c=s[0]*s[0]+s[1]*s[1],d=2*(u[0]*s[0]+u[1]*s[1]),l=u[0]*u[0]+u[1]*u[1]-o*o,h=d*d-4*c*l;if(0>h)return[];var p=(-d+Math.sqrt(h))/(2*c),v=(-d-Math.sqrt(h))/(2*c),f=Math.min(p,v),g=Math.max(p,v),y=[];if(f>=0&&1>=f&&y.push(f),g>=0&&1>=g&&y.push(g),0===y.length)return[];var m=y[0]*s[0]+e,b=y[0]*s[1]+t;if(y.length>1){if(y[0]==y[1])return[m,b];var x=y[1]*s[0]+e,w=y[1]*s[1]+t;return[m,b,x,w]}return[m,b]},n.findCircleNearPoint=function(e,t,r,n,i){var a=n-e,o=i-t,s=Math.sqrt(a*a+o*o),l=a/s,u=o/s;return[e+l*r,t+u*r]},n.findMaxSqDistanceToOrigin=function(e){for(var t,r=1e-6,n=0;n<e.length/2;n++)t=e[2*n]*e[2*n]+e[2*n+1]*e[2*n+1],t>r&&(r=t);return r},n.finiteLinesIntersect=function(e,t,r,n,i,a,o,s,l){var u=(o-i)*(t-a)-(s-a)*(e-i),c=(r-e)*(t-a)-(n-t)*(e-i),d=(s-a)*(r-e)-(o-i)*(n-t);if(0!==d){var h=u/d,p=c/d;return h>=0&&1>=h&&p>=0&&1>=p?[e+h*(r-e),t+h*(n-t)]:l?[e+h*(r-e),t+h*(n-t)]:[]}return 0===u||0===c?[e,r,o].sort()[1]===o?[o,s]:[e,r,i].sort()[1]===i?[i,a]:[i,o,r].sort()[1]===r?[r,n]:[]:[]},n.polygonIntersectLine=function(e,t,r,i,a,o,s,l){for(var u,c=[],d=new Array(r.length),h=0;h<d.length/2;h++)d[2*h]=r[2*h]*o+i,d[2*h+1]=r[2*h+1]*s+a;var p;if(l>0){var v=n.expandPolygon(d,-l);p=n.joinLines(v)}else p=d;for(var f,g,y,m,h=0;h<p.length/2;h++)f=p[2*h],g=p[2*h+1],h<p.length/2-1?(y=p[2*(h+1)],m=p[2*(h+1)+1]):(y=p[0],m=p[1]),u=this.finiteLinesIntersect(e,t,i,a,f,g,y,m),0!==u.length&&c.push(u[0],u[1]);return c},n.shortenIntersection=function(e,t,r){var n=[e[0]-t[0],e[1]-t[1]],i=Math.sqrt(n[0]*n[0]+n[1]*n[1]),a=(i-r)/i;return 0>a&&(a=1e-5),[t[0]+a*n[0],t[1]+a*n[1]]},n.generateUnitNgonPointsFitToSquare=function(e,t){var r=n.generateUnitNgonPoints(e,t);return r=n.fitPolygonToSquare(r)},n.fitPolygonToSquare=function(e){for(var t,r,n=e.length/2,i=1/0,a=1/0,o=-(1/0),s=-(1/0),l=0;n>l;l++)t=e[2*l],r=e[2*l+1],i=Math.min(i,t),o=Math.max(o,t),a=Math.min(a,r),s=Math.max(s,r);for(var u=2/(o-i),c=2/(s-a),l=0;n>l;l++)t=e[2*l]=e[2*l]*u,r=e[2*l+1]=e[2*l+1]*c,i=Math.min(i,t),o=Math.max(o,t),a=Math.min(a,r),s=Math.max(s,r);if(-1>a)for(var l=0;n>l;l++)r=e[2*l+1]=e[2*l+1]+(-1-a);return e},n.generateUnitNgonPoints=function(e,t){var r=1/e*2*Math.PI,n=e%2===0?Math.PI/2+r/2:Math.PI/2;n+=t;for(var i,a,o,s=new Array(2*e),l=0;e>l;l++)i=l*r+n,a=s[2*l]=Math.cos(i),o=s[2*l+1]=Math.sin(-i);return s},n.getRoundRectangleRadius=function(e,t){return Math.min(e/4,t/4,8)},t.exports=n},{}],80:[function(e,t,r){"use strict";var n=0,i=1,a=2,o=function(e){return this instanceof o?(this.id="Thenable/1.0.7",this.state=n,this.fulfillValue=void 0,this.rejectReason=void 0,this.onFulfilled=[],this.onRejected=[],this.proxy={then:this.then.bind(this)},void("function"==typeof e&&e.call(this,this.fulfill.bind(this),this.reject.bind(this)))):new o(e)};o.prototype={fulfill:function(e){return s(this,i,"fulfillValue",e)},reject:function(e){return s(this,a,"rejectReason",e)},then:function(e,t){var r=this,n=new o;return r.onFulfilled.push(c(e,n,"fulfill")),r.onRejected.push(c(t,n,"reject")),l(r),n.proxy}};var s=function(e,t,r,i){return e.state===n&&(e.state=t,e[r]=i,l(e)),e},l=function(e){e.state===i?u(e,"onFulfilled",e.fulfillValue):e.state===a&&u(e,"onRejected",e.rejectReason)},u=function(e,t,r){if(0!==e[t].length){var n=e[t];e[t]=[];var i=function(){for(var e=0;e<n.length;e++)n[e](r)};"function"==typeof setImmediate?setImmediate(i):setTimeout(i,0)}},c=function(e,t,r){return function(n){if("function"!=typeof e)t[r].call(t,n);else{var i;try{i=e(n)}catch(a){return void t.reject(a)}d(t,i)}}},d=function(e,t){if(e===t||e.proxy===t)return void e.reject(new TypeError("cannot resolve promise with itself"));var r;if("object"==typeof t&&null!==t||"function"==typeof t)try{r=t.then}catch(n){return void e.reject(n)}if("function"!=typeof r)e.fulfill(t);else{var i=!1;try{r.call(t,function(r){i||(i=!0,r===t?e.reject(new TypeError("circular thenable chain")):d(e,r))},function(t){i||(i=!0,e.reject(t))})}catch(n){i||e.reject(n)}}},h="undefined"==typeof h?o:h;h.all=h.all||function(e){return new h(function(t,r){for(var n=new Array(e.length),i=0,a=function(r,a){n[r]=a,i++,i===e.length&&t(n)},o=0;o<e.length;o++)!function(t){var n=e[t],i=null!=n.then;if(i)n.then(function(e){a(t,e)},function(e){r(e)});else{var o=n;a(t,o)}}(o)})},t.exports=h},{}],81:[function(e,t,r){"use strict";var n=e("./is"),i=e("./util"),a=function(e,t){if(!(this instanceof a))return new a(e,t);void 0===t&&void 0!==e&&(t=e,e=void 0);var r=this;if(r._private={selectorText:null,invalid:!0},!t||n.string(t)&&t.match(/^\s*$/))null==e?r.length=0:(r[0]=l(),r[0].group=e,r.length=1);else if(n.elementOrCollection(t)){var o=t.collection();r[0]=l(),r[0].collection=o,r.length=1}else if(n.fn(t))r[0]=l(),r[0].filter=t,r.length=1;else{if(!n.string(t))return void i.error("A selector must be created from a string; found "+t);var s=null,l=function(){return{classes:[],colonSelectors:[],data:[],group:null,ids:[],meta:[],collection:null,filter:null,parent:null,ancestor:null,subject:null,child:null,descendant:null}},u={metaChar:"[\\!\\\"\\#\\$\\%\\&\\'\\(\\)\\*\\+\\,\\.\\/\\:\\;\\<\\=\\>\\?\\@\\[\\]\\^\\`\\{\\|\\}\\~]",comparatorOp:"=|\\!=|>|>=|<|<=|\\$=|\\^=|\\*=",boolOp:"\\?|\\!|\\^",string:'"(?:\\\\"|[^"])+"|'+"'(?:\\\\'|[^'])+'",number:i.regex.number,meta:"degree|indegree|outdegree",separator:"\\s*,\\s*",descendant:"\\s+",child:"\\s+>\\s+",subject:"\\$"};u.variable="(?:[\\w-]|(?:\\\\"+u.metaChar+"))+",u.value=u.string+"|"+u.number,u.className=u.variable,u.id=u.variable;for(var c=function(e){return e.replace(new RegExp("\\\\("+u.metaChar+")","g"),function(e,t,r,n){return t})},d=u.comparatorOp.split("|"),h=0;h<d.length;h++){var p=d[h];u.comparatorOp+="|@"+p}for(var d=u.comparatorOp.split("|"),h=0;h<d.length;h++){var p=d[h];p.indexOf("!")>=0||"="!==p&&(u.comparatorOp+="|\\!"+p)}var v=[{name:"group",query:!0,regex:"(node|edge|\\*)",populate:function(e){this.group="*"==e?e:e+"s"}},{name:"state",query:!0,regex:"(:selected|:unselected|:locked|:unlocked|:visible|:hidden|:transparent|:grabbed|:free|:removed|:inside|:grabbable|:ungrabbable|:animated|:unanimated|:selectable|:unselectable|:orphan|:nonorphan|:parent|:child|:loop|:simple|:active|:inactive|:touch|:backgrounding|:nonbackgrounding)",populate:function(e){this.colonSelectors.push(e)}},{name:"id",query:!0,regex:"\\#("+u.id+")",populate:function(e){this.ids.push(c(e))}},{name:"className",query:!0,regex:"\\.("+u.className+")",populate:function(e){this.classes.push(c(e))}},{name:"dataExists",query:!0,regex:"\\[\\s*("+u.variable+")\\s*\\]",populate:function(e){this.data.push({field:c(e)})}},{name:"dataCompare",query:!0,regex:"\\[\\s*("+u.variable+")\\s*("+u.comparatorOp+")\\s*("+u.value+")\\s*\\]",populate:function(e,t,r){var n=null!=new RegExp("^"+u.string+"$").exec(r);r=n?r.substring(1,r.length-1):parseFloat(r),this.data.push({field:c(e),operator:t,value:r})}},{name:"dataBool",query:!0,regex:"\\[\\s*("+u.boolOp+")\\s*("+u.variable+")\\s*\\]",populate:function(e,t){this.data.push({field:c(t),operator:e})}},{name:"metaCompare",query:!0,regex:"\\[\\[\\s*("+u.meta+")\\s*("+u.comparatorOp+")\\s*("+u.number+")\\s*\\]\\]",populate:function(e,t,r){this.meta.push({field:c(e),operator:t,value:parseFloat(r)})}},{name:"nextQuery",separator:!0,regex:u.separator,populate:function(){r[++h]=l(),s=null}},{name:"child",separator:!0,regex:u.child,populate:function(){var e=l();e.parent=this,e.subject=s,r[h]=e}},{name:"descendant",separator:!0,regex:u.descendant,populate:function(){var e=l();e.ancestor=this,e.subject=s,r[h]=e}},{name:"subject",modifier:!0,regex:u.subject,populate:function(){return null!=s&&this.subject!=this?(i.error("Redefinition of subject in selector `"+t+"`"),!1):(s=this,void(this.subject=this))}}];r._private.selectorText=t;var f=t,h=0,g=function(e){for(var t,r,i,a=0;a<v.length;a++){var o=v[a],s=o.name;if(!n.fn(e)||e(s,o)){var l=f.match(new RegExp("^"+o.regex));if(null!=l){r=l,t=o,i=s;var u=l[0];f=f.substring(u.length);break}}}return{expr:t,match:r,name:i}},y=function(){var e=f.match(/^\s+/);if(e){var t=e[0];f=f.substring(t.length)}};for(r[0]=l(),y();;){var m=g();if(null==m.expr)return void i.error("The selector `"+t+"`is invalid");for(var b=[],x=1;x<m.match.length;x++)b.push(m.match[x]);var w=m.expr.populate.apply(r[h],b);if(w===!1)return;if(f.match(/^\s*$/))break}r.length=h+1;for(var x=0;x<r.length;x++){var _=r[x];if(null!=_.subject){for(;_.subject!=_;)if(null!=_.parent){var E=_.parent,D=_;D.parent=null,E.child=D,_=E}else{if(null==_.ancestor){i.error("When adjusting references for the selector `"+_+"`, neither parent nor ancestor was found");break}var S=_.ancestor,k=_;k.ancestor=null,S.descendant=k,_=S}r[x]=_.subject}}if(null!=e)for(var x=0;x<r.length;x++){if(null!=r[x].group&&r[x].group!=e)return void i.error("Group `"+r[x].group+"` conflicts with implicit group `"+e+"` in selector `"+t+"`");r[x].group=e}}r._private.invalid=!1},o=a.prototype;o.size=function(){return this.length},o.eq=function(e){return this[e]};var s=function(e,t){if(null!=e.group&&"*"!=e.group&&e.group!=t._private.group)return!1;for(var r=t.cy(),i=!0,a=0;a<e.colonSelectors.length;a++){var o=e.colonSelectors[a];switch(o){case":selected":i=t.selected();break;case":unselected":i=!t.selected();break;case":selectable":i=t.selectable();break;case":unselectable":i=!t.selectable();break;case":locked":i=t.locked();break;case":unlocked":i=!t.locked();break;case":visible":i=t.visible();break;case":hidden":i=!t.visible();break;case":transparent":i=t.transparent();break;case":grabbed":i=t.grabbed();break;case":free":i=!t.grabbed();break;case":removed":i=t.removed();break;case":inside":i=!t.removed();break;case":grabbable":i=t.grabbable();break;case":ungrabbable":i=!t.grabbable();break;case":animated":i=t.animated();break;case":unanimated":i=!t.animated();break;case":parent":i=t.isNode()&&t.children().nonempty();break;case":child":case":nonorphan":i=t.isNode()&&t.parent().nonempty();break;case":orphan":i=t.isNode()&&t.parent().empty();break;case":loop":i=t.isEdge()&&t.data("source")===t.data("target");break;case":simple":i=t.isEdge()&&t.data("source")!==t.data("target");break;case":active":i=t.active();break;case":inactive":i=!t.active();break;case":touch":i=n.touch();break;case":backgrounding":i=t.backgrounding();break;case":nonbackgrounding":i=!t.backgrounding()}if(!i)break}if(!i)return!1;for(var l=!0,a=0;a<e.ids.length;a++){var u=e.ids[a],c=t._private.data.id;if(l=l&&u==c,!l)break}if(!l)return!1;for(var d=!0,a=0;a<e.classes.length;a++){var h=e.classes[a];if(d=d&&t.hasClass(h),!d)break}if(!d)return!1;var p=function(t){for(var r=!0,i=0;i<e[t.name].length;i++){var a,o=e[t.name][i],s=o.operator,l=o.value,u=o.field;if(null!=s&&null!=l){var c=t.fieldValue(u),d=n.string(c)||n.number(c)?""+c:"",h=""+l,p=!1;s.indexOf("@")>=0&&(d=d.toLowerCase(),h=h.toLowerCase(),s=s.replace("@",""),p=!0);var v=!1,f=!1;switch(s.indexOf("!")>=0&&(s=s.replace("!",""),v=!0),p&&(l=h.toLowerCase(),c=d.toLowerCase()),s){case"*=":a=d.search(h)>=0;break;case"$=":a=null!=new RegExp(h+"$").exec(d);break;case"^=":a=null!=new RegExp("^"+h).exec(d);break;case"=":a=c===l;break;case"!=":a=c!==l;break;case">":a=v?l>=c:c>l,f=!0;break;case">=":a=v?l>c:c>=l,f=!0;break;case"<":a=v?c>=l:l>c,f=!0;break;case"<=":a=v?c>l:l>=c,f=!0;break;default:a=!1}}else if(null!=s)switch(s){case"?":a=t.fieldTruthy(u);break;case"!":a=!t.fieldTruthy(u);break;case"^":a=t.fieldUndefined(u)}else a=!t.fieldUndefined(u);if(v&&!f&&(a=!a,f=!0),!a){r=!1;break}}return r},v=p({name:"data",fieldValue:function(e){return t._private.data[e]},fieldRef:function(e){return"element._private.data."+e},fieldUndefined:function(e){return void 0===t._private.data[e]},fieldTruthy:function(e){return t._private.data[e]?!0:!1}});if(!v)return!1;var f=p({name:"meta",fieldValue:function(e){return t[e]()},fieldRef:function(e){return"element."+e+"()"},fieldUndefined:function(e){return null==t[e]()},fieldTruthy:function(e){return t[e]()?!0:!1}});if(!f)return!1;if(null!=e.collection){var g=null!=e.collection._private.ids[t.id()];if(!g)return!1}if(null!=e.filter&&0===t.collection().filter(e.filter).size())return!1;var y=function(e,t){if(null!=e){var n=!1;if(!r.hasCompoundNodes())return!1;t=t();for(var i=0;i<t.length;i++)if(s(e,t[i])){n=!0;break}return n}return!0};return y(e.parent,function(){return t.parent()})&&y(e.ancestor,function(){return t.parents()})&&y(e.child,function(){return t.children()})&&y(e.descendant,function(){return t.descendants()})?!0:!1};o.filter=function(e){var t=this,r=e.cy();if(t._private.invalid)return r.collection();var n=function(e,r){for(var n=0;n<t.length;n++){var i=t[n];if(s(i,r))return!0}return!1};null==t._private.selectorText&&(n=function(){return!0});var i=e.filter(n);return i},o.matches=function(e){var t=this;if(t._private.invalid)return!1;for(var r=0;r<t.length;r++){var n=t[r];if(s(n,e))return!0}return!1},o.toString=o.selector=function(){for(var e="",t=function(e,t){return n.string(e)?t?'"'+e+'"':e:""},r=function(e){var n="";e.subject===e&&(n+="$");var a=t(e.group);n+=a.substring(0,a.length-1);for(var o=0;o<e.data.length;o++){var s=e.data[o];n+=s.value?"["+s.field+t(s.operator)+t(s.value,!0)+"]":"["+t(s.operator)+s.field+"]"}for(var o=0;o<e.meta.length;o++){var l=e.meta[o];n+="[["+l.field+t(l.operator)+t(l.value,!0)+"]]"}for(var o=0;o<e.colonSelectors.length;o++){var u=e.colonSelectors[i];n+=u}for(var o=0;o<e.ids.length;o++){var u="#"+e.ids[i];n+=u}for(var o=0;o<e.classes.length;o++){var u="."+e.classes[o];n+=u}return null!=e.parent&&(n=r(e.parent)+" > "+n),null!=e.ancestor&&(n=r(e.ancestor)+" "+n),null!=e.child&&(n+=" > "+r(e.child)),null!=e.descendant&&(n+=" "+r(e.descendant)),n},i=0;i<this.length;i++){var a=this[i];e+=r(a),this.length>1&&i<this.length-1&&(e+=", ")}return e},t.exports=a},{"./is":77,"./util":94}],82:[function(e,t,r){"use strict";var n=e("../util"),i=e("../is"),a={};a.apply=function(e){var t=this;t._private.newStyle&&(this._private.contextStyles={},this._private.propDiffs={});for(var r=0;r<e.length;r++){var n=e[r],i=t.getContextMeta(n),a=t.getContextStyle(i),o=t.applyContextStyle(i,a,n);
-t.updateTransitions(n,o.diffProps),t.updateStyleHints(n)}t._private.newStyle=!1},a.getPropertiesDiff=function(e,t){var r=this,n=r._private.propDiffs=r._private.propDiffs||{},i=e+"-"+t,a=n[i];if(a)return a;for(var o=[],s={},l=0;l<r.length;l++){var u=r[l],c="t"===e[l],d="t"===t[l],h=c!==d,p=u.mappedProperties.length>0;if(h||p){var v;h&&p?v=u.properties:h?v=u.properties:p&&(v=u.mappedProperties);for(var f=0;f<v.length;f++){for(var g=v[f],y=g.name,m=!1,b=l+1;b<r.length;b++){var x=r[b],w="t"===t[b];if(w&&(m=null!=x.properties[g.name]))break}s[y]||m||(s[y]=!0,o.push(y))}}}return n[i]=o,o},a.getContextMeta=function(e){var t,r=this,n="",i=e._private.styleCxtKey||"";r._private.newStyle&&(i="");for(var a=0;a<r.length;a++){var o=r[a],s=o.selector&&o.selector.matches(e);n+=s?"t":"f"}return t=r.getPropertiesDiff(i,n),e._private.styleCxtKey=n,{key:n,diffPropNames:t}},a.getContextStyle=function(e){var t=e.key,r=this,n=this._private.contextStyles=this._private.contextStyles||{};if(n[t])return n[t];for(var i={_private:{key:t}},a=0;a<r.length;a++){var o=r[a],s="t"===t[a];if(s)for(var l=0;l<o.properties.length;l++){var u=o.properties[l],c=i[u.name]=u;c.context=o}}return n[t]=i,i},a.applyContextStyle=function(e,t,r){for(var n=this,i=e.diffPropNames,a={},o=0;o<i.length;o++){var s=i[o],l=t[s],u=r._private.style[s];if(l&&u!==l){var c=a[s]={prev:u};n.applyParsedProperty(r,l),c.next=r._private.style[s],c.next&&c.next.bypass&&(c.next=c.next.bypassed)}}return{diffProps:a}},a.updateStyleHints=function(e){var t=e._private,r=this,n=t.style;if(!e.removed()){var i=!1;if("nodes"===t.group&&r._private.hasPie)for(var a=1;a<=r.pieBackgroundN;a++){var o=t.style["pie-"+a+"-background-size"].value;if(o>0){i=!0;break}}t.hasPie=i;var s=n["text-transform"].strValue,l=n.label.strValue,u=n["font-style"].strValue,o=n["font-size"].pfValue+"px",c=n["font-family"].strValue,d=n["font-weight"].strValue,h=n["text-valign"].strValue,p=n["text-valign"].strValue,v=n["text-outline-width"].pfValue,f=n["text-wrap"].strValue,g=n["text-max-width"].pfValue;t.labelKey=u+"$"+o+"$"+c+"$"+d+"$"+l+"$"+s+"$"+h+"$"+p+"$"+v+"$"+f+"$"+g,t.fontKey=u+"$"+d+"$"+o+"$"+c;var y=n.width.pfValue,m=n.height.pfValue,b=n["border-width"].pfValue;if(t.boundingBoxKey=y+"$"+m+"$"+b,"edges"===e._private.group){var x=n["control-point-step-size"].pfValue,w=n["control-point-distances"]?n["control-point-distances"].pfValue.join("_"):void 0,_=n["control-point-weights"].value.join("_"),E=n["curve-style"].strValue,D=n["segment-distances"]?n["segment-distances"].pfValue.join("_"):void 0,S=n["segment-weights"].value.join("_");t.boundingBoxKey+="$"+x+"$"+w+"$"+_+"$"+D+"$"+S+"$"+E}t.styleKey=Date.now()}},a.applyParsedProperty=function(e,t){var r,a,o=this,s=t,l=e._private.style,u=o.types,c=o.properties[s.name].type,d=s.bypass,h=l[s.name],p=h&&h.bypass,v=e._private;if(("height"===t.name||"width"===t.name)&&e.isNode()){if("auto"===t.value&&!e.isParent())return!1;"auto"!==t.value&&e.isParent()&&(s=t=this.parse(t.name,"auto",d))}if(d&&s.deleteBypass){var f=l[s.name];return f?f.bypass&&f.bypassed?(l[s.name]=f.bypassed,!0):!1:!0}var g=function(){n.error("Do not assign mappings to elements without corresponding data (e.g. ele `"+e.id()+"` for property `"+s.name+"` with data field `"+s.field+"`); try a `["+s.field+"]` selector to limit scope to elements with `"+s.field+"` defined")};switch(s.mapped){case u.mapData:case u.mapLayoutData:case u.mapScratch:var r,y=s.mapped===u.mapLayoutData,m=s.mapped===u.mapScratch,b=s.field.split(".");r=m||y?v.scratch:v.data;for(var x=0;x<b.length&&r;x++){var w=b[x];r=r[w]}var _;if(_=i.number(r)?(r-s.fieldMin)/(s.fieldMax-s.fieldMin):0,0>_?_=0:_>1&&(_=1),c.color){var E=s.valueMin[0],D=s.valueMax[0],S=s.valueMin[1],k=s.valueMax[1],T=s.valueMin[2],P=s.valueMax[2],C=null==s.valueMin[3]?1:s.valueMin[3],N=null==s.valueMax[3]?1:s.valueMax[3],M=[Math.round(E+(D-E)*_),Math.round(S+(k-S)*_),Math.round(T+(P-T)*_),Math.round(C+(N-C)*_)];a={bypass:s.bypass,name:s.name,value:M,strValue:"rgb("+M[0]+", "+M[1]+", "+M[2]+")"}}else{if(!c.number)return!1;var B=s.valueMin+(s.valueMax-s.valueMin)*_;a=this.parse(s.name,B,s.bypass,!0)}a||(a=this.parse(s.name,h.strValue,s.bypass,!0)),a||g(),a.mapping=s,s=a;break;case u.data:case u.layoutData:case u.scratch:var r,y=s.mapped===u.layoutData,m=s.mapped===u.scratch,b=s.field.split(".");if(r=m||y?v.scratch:v.data)for(var x=0;x<b.length;x++){var w=b[x];r=r[w]}if(a=this.parse(s.name,r,s.bypass,!0),!a){var z=h?h.strValue:"";a=this.parse(s.name,z,s.bypass,!0)}a||g(),a.mapping=s,s=a;break;case u.fn:var O=s.value,I=O(e);a=this.parse(s.name,I,s.bypass,!0),a.mapping=s,s=a;break;case void 0:break;default:return!1}return d?(p?s.bypassed=h.bypassed:s.bypassed=h,l[s.name]=s):p?h.bypassed=s:l[s.name]=s,!0},a.update=function(){var e=this._private.cy,t=e.elements();t.updateStyle()},a.updateMappers=function(e){for(var t=this,r=0;r<e.length;r++){for(var n=e[r],i=n._private.style,a=0;a<t.properties.length;a++){var o=t.properties[a],s=i[o.name];if(s&&s.mapping){var l=s.mapping;this.applyParsedProperty(n,l)}}this.updateStyleHints(n)}},a.updateTransitions=function(e,t,r){var n=this,a=e._private,o=a.style,s=o["transition-property"].value,l=o["transition-duration"].pfValue,u=o["transition-delay"].pfValue,c={};if(s.length>0&&l>0){for(var d=!1,h=0;h<s.length;h++){var p=s[h],v=o[p],f=t[p];if(f){var g,y=f.prev,m=y,b=null!=f.next?f.next:v,x=!1,w=1e-6;m&&(i.number(m.pfValue)&&i.number(b.pfValue)?(x=b.pfValue-m.pfValue,g=m.pfValue+w*x):i.number(m.value)&&i.number(b.value)?(x=b.value-m.value,g=m.value+w*x):i.array(m.value)&&i.array(b.value)&&(x=m.value[0]!==b.value[0]||m.value[1]!==b.value[1]||m.value[2]!==b.value[2],g=m.strValue),x&&(c[p]=b.strValue,this.applyBypass(e,p,g),d=!0))}}if(!d)return;a.transitioning=!0,e.stop(),u>0&&e.delay(u),e.animate({css:c},{duration:l,easing:o["transition-timing-function"].value,queue:!1,complete:function(){r||n.removeBypasses(e,s),a.transitioning=!1}})}else a.transitioning&&(e.stop(),this.removeBypasses(e,s),a.transitioning=!1)},t.exports=a},{"../is":77,"../util":94}],83:[function(e,t,r){"use strict";var n=e("../is"),i=e("../util"),a={};a.applyBypass=function(e,t,r,a){var o=this,s=[],l=!0;if("*"===t||"**"===t){if(void 0!==r)for(var u=0;u<o.properties.length;u++){var c=o.properties[u],t=c.name,d=this.parse(t,r,!0);d&&s.push(d)}}else if(n.string(t)){var d=this.parse(t,r,!0);d&&s.push(d)}else{if(!n.plainObject(t))return!1;var h=t;a=r;for(var u=0;u<o.properties.length;u++){var c=o.properties[u],t=c.name,r=h[t];if(void 0===r&&(r=h[i.dash2camel(t)]),void 0!==r){var d=this.parse(t,r,!0);d&&s.push(d)}}}if(0===s.length)return!1;for(var p=!1,u=0;u<e.length;u++){for(var v,f=e[u],g=f._private.style,y={},m=0;m<s.length;m++){var c=s[m];if(a){var b=g[c.name];v=y[c.name]={prev:b}}p=this.applyParsedProperty(f,c)||p,a&&(v.next=g[c.name])}p&&this.updateStyleHints(f),a&&this.updateTransitions(f,y,l)}return p},a.overrideBypass=function(e,t,r){t=i.camel2dash(t);for(var n=0;n<e.length;n++){var a=e[n],o=a._private.style[t],s=this.properties[t].type,l=s.color,u=s.mutiple;o.bypass?(o.value=r,null!=o.pfValue&&(o.pfValue=r),l?o.strValue="rgb("+r.join(",")+")":u?o.strValue=r.join(" "):o.strValue=""+r):this.applyBypass(a,t,r)}},a.removeAllBypasses=function(e,t){return this.removeBypasses(e,this.propertyNames,t)},a.removeBypasses=function(e,t,r){for(var n=!0,i=0;i<e.length;i++){for(var a=e[i],o={},s=a._private.style,l=0;l<t.length;l++){var u=t[l],c=this.properties[u],d="",h=this.parse(u,d,!0),p=s[c.name],v=o[c.name]={prev:p};this.applyParsedProperty(a,h),v.next=s[c.name]}this.updateStyleHints(a),r&&this.updateTransitions(a,o,n)}},t.exports=a},{"../is":77,"../util":94}],84:[function(e,t,r){"use strict";var n=e("../window"),i={};i.getEmSizeInPixels=function(){var e=this.containerCss("font-size");return null!=e?parseFloat(e):1},i.containerCss=function(e){var t=this._private.cy,r=t.container();return n&&r&&n.getComputedStyle?n.getComputedStyle(r).getPropertyValue(e):void 0},t.exports=i},{"../window":100}],85:[function(e,t,r){"use strict";var n=e("../util"),i=e("../is"),a={};a.getRenderedStyle=function(e){return this.getRawStyle(e,!0)},a.getRawStyle=function(e,t){var r=this,e=e[0];if(e){for(var i={},a=0;a<r.properties.length;a++){var o=r.properties[a],s=r.getStylePropertyValue(e,o.name,t);s&&(i[o.name]=s,i[n.dash2camel(o.name)]=s)}return i}},a.getStylePropertyValue=function(e,t,r){var n=this,e=e[0];if(e){var i=e._private.style,a=n.properties[t],o=a.type,s=i[a.name],l=e.cy().zoom();if(s){var u=s.units?o.implicitUnits||"px":null,c=u?[].concat(s.pfValue).map(function(e){return e*(r?l:1)+u}).join(" "):s.strValue;return c}}},a.getValueStyle=function(e){var t,r=this,a={},o=i.element(e);if(t=o?e._private.style:e)for(var s=0;s<r.properties.length;s++){var l=r.properties[s],u=t[l.name]||t[n.dash2camel(l.name)];void 0!==u&&(u=i.plainObject(u)?this.parse(l.name,u.strValue):this.parse(l.name,u)),u&&(a[l.name]=u,a[n.dash2camel(l.name)]=u)}return a},a.getPropsList=function(e){var t=this,r=[],i=e,a=t.properties;if(i)for(var o in i){var s=i[o],l=a[o]||a[n.camel2dash(o)],u=this.parse(l.name,s);r.push(u)}return r},t.exports=a},{"../is":77,"../util":94}],86:[function(e,t,r){"use strict";var n=e("../is"),i=e("../util"),a=e("../selector"),o=function(e){return this instanceof o?n.core(e)?(this._private={cy:e,coreStyle:{},newStyle:!0},this.length=0,void this.addDefaultStylesheet()):void i.error("A style must have a core reference"):new o(e)},s=o.prototype;s.instanceString=function(){return"style"},s.clear=function(){for(var e=0;e<this.length;e++)this[e]=void 0;return this.length=0,this._private.newStyle=!0,this},s.resetToDefault=function(){return this.clear(),this.addDefaultStylesheet(),this},s.core=function(){return this._private.coreStyle},s.selector=function(e){var t="core"===e?null:new a(e),r=this.length++;return this[r]={selector:t,properties:[],mappedProperties:[],index:r},this},s.css=function(){var e=this,t=arguments;switch(t.length){case 1:for(var r=t[0],n=0;n<e.properties.length;n++){var a=e.properties[n],o=r[a.name];void 0===o&&(o=r[i.dash2camel(a.name)]),void 0!==o&&this.cssRule(a.name,o)}break;case 2:this.cssRule(t[0],t[1])}return this},s.style=s.css,s.cssRule=function(e,t){var r=this.parse(e,t);if(r){var n=this.length-1;this[n].properties.push(r),this[n].properties[r.name]=r,r.name.match(/pie-(\d+)-background-size/)&&r.value&&(this._private.hasPie=!0),r.mapped&&this[n].mappedProperties.push(r);var i=!this[n].selector;i&&(this._private.coreStyle[r.name]=r)}return this},o.fromJson=function(e,t){var r=new o(e);return r.fromJson(t),r},o.fromString=function(e,t){return new o(e).fromString(t)},[e("./apply"),e("./bypass"),e("./container"),e("./get-for-ele"),e("./json"),e("./string-sheet"),e("./properties"),e("./parse")].forEach(function(e){i.extend(s,e)}),o.types=s.types,o.properties=s.properties,t.exports=o},{"../is":77,"../selector":81,"../util":94,"./apply":82,"./bypass":83,"./container":84,"./get-for-ele":85,"./json":87,"./parse":88,"./properties":89,"./string-sheet":90}],87:[function(e,t,r){"use strict";var n={};n.applyFromJson=function(e){for(var t=this,r=0;r<e.length;r++){var n=e[r],i=n.selector,a=n.style||n.css;t.selector(i);for(var o in a){var s=a[o];t.css(o,s)}}return t},n.fromJson=function(e){var t=this;return t.resetToDefault(),t.applyFromJson(e),t},n.json=function(){for(var e=[],t=this.defaultLength;t<this.length;t++){for(var r=this[t],n=r.selector,i=r.properties,a={},o=0;o<i.length;o++){var s=i[o];a[s.name]=s.strValue}e.push({selector:n?n.toString():"core",style:a})}return e},t.exports=n},{}],88:[function(e,t,r){"use strict";var n=e("../util"),i=e("../is"),a={};a.parse=function(e,t,r,i){var a,s=[e,t,r,i].join("$"),l=this.propCache=this.propCache||{},u=o.bind(this);return(a=l[s])||(a=l[s]=u(e,t,r,i)),a=n.copy(a),a&&(a.value=n.copy(a.value)),a};var o=function(e,t,r,a){var o=this;e=n.camel2dash(e);var s=o.properties[e],l=t,u=o.types;if(!s)return null;if(void 0===t||null===t)return null;s.alias&&(s=s.pointsTo,e=s.name);var c=i.string(t);c&&(t=t.trim());var d=s.type;if(!d)return null;if(r&&(""===t||null===t))return{name:e,value:t,bypass:!0,deleteBypass:!0};if(i.fn(t))return{name:e,value:t,strValue:"fn",mapped:u.fn,bypass:r};var h,p,v,f,g,y;if(!c||a);else{if((h=new RegExp(u.data.regex).exec(t))||(v=new RegExp(u.layoutData.regex).exec(t))||(g=new RegExp(u.scratch.regex).exec(t))){if(r)return!1;var m;return m=h?u.data:v?u.layoutData:u.scratch,h=h||v||g,{name:e,value:h,strValue:""+t,mapped:m,field:h[1],bypass:r}}if((p=new RegExp(u.mapData.regex).exec(t))||(f=new RegExp(u.mapLayoutData.regex).exec(t))||(y=new RegExp(u.mapScratch.regex).exec(t))){if(r)return!1;if(d.multiple)return!1;var m;if(m=p?u.mapData:f?u.mapLayoutData:u.mapScratch,p=p||f||y,!d.color&&!d.number)return!1;var b=this.parse(e,p[4]);if(!b||b.mapped)return!1;var x=this.parse(e,p[5]);if(!x||x.mapped)return!1;if(b.value===x.value)return!1;if(d.color){var w=b.value,_=x.value,E=!(w[0]!==_[0]||w[1]!==_[1]||w[2]!==_[2]||w[3]!==_[3]&&(null!=w[3]&&1!==w[3]||null!=_[3]&&1!==_[3]));if(E)return!1}return{name:e,value:p,strValue:""+t,mapped:m,field:p[1],fieldMin:parseFloat(p[2]),fieldMax:parseFloat(p[3]),valueMin:b.value,valueMax:x.value,bypass:r}}}if(d.multiple&&"multiple"!==a){var D;if(D=c?t.split(/\s+/):i.array(t)?t:[t],d.evenMultiple&&D.length%2!==0)return null;var S=D.map(function(t){var n=o.parse(e,t,r,"multiple");return null!=n.pfValue?n.pfValue:n.value});return{name:e,value:S,pfValue:S,strValue:S.join(" "),bypass:r,units:d.number&&!d.unitless?d.implicitUnits||"px":void 0}}var k=function(){for(var n=0;n<d.enums.length;n++){var i=d.enums[n];if(i===t)return{name:e,value:t,strValue:""+t,bypass:r}}return null};if(d.number){var T,P="px";if(d.units&&(T=d.units),d.implicitUnits&&(P=d.implicitUnits),!d.unitless)if(c){var C="px|em"+(d.allowPercent?"|\\%":"");T&&(C=T);var N=t.match("^("+n.regex.number+")("+C+")?$");N&&(t=N[1],T=N[2]||P)}else(!T||d.implicitUnits)&&(T=P);if(t=parseFloat(t),isNaN(t)&&void 0===d.enums)return null;if(isNaN(t)&&void 0!==d.enums)return t=l,k();if(d.integer&&!i.integer(t))return null;if(void 0!==d.min&&t<d.min||void 0!==d.max&&t>d.max)return null;var M={name:e,value:t,strValue:""+t+(T?T:""),units:T,bypass:r};return d.unitless||"px"!==T&&"em"!==T?M.pfValue=t:M.pfValue="px"!==T&&T?this.getEmSizeInPixels()*t:t,("ms"===T||"s"===T)&&(M.pfValue="ms"===T?t:1e3*t),("deg"===T||"rad"===T)&&(M.pfValue="rad"===T?t:t*Math.PI/180),M}if(d.propList){var B=[],z=""+t;if("none"===z);else{for(var O=z.split(","),I=0;I<O.length;I++){var L=O[I].trim();o.properties[L]&&B.push(L)}if(0===B.length)return null}return{name:e,value:B,strValue:0===B.length?"none":B.join(", "),bypass:r}}if(d.color){var A=n.color2tuple(t);return A?{name:e,value:A,strValue:""+t,bypass:r,roundValue:!0}:null}if(d.regex||d.regexes){if(d.enums){var R=k();if(R)return R}for(var V=d.regexes?d.regexes:[d.regex],I=0;I<V.length;I++){var F=new RegExp(V[I]),j=F.exec(t);if(j)return{name:e,value:j,strValue:""+t,bypass:r}}return null}return d.string?{name:e,value:t,strValue:""+t,bypass:r}:d.enums?k():null};t.exports=a},{"../is":77,"../util":94}],89:[function(e,t,r){"use strict";var n=e("../util"),i={};!function(){var e=n.regex.number,t=n.regex.rgbaNoBackRefs,r=n.regex.hslaNoBackRefs,a=n.regex.hex3,o=n.regex.hex6,s=function(e){return"^"+e+"\\s*\\(\\s*([\\w\\.]+)\\s*\\)$"},l=function(n){var i=e+"|\\w+|"+t+"|"+r+"|"+a+"|"+o;return"^"+n+"\\s*\\(([\\w\\.]+)\\s*\\,\\s*("+e+")\\s*\\,\\s*("+e+")\\s*,\\s*("+i+")\\s*\\,\\s*("+i+")\\)$"};i.types={time:{number:!0,min:0,units:"s|ms",implicitUnits:"ms"},percent:{number:!0,min:0,max:100,units:"%",implicitUnits:"%"},zeroOneNumber:{number:!0,min:0,max:1,unitless:!0},nOneOneNumber:{number:!0,min:-1,max:1,unitless:!0},nonNegativeInt:{number:!0,min:0,integer:!0,unitless:!0},position:{enums:["parent","origin"]},nodeSize:{number:!0,min:0,enums:["auto","label"]},number:{number:!0,unitless:!0},numbers:{number:!0,unitless:!0,multiple:!0},size:{number:!0,min:0},bidirectionalSize:{number:!0},bidirectionalSizes:{number:!0,multiple:!0},bgSize:{number:!0,min:0,allowPercent:!0},bgWH:{number:!0,min:0,allowPercent:!0,enums:["auto"]},bgPos:{number:!0,allowPercent:!0},bgRepeat:{enums:["repeat","repeat-x","repeat-y","no-repeat"]},bgFit:{enums:["none","contain","cover"]},bgClip:{enums:["none","node"]},color:{color:!0},bool:{enums:["yes","no"]},lineStyle:{enums:["solid","dotted","dashed"]},borderStyle:{enums:["solid","dotted","dashed","double"]},curveStyle:{enums:["bezier","unbundled-bezier","haystack","segments"]},fontFamily:{regex:'^([\\w- \\"]+(?:\\s*,\\s*[\\w- \\"]+)*)$'},fontVariant:{enums:["small-caps","normal"]},fontStyle:{enums:["italic","normal","oblique"]},fontWeight:{enums:["normal","bold","bolder","lighter","100","200","300","400","500","600","800","900",100,200,300,400,500,600,700,800,900]},textDecoration:{enums:["none","underline","overline","line-through"]},textTransform:{enums:["none","uppercase","lowercase"]},textWrap:{enums:["none","wrap"]},textBackgroundShape:{enums:["rectangle","roundrectangle"]},nodeShape:{enums:["rectangle","roundrectangle","ellipse","triangle","square","pentagon","hexagon","heptagon","octagon","star","diamond","vee","rhomboid","polygon"]},compoundIncludeLabels:{enums:["include","exclude"]},arrowShape:{enums:["tee","triangle","triangle-tee","triangle-backcurve","half-triangle-overshot","vee","square","circle","diamond","none"]},arrowFill:{enums:["filled","hollow"]},display:{enums:["element","none"]},visibility:{enums:["hidden","visible"]},valign:{enums:["top","center","bottom"]},halign:{enums:["left","center","right"]},text:{string:!0},data:{mapping:!0,regex:s("data")},layoutData:{mapping:!0,regex:s("layoutData")},scratch:{mapping:!0,regex:s("scratch")},mapData:{mapping:!0,regex:l("mapData")},mapLayoutData:{mapping:!0,regex:l("mapLayoutData")},mapScratch:{mapping:!0,regex:l("mapScratch")},fn:{mapping:!0,fn:!0},url:{regex:"^url\\s*\\(\\s*([^\\s]+)\\s*\\s*\\)|none|(.+)$"},propList:{propList:!0},angle:{number:!0,units:"deg|rad",implicitUnits:"rad"},textRotation:{enums:["none","autorotate"]},polygonPointList:{number:!0,multiple:!0,evenMultiple:!0,min:-1,max:1,unitless:!0},easing:{regexes:["^(spring)\\s*\\(\\s*("+e+")\\s*,\\s*("+e+")\\s*\\)$","^(cubic-bezier)\\s*\\(\\s*("+e+")\\s*,\\s*("+e+")\\s*,\\s*("+e+")\\s*,\\s*("+e+")\\s*\\)$"],enums:["linear","ease","ease-in","ease-out","ease-in-out","ease-in-sine","ease-out-sine","ease-in-out-sine","ease-in-quad","ease-out-quad","ease-in-out-quad","ease-in-cubic","ease-out-cubic","ease-in-out-cubic","ease-in-quart","ease-out-quart","ease-in-out-quart","ease-in-quint","ease-out-quint","ease-in-out-quint","ease-in-expo","ease-out-expo","ease-in-out-expo","ease-in-circ","ease-out-circ","ease-in-out-circ"]}};var u=i.types,c=i.properties=[{name:"text-valign",type:u.valign},{name:"text-halign",type:u.halign},{name:"color",type:u.color},{name:"label",type:u.text},{name:"text-outline-color",type:u.color},{name:"text-outline-width",type:u.size},{name:"text-outline-opacity",type:u.zeroOneNumber},{name:"text-opacity",type:u.zeroOneNumber},{name:"text-background-color",type:u.color},{name:"text-background-opacity",type:u.zeroOneNumber},{name:"text-border-opacity",type:u.zeroOneNumber},{name:"text-border-color",type:u.color},{name:"text-border-width",type:u.size},{name:"text-border-style",type:u.borderStyle},{name:"text-background-shape",type:u.textBackgroundShape},{name:"text-transform",type:u.textTransform},{name:"text-wrap",type:u.textWrap},{name:"text-max-width",type:u.size},{name:"text-events",type:u.bool},{name:"font-family",type:u.fontFamily},{name:"font-style",type:u.fontStyle},{name:"font-weight",type:u.fontWeight},{name:"font-size",type:u.size},{name:"min-zoomed-font-size",type:u.size},{name:"edge-text-rotation",type:u.textRotation},{name:"events",type:u.bool},{name:"display",type:u.display},{name:"visibility",type:u.visibility},{name:"opacity",type:u.zeroOneNumber},{name:"z-index",type:u.nonNegativeInt},{name:"overlay-padding",type:u.size},{name:"overlay-color",type:u.color},{name:"overlay-opacity",type:u.zeroOneNumber},{name:"shadow-blur",type:u.size},{name:"shadow-color",type:u.color},{name:"shadow-opacity",type:u.zeroOneNumber},{name:"shadow-offset-x",type:u.bidirectionalSize},{name:"shadow-offset-y",type:u.bidirectionalSize},{name:"text-shadow-blur",type:u.size},{name:"text-shadow-color",type:u.color},{name:"text-shadow-opacity",type:u.zeroOneNumber},{name:"text-shadow-offset-x",type:u.bidirectionalSize},{name:"text-shadow-offset-y",type:u.bidirectionalSize},{name:"transition-property",type:u.propList},{name:"transition-duration",type:u.time},{name:"transition-delay",type:u.time},{name:"transition-timing-function",type:u.easing},{name:"height",type:u.nodeSize},{name:"width",type:u.nodeSize},{name:"shape",type:u.nodeShape},{name:"shape-polygon-points",type:u.polygonPointList},{name:"background-color",type:u.color},{name:"background-opacity",type:u.zeroOneNumber},{name:"background-blacken",type:u.nOneOneNumber},{name:"padding-left",type:u.size},{name:"padding-right",type:u.size},{name:"padding-top",type:u.size},{name:"padding-bottom",type:u.size},{name:"border-color",type:u.color},{name:"border-opacity",type:u.zeroOneNumber},{name:"border-width",type:u.size},{name:"border-style",type:u.borderStyle},{name:"background-image",type:u.url},{name:"background-image-opacity",type:u.zeroOneNumber},{name:"background-position-x",type:u.bgPos},{name:"background-position-y",type:u.bgPos},{name:"background-repeat",type:u.bgRepeat},{name:"background-fit",type:u.bgFit},{name:"background-clip",type:u.bgClip},{name:"background-width",type:u.bgWH},{name:"background-height",type:u.bgWH},{name:"position",type:u.position},{name:"compound-sizing-wrt-labels",type:u.compoundIncludeLabels},{name:"line-style",type:u.lineStyle},{name:"line-color",type:u.color},{name:"curve-style",type:u.curveStyle},{name:"haystack-radius",type:u.zeroOneNumber},{name:"control-point-step-size",type:u.size},{name:"control-point-distances",type:u.bidirectionalSizes},{name:"control-point-weights",type:u.numbers},{name:"segment-distances",type:u.bidirectionalSizes},{name:"segment-weights",type:u.numbers},{name:"selection-box-color",type:u.color},{name:"selection-box-opacity",type:u.zeroOneNumber},{name:"selection-box-border-color",type:u.color},{name:"selection-box-border-width",type:u.size},{name:"active-bg-color",type:u.color},{name:"active-bg-opacity",type:u.zeroOneNumber},{name:"active-bg-size",type:u.size},{name:"outside-texture-bg-color",type:u.color},{name:"outside-texture-bg-opacity",type:u.zeroOneNumber}],d=i.aliases=[{name:"content",pointsTo:"label"},{name:"control-point-distance",pointsTo:"control-point-distances"},{name:"control-point-weight",pointsTo:"control-point-weights"}];i.pieBackgroundN=16,c.push({name:"pie-size",type:u.bgSize});for(var h=1;h<=i.pieBackgroundN;h++)c.push({name:"pie-"+h+"-background-color",type:u.color}),c.push({name:"pie-"+h+"-background-size",type:u.percent}),c.push({name:"pie-"+h+"-background-opacity",type:u.zeroOneNumber});var p=i.arrowPrefixes=["source","mid-source","target","mid-target"];[{name:"arrow-shape",type:u.arrowShape},{name:"arrow-color",type:u.color},{name:"arrow-fill",type:u.arrowFill}].forEach(function(e){p.forEach(function(t){var r=t+"-"+e.name,n=e.type;c.push({name:r,type:n})})},{}),i.propertyNames=c.map(function(e){return e.name});for(var h=0;h<c.length;h++){var v=c[h];c[v.name]=v}for(var h=0;h<d.length;h++){var f=d[h],g=c[f.pointsTo],y={name:f.name,alias:!0,pointsTo:g};c.push(y),c[f.name]=y}}(),i.addDefaultStylesheet=function(){this.selector("node, edge").css(n.extend({events:"yes","text-events":"no","text-valign":"top","text-halign":"center",color:"#000","text-outline-color":"#000","text-outline-width":0,"text-outline-opacity":1,"text-opacity":1,"text-decoration":"none","text-transform":"none","text-wrap":"none","text-max-width":9999,"text-background-color":"#000","text-background-opacity":0,"text-border-opacity":0,"text-border-width":0,"text-border-style":"solid","text-border-color":"#000","text-background-shape":"rectangle","font-family":"Helvetica Neue, Helvetica, sans-serif","font-style":"normal","font-weight":"normal","font-size":16,"min-zoomed-font-size":0,"edge-text-rotation":"none",visibility:"visible",display:"element",opacity:1,"z-index":0,label:"","overlay-opacity":0,"overlay-color":"#000","overlay-padding":10,"shadow-opacity":0,"shadow-color":"#000","shadow-blur":10,"shadow-offset-x":0,"shadow-offset-y":0,"text-shadow-opacity":0,"text-shadow-color":"#000","text-shadow-blur":5,"text-shadow-offset-x":0,"text-shadow-offset-y":0,"transition-property":"none","transition-duration":0,"transition-delay":0,"transition-timing-function":"linear","background-blacken":0,"background-color":"#888","background-opacity":1,"background-image":"none","background-image-opacity":1,"background-position-x":"50%","background-position-y":"50%","background-repeat":"no-repeat","background-fit":"none","background-clip":"node","background-width":"auto","background-height":"auto","border-color":"#000","border-opacity":1,"border-width":0,"border-style":"solid",height:30,width:30,shape:"ellipse","shape-polygon-points":"-1, -1,   1, -1,   1, 1,   -1, 1","padding-top":0,"padding-bottom":0,"padding-left":0,"padding-right":0,position:"origin","compound-sizing-wrt-labels":"include"},{"pie-size":"100%"},[{name:"pie-{{i}}-background-color",value:"black"},{name:"pie-{{i}}-background-size",value:"0%"},{name:"pie-{{i}}-background-opacity",value:1}].reduce(function(e,t){for(var r=1;r<=i.pieBackgroundN;r++){var n=t.name.replace("{{i}}",r),a=t.value;e[n]=a}return e},{}),{"line-style":"solid","line-color":"#ddd","control-point-step-size":40,"control-point-weights":.5,"segment-weights":.5,"segment-distances":20,"curve-style":"bezier","haystack-radius":.8},[{name:"arrow-shape",value:"none"},{name:"arrow-color",value:"#ddd"},{name:"arrow-fill",value:"filled"}].reduce(function(e,t){return i.arrowPrefixes.forEach(function(r){var n=r+"-"+t.name,i=t.value;e[n]=i}),e},{}))).selector("$node > node").css({width:"auto",height:"auto",shape:"rectangle","padding-top":10,"padding-right":10,"padding-left":10,"padding-bottom":10}).selector("edge").css({width:1}).selector(":active").css({"overlay-color":"black","overlay-padding":10,"overlay-opacity":.25}).selector("core").css({"selection-box-color":"#ddd","selection-box-opacity":.65,"selection-box-border-color":"#aaa","selection-box-border-width":1,"active-bg-color":"black","active-bg-opacity":.15,"active-bg-size":30,"outside-texture-bg-color":"#000","outside-texture-bg-opacity":.125}),this.defaultLength=this.length},t.exports=i},{"../util":94}],90:[function(e,t,r){"use strict";var n=e("../util"),i=e("../selector"),a={};a.applyFromString=function(e){function t(){c=c.length>a.length?c.substr(a.length):""}function r(){o=o.length>s.length?o.substr(s.length):""}var a,o,s,l=this,u=this,c=""+e;for(c=c.replace(/[\/][*](\s|.)+?[*][\/]/g,"");;){var d=c.match(/^\s*$/);if(d)break;var h=c.match(/^\s*((?:.|\s)+?)\s*\{((?:.|\s)+?)\}/);if(!h){n.error("Halting stylesheet parsing: String stylesheet contains more to parse but no selector and block found in: "+c);break}a=h[0];var p=h[1];if("core"!==p){var v=new i(p);if(v._private.invalid){n.error("Skipping parsing of block: Invalid selector found in string stylesheet: "+p),t();continue}}var f=h[2],g=!1;o=f;for(var y=[];;){var d=o.match(/^\s*$/);if(d)break;var m=o.match(/^\s*(.+?)\s*:\s*(.+?)\s*;/);if(!m){n.error("Skipping parsing of block: Invalid formatting of style property and value definitions found in:"+f),g=!0;break}s=m[0];var b=m[1],x=m[2],w=l.properties[b];if(w){var _=u.parse(b,x);_?(y.push({name:b,val:x}),r()):(n.error("Skipping property: Invalid property definition in: "+s),r())}else n.error("Skipping property: Invalid property name in: "+s),r()}if(g){t();break}u.selector(p);for(var E=0;E<y.length;E++){var w=y[E];u.css(w.name,w.val)}t()}return u},a.fromString=function(e){var t=this;return t.resetToDefault(),t.applyFromString(e),t},t.exports=a},{"../selector":81,"../util":94}],91:[function(e,t,r){"use strict";var n=e("./is"),i=e("./util"),a=e("./style"),o=function(){return this instanceof o?void(this.length=0):new o},s=o.prototype;s.instanceString=function(){return"stylesheet"},s.selector=function(e){var t=this.length++;return this[t]={selector:e,properties:[]},this},s.css=function(e,t){var r=this.length-1;if(n.string(e))this[r].properties.push({name:e,value:t});else if(n.plainObject(e))for(var o=e,s=0;s<a.properties.length;s++){var l=a.properties[s],u=o[l.name];if(void 0===u&&(u=o[i.dash2camel(l.name)]),void 0!==u){var e=l.name,t=u;this[r].properties.push({name:e,value:t})}}return this},s.style=s.css,s.generateStyle=function(e){for(var t=new a(e),r=0;r<this.length;r++){var n=this[r],i=n.selector,o=n.properties;t.selector(i);for(var s=0;s<o.length;s++){var l=o[s];t.css(l.name,l.value)}}return t},t.exports=o},{"./is":77,"./style":86,"./util":94}],92:[function(_dereq_,module,exports){"use strict";var window=_dereq_("./window"),util=_dereq_("./util"),Promise=_dereq_("./promise"),Event=_dereq_("./event"),define=_dereq_("./define"),is=_dereq_("./is"),Thread=function(e){if(!(this instanceof Thread))return new Thread(e);var t=this._private={requires:[],files:[],queue:null,pass:[],disabled:!1};is.plainObject(e)&&null!=e.disabled&&(t.disabled=!!e.disabled)},thdfn=Thread.prototype,stringifyFieldVal=function(e){var t=is.fn(e)?e.toString():"JSON.parse('"+JSON.stringify(e)+"')";return t},fnAsRequire=function(e){var t,r;is.object(e)&&e.fn?(t=fnAs(e.fn,e.name),r=e.name,e=e.fn):is.fn(e)?(t=e.toString(),r=e.name):is.string(e)?t=e:is.object(e)&&(t=e.proto?"":e.name+" = {};",r=e.name,e=e.obj),t+="\n";var n=function(e,r){if(e.prototype){var n=!1;for(var i in e.prototype){n=!0;break}n&&(t+=fnAsRequire({name:r,obj:e,proto:!0},e))}};if(e.prototype&&null!=r)for(var i in e.prototype){var a="",o=e.prototype[i],s=stringifyFieldVal(o),l=r+".prototype."+i;a+=l+" = "+s+";\n",a&&(t+=a),n(o,l)}if(!is.string(e))for(var i in e){var u="";if(e.hasOwnProperty(i)){var o=e[i],s=stringifyFieldVal(o),l=r+'["'+i+'"]';u+=l+" = "+s+";\n"}u&&(t+=u),n(o,l)}return t},isPathStr=function(e){return is.string(e)&&e.match(/\.js$/)};util.extend(thdfn,{instanceString:function(){return"thread"},require:function(e,t){var r=this._private.requires;if(isPathStr(e))return this._private.files.push(e),this;if(t)e=is.fn(e)?{name:t,fn:e}:{name:t,obj:e};else if(is.fn(e)){if(!e.name)throw'The function name could not be automatically determined.  Use thread.require( someFunction, "someFunction" )';e={name:e.name,fn:e}}return r.push(e),this},pass:function(e){return this._private.pass.push(e),this},run:function(fn,pass){var self=this,_p=this._private;if(pass=pass||_p.pass.shift(),_p.stopped)throw"Attempted to run a stopped thread!  Start a new thread or do not stop the existing thread and reuse it.";if(_p.running)return _p.queue=_p.queue.then(function(){return self.run(fn,pass)});var useWW=null!=window&&!_p.disabled,useNode=!window&&"undefined"!=typeof module&&!_p.disabled;self.trigger("run");var runP=new Promise(function(resolve,reject){_p.running=!0;var threadTechAlreadyExists=_p.ran,fnImplStr=is.string(fn)?fn:fn.toString(),fnStr="\n"+_p.requires.map(function(e){return fnAsRequire(e)}).concat(_p.files.map(function(e){if(useWW){var t=function(e){return e.match(/^\.\//)||e.match(/^\.\./)?window.location.origin+window.location.pathname+e:e.match(/^\//)?window.location.origin+"/"+e:e};return'importScripts("'+t(e)+'");'}if(useNode)return'eval( require("fs").readFileSync("'+e+'", { encoding: "utf8" }) );';throw"External file `"+e+"` can not be required without any threading technology."})).concat(["( function(){","var ret = ("+fnImplStr+")("+JSON.stringify(pass)+");","if( ret !== undefined ){ resolve(ret); }","} )()\n"]).join("\n");if(_p.requires=[],_p.files=[],useWW){var fnBlob,fnUrl;if(!threadTechAlreadyExists){var fnPre=fnStr+"";fnStr=["function _ref_(o){ return eval(o); };","function broadcast(m){ return message(m); };","function message(m){ postMessage(m); };","function listen(fn){",'  self.addEventListener("message", function(m){ ','    if( typeof m === "object" && (m.data.$$eval || m.data === "$$start") ){',"    } else { ","      fn( m.data );","    }","  });","};",'self.addEventListener("message", function(m){  if( m.data.$$eval ){ eval( m.data.$$eval ); }  });',"function resolve(v){ postMessage({ $$resolve: v }); };","function reject(v){ postMessage({ $$reject: v }); };"].join("\n"),
-fnStr+=fnPre,fnBlob=new Blob([fnStr],{type:"application/javascript"}),fnUrl=window.URL.createObjectURL(fnBlob)}var ww=_p.webworker=_p.webworker||new Worker(fnUrl);threadTechAlreadyExists&&ww.postMessage({$$eval:fnStr});var cb;ww.addEventListener("message",cb=function(e){var t=is.object(e)&&is.object(e.data);t&&"$$resolve"in e.data?(ww.removeEventListener("message",cb),resolve(e.data.$$resolve)):t&&"$$reject"in e.data?(ww.removeEventListener("message",cb),reject(e.data.$$reject)):self.trigger(new Event(e,{type:"message",message:e.data}))},!1),threadTechAlreadyExists||ww.postMessage("$$start")}else if(useNode){_p.child||(_p.child=_dereq_("child_process").fork(_dereq_("path").join(__dirname,"thread-node-fork")));var child=_p.child,cb;child.on("message",cb=function(e){is.object(e)&&"$$resolve"in e?(child.removeListener("message",cb),resolve(e.$$resolve)):is.object(e)&&"$$reject"in e?(child.removeListener("message",cb),reject(e.$$reject)):self.trigger(new Event({},{type:"message",message:e}))}),child.send({$$eval:fnStr})}else{var promiseResolve=resolve,promiseReject=reject,timer=_p.timer=_p.timer||{listeners:[],exec:function(){fnStr=["function _ref_(o){ return eval(o); };","function broadcast(m){ return message(m); };",'function message(m){ self.trigger( new Event({}, { type: "message", message: m }) ); };',"function listen(fn){ timer.listeners.push( fn ); };","function resolve(v){ promiseResolve(v); };","function reject(v){ promiseReject(v); };"].join("\n")+fnStr,eval(fnStr)},message:function(e){for(var t=timer.listeners,r=0;r<t.length;r++){var n=t[r];n(e)}}};timer.exec()}}).then(function(e){return _p.running=!1,_p.ran=!0,self.trigger("ran"),e});return null==_p.queue&&(_p.queue=runP),runP},message:function(e){var t=this._private;return t.webworker&&t.webworker.postMessage(e),t.child&&t.child.send(e),t.timer&&t.timer.message(e),this},stop:function(){var e=this._private;return e.webworker&&e.webworker.terminate(),e.child&&e.child.kill(),e.timer,e.stopped=!0,this.trigger("stop")},stopped:function(){return this._private.stopped}});var fnAs=function(e,t){var r=e.toString();return r=r.replace(/function\s*?\S*?\s*?\(/,"function "+t+"(")},defineFnal=function(e){return e=e||{},function(t,r){var n=fnAs(t,"_$_$_"+e.name);return this.require(n),this.run(["function( data ){","  var origResolve = resolve;","  var res = [];","  ","  resolve = function( val ){","    res.push( val );","  };","  ","  var ret = data."+e.name+"( _$_$_"+e.name+(arguments.length>1?", "+JSON.stringify(r):"")+" );","  ","  resolve = origResolve;","  resolve( res.length > 0 ? res : ret );","}"].join("\n"))}};util.extend(thdfn,{reduce:defineFnal({name:"reduce"}),reduceRight:defineFnal({name:"reduceRight"}),map:defineFnal({name:"map"})});var fn=thdfn;fn.promise=fn.run,fn.terminate=fn.halt=fn.stop,fn.include=fn.require,util.extend(thdfn,{on:define.on(),one:define.on({unbindSelfOnTrigger:!0}),off:define.off(),trigger:define.trigger()}),define.eventAliasesOn(thdfn),module.exports=Thread},{"./define":41,"./event":42,"./is":77,"./promise":80,"./util":94,"./window":100,child_process:void 0,path:void 0}],93:[function(e,t,r){"use strict";var n=e("../is");t.exports={hex2tuple:function(e){if((4===e.length||7===e.length)&&"#"===e[0]){var t,r,n,i=4===e.length,a=16;return i?(t=parseInt(e[1]+e[1],a),r=parseInt(e[2]+e[2],a),n=parseInt(e[3]+e[3],a)):(t=parseInt(e[1]+e[2],a),r=parseInt(e[3]+e[4],a),n=parseInt(e[5]+e[6],a)),[t,r,n]}},hsl2tuple:function(e){function t(e,t,r){return 0>r&&(r+=1),r>1&&(r-=1),1/6>r?e+6*(t-e)*r:.5>r?t:2/3>r?e+(t-e)*(2/3-r)*6:e}var r,n,i,a,o,s,l,u,c=new RegExp("^"+this.regex.hsla+"$").exec(e);if(c){if(n=parseInt(c[1]),0>n?n=(360- -1*n%360)%360:n>360&&(n%=360),n/=360,i=parseFloat(c[2]),0>i||i>100)return;if(i/=100,a=parseFloat(c[3]),0>a||a>100)return;if(a/=100,o=c[4],void 0!==o&&(o=parseFloat(o),0>o||o>1))return;if(0===i)s=l=u=Math.round(255*a);else{var d=.5>a?a*(1+i):a+i-a*i,h=2*a-d;s=Math.round(255*t(h,d,n+1/3)),l=Math.round(255*t(h,d,n)),u=Math.round(255*t(h,d,n-1/3))}r=[s,l,u,o]}return r},rgb2tuple:function(e){var t,r=new RegExp("^"+this.regex.rgba+"$").exec(e);if(r){t=[];for(var n=[],i=1;3>=i;i++){var a=r[i];if("%"===a[a.length-1]&&(n[i]=!0),a=parseFloat(a),n[i]&&(a=a/100*255),0>a||a>255)return;t.push(Math.floor(a))}var o=n[1]||n[2]||n[3],s=n[1]&&n[2]&&n[3];if(o&&!s)return;var l=r[4];if(void 0!==l){if(l=parseFloat(l),0>l||l>1)return;t.push(l)}}return t},colorname2tuple:function(e){return this.colors[e.toLowerCase()]},color2tuple:function(e){return(n.array(e)?e:null)||this.colorname2tuple(e)||this.hex2tuple(e)||this.rgb2tuple(e)||this.hsl2tuple(e)},colors:{transparent:[0,0,0,0],aliceblue:[240,248,255],antiquewhite:[250,235,215],aqua:[0,255,255],aquamarine:[127,255,212],azure:[240,255,255],beige:[245,245,220],bisque:[255,228,196],black:[0,0,0],blanchedalmond:[255,235,205],blue:[0,0,255],blueviolet:[138,43,226],brown:[165,42,42],burlywood:[222,184,135],cadetblue:[95,158,160],chartreuse:[127,255,0],chocolate:[210,105,30],coral:[255,127,80],cornflowerblue:[100,149,237],cornsilk:[255,248,220],crimson:[220,20,60],cyan:[0,255,255],darkblue:[0,0,139],darkcyan:[0,139,139],darkgoldenrod:[184,134,11],darkgray:[169,169,169],darkgreen:[0,100,0],darkgrey:[169,169,169],darkkhaki:[189,183,107],darkmagenta:[139,0,139],darkolivegreen:[85,107,47],darkorange:[255,140,0],darkorchid:[153,50,204],darkred:[139,0,0],darksalmon:[233,150,122],darkseagreen:[143,188,143],darkslateblue:[72,61,139],darkslategray:[47,79,79],darkslategrey:[47,79,79],darkturquoise:[0,206,209],darkviolet:[148,0,211],deeppink:[255,20,147],deepskyblue:[0,191,255],dimgray:[105,105,105],dimgrey:[105,105,105],dodgerblue:[30,144,255],firebrick:[178,34,34],floralwhite:[255,250,240],forestgreen:[34,139,34],fuchsia:[255,0,255],gainsboro:[220,220,220],ghostwhite:[248,248,255],gold:[255,215,0],goldenrod:[218,165,32],gray:[128,128,128],grey:[128,128,128],green:[0,128,0],greenyellow:[173,255,47],honeydew:[240,255,240],hotpink:[255,105,180],indianred:[205,92,92],indigo:[75,0,130],ivory:[255,255,240],khaki:[240,230,140],lavender:[230,230,250],lavenderblush:[255,240,245],lawngreen:[124,252,0],lemonchiffon:[255,250,205],lightblue:[173,216,230],lightcoral:[240,128,128],lightcyan:[224,255,255],lightgoldenrodyellow:[250,250,210],lightgray:[211,211,211],lightgreen:[144,238,144],lightgrey:[211,211,211],lightpink:[255,182,193],lightsalmon:[255,160,122],lightseagreen:[32,178,170],lightskyblue:[135,206,250],lightslategray:[119,136,153],lightslategrey:[119,136,153],lightsteelblue:[176,196,222],lightyellow:[255,255,224],lime:[0,255,0],limegreen:[50,205,50],linen:[250,240,230],magenta:[255,0,255],maroon:[128,0,0],mediumaquamarine:[102,205,170],mediumblue:[0,0,205],mediumorchid:[186,85,211],mediumpurple:[147,112,219],mediumseagreen:[60,179,113],mediumslateblue:[123,104,238],mediumspringgreen:[0,250,154],mediumturquoise:[72,209,204],mediumvioletred:[199,21,133],midnightblue:[25,25,112],mintcream:[245,255,250],mistyrose:[255,228,225],moccasin:[255,228,181],navajowhite:[255,222,173],navy:[0,0,128],oldlace:[253,245,230],olive:[128,128,0],olivedrab:[107,142,35],orange:[255,165,0],orangered:[255,69,0],orchid:[218,112,214],palegoldenrod:[238,232,170],palegreen:[152,251,152],paleturquoise:[175,238,238],palevioletred:[219,112,147],papayawhip:[255,239,213],peachpuff:[255,218,185],peru:[205,133,63],pink:[255,192,203],plum:[221,160,221],powderblue:[176,224,230],purple:[128,0,128],red:[255,0,0],rosybrown:[188,143,143],royalblue:[65,105,225],saddlebrown:[139,69,19],salmon:[250,128,114],sandybrown:[244,164,96],seagreen:[46,139,87],seashell:[255,245,238],sienna:[160,82,45],silver:[192,192,192],skyblue:[135,206,235],slateblue:[106,90,205],slategray:[112,128,144],slategrey:[112,128,144],snow:[255,250,250],springgreen:[0,255,127],steelblue:[70,130,180],tan:[210,180,140],teal:[0,128,128],thistle:[216,191,216],tomato:[255,99,71],turquoise:[64,224,208],violet:[238,130,238],wheat:[245,222,179],white:[255,255,255],whitesmoke:[245,245,245],yellow:[255,255,0],yellowgreen:[154,205,50]}}},{"../is":77}],94:[function(e,t,r){"use strict";var n=e("../is"),i=e("../math"),a={falsify:function(){return!1},zeroify:function(){return 0},noop:function(){},error:function(e){console.error?(console.error.apply(console,arguments),console.trace&&console.trace()):(console.log.apply(console,arguments),console.trace&&console.trace())},clone:function(e){return this.extend({},e)},copy:function(e){return null==e?e:n.array(e)?e.slice():n.plainObject(e)?this.clone(e):e}};a.makeBoundingBox=i.makeBoundingBox.bind(i),a._staticEmptyObject={},a.staticEmptyObject=function(){return a._staticEmptyObject},a.extend=null!=Object.assign?Object.assign:function(e){for(var t=arguments,r=1;r<t.length;r++){var n=t[r];for(var i in n)e[i]=n[i]}return e},[e("./colors"),e("./maps"),{memoize:e("./memoize")},e("./regex"),e("./strings"),e("./timing")].forEach(function(e){a.extend(a,e)}),t.exports=a},{"../is":77,"../math":79,"./colors":93,"./maps":95,"./memoize":96,"./regex":97,"./strings":98,"./timing":99}],95:[function(e,t,r){"use strict";var n=e("../is");t.exports={mapEmpty:function(e){var t=!0;if(null!=e)for(var r in e){t=!1;break}return t},pushMap:function(e){var t=this.getMap(e);null==t?this.setMap(this.extend({},e,{value:[e.value]})):t.push(e.value)},setMap:function(e){for(var t,r=e.map,i=e.keys,a=i.length,o=0;a>o;o++){var t=i[o];n.plainObject(t)&&this.error("Tried to set map with object key"),o<i.length-1?(null==r[t]&&(r[t]={}),r=r[t]):r[t]=e.value}},getMap:function(e){for(var t=e.map,r=e.keys,i=r.length,a=0;i>a;a++){var o=r[a];if(n.plainObject(o)&&this.error("Tried to get map with object key"),t=t[o],null==t)return t}return t},deleteMap:function(e){for(var t=e.map,r=e.keys,i=r.length,a=e.keepChildren,o=0;i>o;o++){var s=r[o];n.plainObject(s)&&this.error("Tried to delete map with object key");var l=o===e.keys.length-1;if(l)if(a)for(var u in t)a[u]||(t[u]=void 0);else t[s]=void 0;else t=t[s]}}}},{"../is":77}],96:[function(e,t,r){"use strict";t.exports=function(e,t){var r=this,n={};return t||(t=function(){if(1===arguments.length)return arguments[0];for(var e=[],t=0;t<arguments.length;t++)e.push(arguments[t]);return e.join("$")}),function(){var i,a=arguments,o=t.apply(r,a);return(i=n[o])||(i=n[o]=e.apply(r,a)),i}}},{}],97:[function(e,t,r){"use strict";var n="(?:[-+]?(?:(?:\\d+|\\d*\\.\\d+)(?:[Ee][+-]?\\d+)?))",i="rgb[a]?\\(("+n+"[%]?)\\s*,\\s*("+n+"[%]?)\\s*,\\s*("+n+"[%]?)(?:\\s*,\\s*("+n+"))?\\)",a="rgb[a]?\\((?:"+n+"[%]?)\\s*,\\s*(?:"+n+"[%]?)\\s*,\\s*(?:"+n+"[%]?)(?:\\s*,\\s*(?:"+n+"))?\\)",o="hsl[a]?\\(("+n+")\\s*,\\s*("+n+"[%])\\s*,\\s*("+n+"[%])(?:\\s*,\\s*("+n+"))?\\)",s="hsl[a]?\\((?:"+n+")\\s*,\\s*(?:"+n+"[%])\\s*,\\s*(?:"+n+"[%])(?:\\s*,\\s*(?:"+n+"))?\\)",l="\\#[0-9a-fA-F]{3}",u="\\#[0-9a-fA-F]{6}";t.exports={regex:{number:n,rgba:i,rgbaNoBackRefs:a,hsla:o,hslaNoBackRefs:s,hex3:l,hex6:u}}},{}],98:[function(e,t,r){"use strict";var n=e("./memoize"),i=e("../is");t.exports={camel2dash:n(function(e){return e.replace(/([A-Z])/g,function(e){return"-"+e.toLowerCase()})}),dash2camel:n(function(e){return e.replace(/(-\w)/g,function(e){return e[1].toUpperCase()})}),capitalize:function(e){return i.emptyString(e)?e:e.charAt(0).toUpperCase()+e.substring(1)}}},{"../is":77,"./memoize":96}],99:[function(e,t,r){"use strict";var n=e("../window"),i=e("../is"),a=n?n.performance:null,o={},s=n?n.requestAnimationFrame||n.mozRequestAnimationFrame||n.webkitRequestAnimationFrame||n.msRequestAnimationFrame:null;s=s||function(e){e&&setTimeout(function(){e(l())},1e3/60)},o.requestAnimationFrame=function(e){s(e)};var l=a&&a.now?function(){return a.now()}:function(){return Date.now()};o.performanceNow=l,o.throttle=function(e,t,r){var n=!0,a=!0;return r===!1?n=!1:i.plainObject(r)&&(n="leading"in r?r.leading:n,a="trailing"in r?r.trailing:a),r=r||{},r.leading=n,r.maxWait=t,r.trailing=a,o.debounce(e,t,r)},o.now=function(){return Date.now()},o.debounce=function(e,t,r){var n,a,o,s,l,u,c,d=this,h=0,p=!1,v=!0;if(i.fn(e)){if(t=Math.max(0,t)||0,r===!0){var f=!0;v=!1}else i.plainObject(r)&&(f=r.leading,p="maxWait"in r&&(Math.max(t,r.maxWait)||0),v="trailing"in r?r.trailing:v);var g=function(){var r=t-(d.now()-s);if(0>=r){a&&clearTimeout(a);var i=c;a=u=c=void 0,i&&(h=d.now(),o=e.apply(l,n),u||a||(n=l=null))}else u=setTimeout(g,r)},y=function(){u&&clearTimeout(u),a=u=c=void 0,(v||p!==t)&&(h=d.now(),o=e.apply(l,n),u||a||(n=l=null))};return function(){if(n=arguments,s=d.now(),l=this,c=v&&(u||!f),p===!1)var r=f&&!u;else{a||f||(h=s);var i=p-(s-h),m=0>=i;m?(a&&(a=clearTimeout(a)),h=s,o=e.apply(l,n)):a||(a=setTimeout(y,i))}return m&&u?u=clearTimeout(u):u||t===p||(u=setTimeout(g,t)),r&&(m=!0,o=e.apply(l,n)),!m||u||a||(n=l=null),o}}},t.exports=o},{"../is":77,"../window":100}],100:[function(e,t,r){t.exports="undefined"==typeof window?null:window},{}]},{},[76])(76)});
-//# sourceMappingURL=cytoscape.min.js.map
+var defaults = {
+  // Called on `layoutready`
+  ready               : function() {},
+
+  // Called on `layoutstop`
+  stop                : function() {},
+
+  // Whether to animate while running the layout
+  animate             : true,
+
+  // The layout animates only after this many milliseconds
+  // (prevents flashing on fast runs)
+  animationThreshold  : 250,
+
+  // Number of iterations between consecutive screen positions update
+  // (0 -> only updated on the end)
+  refresh             : 20,
+
+  // Whether to fit the network view after when done
+  fit                 : true,
+
+  // Padding on fit
+  padding             : 30,
+
+  // Constrain layout bounds; { x1, y1, x2, y2 } or { x1, y1, w, h }
+  boundingBox         : undefined,
+
+  // Extra spacing between components in non-compound graphs
+  componentSpacing    : 100,
+
+  // Node repulsion (non overlapping) multiplier
+  nodeRepulsion       : function( node ){ return 400000; },
+
+  // Node repulsion (overlapping) multiplier
+  nodeOverlap         : 10,
+
+  // Ideal edge (non nested) length
+  idealEdgeLength     : function( edge ){ return 10; },
+
+  // Divisor to compute edge forces
+  edgeElasticity      : function( edge ){ return 100; },
+
+  // Nesting factor (multiplier) to compute ideal edge length for nested edges
+  nestingFactor       : 5,
+
+  // Gravity force (constant)
+  gravity             : 80,
+
+  // Maximum number of iterations to perform
+  numIter             : 1000,
+
+  // Initial temperature (maximum node displacement)
+  initialTemp         : 200,
+
+  // Cooling factor (how the temperature is reduced between consecutive iterations
+  coolingFactor       : 0.95,
+
+  // Lower temperature threshold (below this point the layout will end)
+  minTemp             : 1.0,
+
+  // Whether to use threading to speed up the layout
+  useMultitasking     : true
+};
+
+
+/**
+ * @brief       : constructor
+ * @arg options : object containing layout options
+ */
+function CoseLayout(options) {
+  this.options = util.extend({}, defaults, options);
+
+  this.options.layout = this;
+}
+
+
+/**
+ * @brief : runs the layout
+ */
+CoseLayout.prototype.run = function() {
+  var options = this.options;
+  var cy      = options.cy;
+  var layout  = this;
+  var thread  = this.thread;
+
+  if( !thread || thread.stopped() ){
+    thread = this.thread = Thread({ disabled: !options.useMultitasking });
+  }
+
+  layout.stopped = false;
+
+  layout.trigger({ type: 'layoutstart', layout: layout });
+
+  // Set DEBUG - Global variable
+  if (true === options.debug) {
+    DEBUG = true;
+  } else {
+    DEBUG = false;
+  }
+
+  // Initialize layout info
+  var layoutInfo = createLayoutInfo(cy, layout, options);
+
+  // Show LayoutInfo contents if debugging
+  if (DEBUG) {
+    printLayoutInfo(layoutInfo);
+  }
+
+  // If required, randomize node positions
+  // if (true === options.randomize) {
+    randomizePositions(layoutInfo, cy);
+  // }
+
+  var startTime = Date.now();
+  var refreshRequested = false;
+  var refresh = function( rOpts ){
+    rOpts = rOpts || {};
+
+    if( refreshRequested ){
+      return;
+    }
+
+    if( !rOpts.force && Date.now() - startTime < options.animationThreshold ){
+      return;
+    }
+
+    refreshRequested = true;
+
+    util.requestAnimationFrame(function(){
+      refreshPositions(layoutInfo, cy, options);
+
+      // Fit the graph if necessary
+      if (true === options.fit) {
+        cy.fit( options.padding );
+      }
+
+      refreshRequested = false;
+
+      if( rOpts.next ){ rOpts.next(); }
+    });
+  };
+
+  thread.on('message', function( e ){
+    var layoutNodes = e.message;
+
+    layoutInfo.layoutNodes = layoutNodes;
+    refresh();
+  });
+
+  thread.pass({
+    layoutInfo: layoutInfo,
+    options: {
+      animate: options.animate,
+      refresh: options.refresh,
+      componentSpacing: options.componentSpacing,
+      nodeOverlap: options.nodeOverlap,
+      nestingFactor: options.nestingFactor,
+      gravity: options.gravity,
+      numIter: options.numIter,
+      initialTemp: options.initialTemp,
+      coolingFactor: options.coolingFactor,
+      minTemp: options.minTemp
+    }
+  }).run(function( pass ){
+    var layoutInfo = pass.layoutInfo;
+    var options = pass.options;
+    var stopped = false;
+
+    /**
+     * @brief          : Performs one iteration of the physical simulation
+     * @arg layoutInfo : LayoutInfo object already initialized
+     * @arg cy         : Cytoscape object
+     * @arg options    : Layout options
+     */
+    var step = function(layoutInfo, options, step) {
+      // var s = "\n\n###############################";
+      // s += "\nSTEP: " + step;
+      // s += "\n###############################\n";
+      // logDebug(s);
+
+      // Calculate node repulsions
+      calculateNodeForces(layoutInfo, options);
+      // Calculate edge forces
+      calculateEdgeForces(layoutInfo, options);
+      // Calculate gravity forces
+      calculateGravityForces(layoutInfo, options);
+      // Propagate forces from parent to child
+      propagateForces(layoutInfo, options);
+      // Update positions based on calculated forces
+      updatePositions(layoutInfo, options);
+    };
+
+    /**
+     * @brief : Computes the node repulsion forces
+     */
+    var calculateNodeForces = function(layoutInfo, options) {
+      // Go through each of the graphs in graphSet
+      // Nodes only repel each other if they belong to the same graph
+      // var s = 'calculateNodeForces';
+      // logDebug(s);
+      for (var i = 0; i < layoutInfo.graphSet.length; i ++) {
+        var graph    = layoutInfo.graphSet[i];
+        var numNodes = graph.length;
+
+        // s = "Set: " + graph.toString();
+        // logDebug(s);
+
+        // Now get all the pairs of nodes
+        // Only get each pair once, (A, B) = (B, A)
+        for (var j = 0; j < numNodes; j++) {
+          var node1 = layoutInfo.layoutNodes[layoutInfo.idToIndex[graph[j]]];
+
+          for (var k = j + 1; k < numNodes; k++) {
+            var node2 = layoutInfo.layoutNodes[layoutInfo.idToIndex[graph[k]]];
+
+            nodeRepulsion(node1, node2, layoutInfo, options);
+          }
+        }
+      }
+    };
+
+    /**
+     * @brief : Compute the node repulsion forces between a pair of nodes
+     */
+    var nodeRepulsion = function(node1, node2, layoutInfo, options) {
+      // var s = "Node repulsion. Node1: " + node1.id + " Node2: " + node2.id;
+
+      var cmptId1 = node1.cmptId;
+      var cmptId2 = node2.cmptId;
+
+      if( cmptId1 !== cmptId2 && !layoutInfo.isCompound ){ return; }
+
+      // Get direction of line connecting both node centers
+      var directionX = node2.positionX - node1.positionX;
+      var directionY = node2.positionY - node1.positionY;
+      // s += "\ndirectionX: " + directionX + ", directionY: " + directionY;
+
+      // If both centers are the same, apply a random force
+      if (0 === directionX && 0 === directionY) {
+        // s += "\nNodes have the same position.";
+        return; // TODO could be improved with random force
+      }
+
+      var overlap = nodesOverlap(node1, node2, directionX, directionY);
+
+      if (overlap > 0) {
+        // s += "\nNodes DO overlap.";
+        // s += "\nOverlap: " + overlap;
+        // If nodes overlap, repulsion force is proportional
+        // to the overlap
+        var force    = options.nodeOverlap * overlap;
+
+        // Compute the module and components of the force vector
+        var distance = Math.sqrt(directionX * directionX + directionY * directionY);
+        // s += "\nDistance: " + distance;
+        var forceX   = force * directionX / distance;
+        var forceY   = force * directionY / distance;
+
+      } else {
+        // s += "\nNodes do NOT overlap.";
+        // If there's no overlap, force is inversely proportional
+        // to squared distance
+
+        // Get clipping points for both nodes
+        var point1 = findClippingPoint(node1, directionX, directionY);
+        var point2 = findClippingPoint(node2, -1 * directionX, -1 * directionY);
+
+        // Use clipping points to compute distance
+        var distanceX   = point2.x - point1.x;
+        var distanceY   = point2.y - point1.y;
+        var distanceSqr = distanceX * distanceX + distanceY * distanceY;
+        var distance    = Math.sqrt(distanceSqr);
+        // s += "\nDistance: " + distance;
+
+        // Compute the module and components of the force vector
+        var force  = ( node1.nodeRepulsion + node2.nodeRepulsion ) / distanceSqr;
+        var forceX = force * distanceX / distance;
+        var forceY = force * distanceY / distance;
+      }
+
+      // Apply force
+      if( !node1.isLocked ){
+        node1.offsetX -= forceX;
+        node1.offsetY -= forceY;
+      }
+
+      if( !node2.isLocked ){
+        node2.offsetX += forceX;
+        node2.offsetY += forceY;
+      }
+
+      // s += "\nForceX: " + forceX + " ForceY: " + forceY;
+      // logDebug(s);
+
+      return;
+    };
+
+    /**
+     * @brief  : Determines whether two nodes overlap or not
+     * @return : Amount of overlapping (0 => no overlap)
+     */
+    var nodesOverlap = function(node1, node2, dX, dY) {
+
+      if (dX > 0) {
+        var overlapX = node1.maxX - node2.minX;
+      } else {
+        var overlapX = node2.maxX - node1.minX;
+      }
+
+      if (dY > 0) {
+        var overlapY = node1.maxY - node2.minY;
+      } else {
+        var overlapY = node2.maxY - node1.minY;
+      }
+
+      if (overlapX >= 0 && overlapY >= 0) {
+        return Math.sqrt(overlapX * overlapX + overlapY * overlapY);
+      } else {
+        return 0;
+      }
+    };
+
+    /**
+     * @brief : Finds the point in which an edge (direction dX, dY) intersects
+     *          the rectangular bounding box of it's source/target node
+     */
+    var findClippingPoint = function(node, dX, dY) {
+
+      // Shorcuts
+      var X = node.positionX;
+      var Y = node.positionY;
+      var H = node.height || 1;
+      var W = node.width || 1;
+      var dirSlope     = dY / dX;
+      var nodeSlope    = H / W;
+
+      // var s = 'Computing clipping point of node ' + node.id +
+      //   " . Height:  " + H + ", Width: " + W +
+      //   "\nDirection " + dX + ", " + dY;
+      //
+      // Compute intersection
+      var res = {};
+      do {
+        // Case: Vertical direction (up)
+        if (0 === dX && 0 < dY) {
+          res.x = X;
+          // s += "\nUp direction";
+          res.y = Y + H / 2;
+          break;
+        }
+
+        // Case: Vertical direction (down)
+        if (0 === dX && 0 > dY) {
+          res.x = X;
+          res.y = Y + H / 2;
+          // s += "\nDown direction";
+          break;
+        }
+
+        // Case: Intersects the right border
+        if (0 < dX &&
+        -1 * nodeSlope <= dirSlope &&
+        dirSlope <= nodeSlope) {
+          res.x = X + W / 2;
+          res.y = Y + (W * dY / 2 / dX);
+          // s += "\nRightborder";
+          break;
+        }
+
+        // Case: Intersects the left border
+        if (0 > dX &&
+        -1 * nodeSlope <= dirSlope &&
+        dirSlope <= nodeSlope) {
+          res.x = X - W / 2;
+          res.y = Y - (W * dY / 2 / dX);
+          // s += "\nLeftborder";
+          break;
+        }
+
+        // Case: Intersects the top border
+        if (0 < dY &&
+        ( dirSlope <= -1 * nodeSlope ||
+          dirSlope >= nodeSlope )) {
+          res.x = X + (H * dX / 2 / dY);
+          res.y = Y + H / 2;
+          // s += "\nTop border";
+          break;
+        }
+
+        // Case: Intersects the bottom border
+        if (0 > dY &&
+        ( dirSlope <= -1 * nodeSlope ||
+          dirSlope >= nodeSlope )) {
+          res.x = X - (H * dX / 2 / dY);
+          res.y = Y - H / 2;
+          // s += "\nBottom border";
+          break;
+        }
+
+      } while (false);
+
+      // s += "\nClipping point found at " + res.x + ", " + res.y;
+      // logDebug(s);
+      return res;
+    };
+
+    /**
+     * @brief : Calculates all edge forces
+     */
+    var calculateEdgeForces = function(layoutInfo, options) {
+      // Iterate over all edges
+      for (var i = 0; i < layoutInfo.edgeSize; i++) {
+        // Get edge, source & target nodes
+        var edge     = layoutInfo.layoutEdges[i];
+        var sourceIx = layoutInfo.idToIndex[edge.sourceId];
+        var source   = layoutInfo.layoutNodes[sourceIx];
+        var targetIx = layoutInfo.idToIndex[edge.targetId];
+        var target   = layoutInfo.layoutNodes[targetIx];
+
+        // Get direction of line connecting both node centers
+        var directionX = target.positionX - source.positionX;
+        var directionY = target.positionY - source.positionY;
+
+        // If both centers are the same, do nothing.
+        // A random force has already been applied as node repulsion
+        if (0 === directionX && 0 === directionY) {
+        return;
+        }
+
+        // Get clipping points for both nodes
+        var point1 = findClippingPoint(source, directionX, directionY);
+        var point2 = findClippingPoint(target, -1 * directionX, -1 * directionY);
+
+
+        var lx = point2.x - point1.x;
+        var ly = point2.y - point1.y;
+        var l  = Math.sqrt(lx * lx + ly * ly);
+
+        var force  = Math.pow(edge.idealLength - l, 2) / edge.elasticity;
+
+        if (0 !== l) {
+          var forceX = force * lx / l;
+          var forceY = force * ly / l;
+        } else {
+          var forceX = 0;
+          var forceY = 0;
+        }
+
+        // Add this force to target and source nodes
+        if( !source.isLocked ){
+          source.offsetX += forceX;
+          source.offsetY += forceY;
+        }
+
+        if( !target.isLocked ){
+          target.offsetX -= forceX;
+          target.offsetY -= forceY;
+        }
+
+        // var s = 'Edge force between nodes ' + source.id + ' and ' + target.id;
+        // s += "\nDistance: " + l + " Force: (" + forceX + ", " + forceY + ")";
+        // logDebug(s);
+      }
+    };
+
+    /**
+     * @brief : Computes gravity forces for all nodes
+     */
+    var calculateGravityForces = function(layoutInfo, options) {
+      var distThreshold = 1;
+
+      // var s = 'calculateGravityForces';
+      // logDebug(s);
+      for (var i = 0; i < layoutInfo.graphSet.length; i ++) {
+        var graph    = layoutInfo.graphSet[i];
+        var numNodes = graph.length;
+
+        // s = "Set: " + graph.toString();
+        // logDebug(s);
+
+        // Compute graph center
+        if (0 === i) {
+          var centerX   = layoutInfo.clientHeight / 2;
+          var centerY   = layoutInfo.clientWidth  / 2;
+        } else {
+          // Get Parent node for this graph, and use its position as center
+          var temp    = layoutInfo.layoutNodes[layoutInfo.idToIndex[graph[0]]];
+          var parent  = layoutInfo.layoutNodes[layoutInfo.idToIndex[temp.parentId]];
+          var centerX = parent.positionX;
+          var centerY = parent.positionY;
+        }
+        // s = "Center found at: " + centerX + ", " + centerY;
+        // logDebug(s);
+
+        // Apply force to all nodes in graph
+        for (var j = 0; j < numNodes; j++) {
+          var node = layoutInfo.layoutNodes[layoutInfo.idToIndex[graph[j]]];
+          // s = "Node: " + node.id;
+
+          if( node.isLocked ){ continue; }
+
+          var dx = centerX - node.positionX;
+          var dy = centerY - node.positionY;
+          var d  = Math.sqrt(dx * dx + dy * dy);
+          if (d > distThreshold) {
+            var fx = options.gravity * dx / d;
+            var fy = options.gravity * dy / d;
+            node.offsetX += fx;
+            node.offsetY += fy;
+            // s += ": Applied force: " + fx + ", " + fy;
+          } else {
+            // s += ": skypped since it's too close to center";
+          }
+          // logDebug(s);
+        }
+      }
+    };
+
+    /**
+     * @brief          : This function propagates the existing offsets from
+     *                   parent nodes to its descendents.
+     * @arg layoutInfo : layoutInfo Object
+     * @arg cy         : cytoscape Object
+     * @arg options    : Layout options
+     */
+    var propagateForces = function(layoutInfo, options) {
+      // Inline implementation of a queue, used for traversing the graph in BFS order
+      var queue = [];
+      var start = 0;   // Points to the start the queue
+      var end   = -1;  // Points to the end of the queue
+
+      // logDebug('propagateForces');
+
+      // Start by visiting the nodes in the root graph
+      queue.push.apply(queue, layoutInfo.graphSet[0]);
+      end += layoutInfo.graphSet[0].length;
+
+      // Traverse the graph, level by level,
+      while (start <= end) {
+        // Get the node to visit and remove it from queue
+        var nodeId    = queue[start++];
+        var nodeIndex = layoutInfo.idToIndex[nodeId];
+        var node      = layoutInfo.layoutNodes[nodeIndex];
+        var children  = node.children;
+
+        // We only need to process the node if it's compound
+        if (0 < children.length && !node.isLocked) {
+          var offX = node.offsetX;
+          var offY = node.offsetY;
+
+          // var s = "Propagating offset from parent node : " + node.id +
+          //   ". OffsetX: " + offX + ". OffsetY: " + offY;
+          // s += "\n Children: " + children.toString();
+          // logDebug(s);
+
+          for (var i = 0; i < children.length; i++) {
+            var childNode = layoutInfo.layoutNodes[layoutInfo.idToIndex[children[i]]];
+            // Propagate offset
+            childNode.offsetX += offX;
+            childNode.offsetY += offY;
+            // Add children to queue to be visited
+            queue[++end] = children[i];
+          }
+
+          // Reset parent offsets
+          node.offsetX = 0;
+          node.offsetY = 0;
+        }
+
+      }
+    };
+
+    /**
+     * @brief : Updates the layout model positions, based on
+     *          the accumulated forces
+     */
+    var updatePositions = function(layoutInfo, options) {
+      // var s = 'Updating positions';
+      // logDebug(s);
+
+      // Reset boundaries for compound nodes
+      for (var i = 0; i < layoutInfo.nodeSize; i++) {
+        var n = layoutInfo.layoutNodes[i];
+        if (0 < n.children.length) {
+          // logDebug("Resetting boundaries of compound node: " + n.id);
+          n.maxX = undefined;
+          n.minX = undefined;
+          n.maxY = undefined;
+          n.minY = undefined;
+        }
+      }
+
+      for (var i = 0; i < layoutInfo.nodeSize; i++) {
+        var n = layoutInfo.layoutNodes[i];
+        if (0 < n.children.length || n.isLocked) {
+          // No need to set compound or locked node position
+          // logDebug("Skipping position update of node: " + n.id);
+          continue;
+        }
+        // s = "Node: " + n.id + " Previous position: (" +
+        // n.positionX + ", " + n.positionY + ").";
+
+        // Limit displacement in order to improve stability
+        var tempForce = limitForce(n.offsetX, n.offsetY, layoutInfo.temperature);
+        n.positionX += tempForce.x;
+        n.positionY += tempForce.y;
+        n.offsetX = 0;
+        n.offsetY = 0;
+        n.minX    = n.positionX - n.width;
+        n.maxX    = n.positionX + n.width;
+        n.minY    = n.positionY - n.height;
+        n.maxY    = n.positionY + n.height;
+        // s += " New Position: (" + n.positionX + ", " + n.positionY + ").";
+        // logDebug(s);
+
+        // Update ancestry boudaries
+        updateAncestryBoundaries(n, layoutInfo);
+      }
+
+      // Update size, position of compund nodes
+      for (var i = 0; i < layoutInfo.nodeSize; i++) {
+        var n = layoutInfo.layoutNodes[i];
+        if ( 0 < n.children.length && !n.isLocked ) {
+          n.positionX = (n.maxX + n.minX) / 2;
+          n.positionY = (n.maxY + n.minY) / 2;
+          n.width     = n.maxX - n.minX;
+          n.height    = n.maxY - n.minY;
+          // s = "Updating position, size of compound node " + n.id;
+          // s += "\nPositionX: " + n.positionX + ", PositionY: " + n.positionY;
+          // s += "\nWidth: " + n.width + ", Height: " + n.height;
+          // logDebug(s);
+        }
+      }
+    };
+
+    /**
+     * @brief : Limits a force (forceX, forceY) to be not
+     *          greater (in modulo) than max.
+     8          Preserves force direction.
+     */
+    var limitForce = function(forceX, forceY, max) {
+      // var s = "Limiting force: (" + forceX + ", " + forceY + "). Max: " + max;
+      var force = Math.sqrt(forceX * forceX + forceY * forceY);
+
+      if (force > max) {
+        var res = {
+        x : max * forceX / force,
+        y : max * forceY / force
+        };
+
+      } else {
+        var res = {
+        x : forceX,
+        y : forceY
+        };
+      }
+
+      // s += ".\nResult: (" + res.x + ", " + res.y + ")";
+      // logDebug(s);
+
+      return res;
+    };
+
+    /**
+     * @brief : Function used for keeping track of compound node
+     *          sizes, since they should bound all their subnodes.
+     */
+    var updateAncestryBoundaries = function(node, layoutInfo) {
+      // var s = "Propagating new position/size of node " + node.id;
+      var parentId = node.parentId;
+      if (null == parentId) {
+        // If there's no parent, we are done
+        // s += ". No parent node.";
+        // logDebug(s);
+        return;
+      }
+
+      // Get Parent Node
+      var p = layoutInfo.layoutNodes[layoutInfo.idToIndex[parentId]];
+      var flag = false;
+
+      // MaxX
+      if (null == p.maxX || node.maxX + p.padRight > p.maxX) {
+        p.maxX = node.maxX + p.padRight;
+        flag = true;
+        // s += "\nNew maxX for parent node " + p.id + ": " + p.maxX;
+      }
+
+      // MinX
+      if (null == p.minX || node.minX - p.padLeft < p.minX) {
+        p.minX = node.minX - p.padLeft;
+        flag = true;
+        // s += "\nNew minX for parent node " + p.id + ": " + p.minX;
+      }
+
+      // MaxY
+      if (null == p.maxY || node.maxY + p.padBottom > p.maxY) {
+        p.maxY = node.maxY + p.padBottom;
+        flag = true;
+        // s += "\nNew maxY for parent node " + p.id + ": " + p.maxY;
+      }
+
+      // MinY
+      if (null == p.minY || node.minY - p.padTop < p.minY) {
+        p.minY = node.minY - p.padTop;
+        flag = true;
+        // s += "\nNew minY for parent node " + p.id + ": " + p.minY;
+      }
+
+      // If updated boundaries, propagate changes upward
+      if (flag) {
+        // logDebug(s);
+        return updateAncestryBoundaries(p, layoutInfo);
+      }
+
+      // s += ". No changes in boundaries/position of parent node " + p.id;
+      // logDebug(s);
+      return;
+    };
+
+    var separateComponents = function(layutInfo, options){
+      var nodes = layoutInfo.layoutNodes;
+      var components = [];
+
+      for( var i = 0; i < nodes.length; i++ ){
+        var node = nodes[i];
+        var cid = node.cmptId;
+        var component = components[ cid ] = components[ cid ] || [];
+
+        component.push( node );
+      }
+
+      var totalA = 0;
+
+      for( var i = 0; i < components.length; i++ ){
+        var c = components[i];
+        c.x1 = Infinity;
+        c.x2 = -Infinity;
+        c.y1 = Infinity;
+        c.y2 = -Infinity;
+
+        for( var j = 0; j < c.length; j++ ){
+          var n = c[j];
+
+          c.x1 = Math.min( c.x1, n.positionX - n.width/2 );
+          c.x2 = Math.max( c.x2, n.positionX + n.width/2 );
+          c.y1 = Math.min( c.y1, n.positionY - n.height/2 );
+          c.y2 = Math.max( c.y2, n.positionY + n.height/2 );
+        }
+
+        c.w = c.x2 - c.x1;
+        c.h = c.y2 - c.y1;
+
+        totalA += c.w * c.h;
+      }
+
+      components.sort(function( c1, c2 ){
+        return c2.w*c2.h - c1.w*c1.h;
+      });
+
+      var x = 0;
+      var y = 0;
+      var usedW = 0;
+      var rowH = 0;
+      var maxRowW = Math.sqrt( totalA ) * layoutInfo.clientWidth / layoutInfo.clientHeight;
+
+      for( var i = 0; i < components.length; i++ ){
+        var c = components[i];
+
+        for( var j = 0; j < c.length; j++ ){
+          var n = c[j];
+
+          if( !n.isLocked ){
+            n.positionX += x;
+            n.positionY += y;
+          }
+        }
+
+        x += c.w + options.componentSpacing;
+        usedW += c.w + options.componentSpacing;
+        rowH = Math.max( rowH, c.h );
+
+        if( usedW > maxRowW ){
+          y += rowH + options.componentSpacing;
+          x = 0;
+          usedW = 0;
+          rowH = 0;
+        }
+      }
+    };
+
+    var mainLoop = function(i){
+      if( stopped ){
+        // logDebug("Layout manually stopped. Stopping computation in step " + i);
+        return false;
+      }
+
+      // Do one step in the phisical simulation
+      step(layoutInfo, options, i);
+
+      // Update temperature
+      layoutInfo.temperature = layoutInfo.temperature * options.coolingFactor;
+      // logDebug("New temperature: " + layoutInfo.temperature);
+
+      if (layoutInfo.temperature < options.minTemp) {
+        // logDebug("Temperature drop below minimum threshold. Stopping computation in step " + i);
+        return false;
+      }
+
+      return true;
+    };
+
+    var i = 0;
+    var loopRet;
+
+    do {
+      var f = 0;
+
+      while( f < options.refresh && i < options.numIter ){
+        var loopRet = mainLoop(i);
+        if( !loopRet ){ break; }
+
+        f++;
+        i++;
+      }
+
+      if( options.animate ){
+        broadcast( layoutInfo.layoutNodes ); // jshint ignore:line
+      }
+
+    } while ( loopRet && i + 1 < options.numIter );
+
+    separateComponents( layoutInfo, options );
+
+    return layoutInfo;
+  }).then(function( layoutInfoUpdated ){
+    layoutInfo.layoutNodes = layoutInfoUpdated.layoutNodes; // get the positions
+
+    thread.stop();
+    done();
+  });
+
+  var done = function(){
+    refresh({ 
+      force: true,
+      next: function(){
+        // Layout has finished
+        layout.one('layoutstop', options.stop);
+        layout.trigger({ type: 'layoutstop', layout: layout });
+      }
+    });
+  };
+
+  return this; // chaining
+};
+
+
+/**
+ * @brief : called on continuous layouts to stop them before they finish
+ */
+CoseLayout.prototype.stop = function(){
+  this.stopped = true;
+
+  if( this.thread ){
+    this.thread.stop();
+  }
+
+  this.trigger('layoutstop');
+
+  return this; // chaining
+};
+
+CoseLayout.prototype.destroy = function(){
+  if( this.thread ){
+    this.thread.stop();
+  }
+
+  return this; // chaining
+};
+
+
+/**
+ * @brief     : Creates an object which is contains all the data
+ *              used in the layout process
+ * @arg cy    : cytoscape.js object
+ * @return    : layoutInfo object initialized
+ */
+var createLayoutInfo = function(cy, layout, options) {
+  // Shortcut
+  var edges = options.eles.edges();
+  var nodes = options.eles.nodes();
+
+  var layoutInfo   = {
+    isCompound   : cy.hasCompoundNodes(),
+    layoutNodes  : [],
+    idToIndex    : {},
+    nodeSize     : nodes.size(),
+    graphSet     : [],
+    indexToGraph : [],
+    layoutEdges  : [],
+    edgeSize     : edges.size(),
+    temperature  : options.initialTemp,
+    clientWidth  : cy.width(),
+    clientHeight : cy.width(),
+    boundingBox  : math.makeBoundingBox( options.boundingBox ? options.boundingBox : {
+                     x1: 0, y1: 0, w: cy.width(), h: cy.height()
+                   } )
+  };
+
+  var components = options.eles.components();
+  var id2cmptId = {};
+
+  for( var i = 0; i < components.length; i++ ){
+    var component = components[i];
+
+    for( var j = 0; j < component.length; j++ ){
+      var node = component[j];
+
+      id2cmptId[ node.id() ] = i;
+    }
+  }
+
+  // Iterate over all nodes, creating layout nodes
+  for (var i = 0; i < layoutInfo.nodeSize; i++) {
+    var n = nodes[i];
+    var nbb = n.boundingBox();
+
+    var tempNode        = {};
+    tempNode.isLocked   = n.locked();
+    tempNode.id         = n.data('id');
+    tempNode.parentId   = n.data('parent');
+    tempNode.cmptId     = id2cmptId[ n.id() ];
+    tempNode.children   = [];
+    tempNode.positionX  = n.position('x');
+    tempNode.positionY  = n.position('y');
+    tempNode.offsetX    = 0;
+    tempNode.offsetY    = 0;
+    tempNode.height     = nbb.w;
+    tempNode.width      = nbb.h;
+    tempNode.maxX       = tempNode.positionX + tempNode.width  / 2;
+    tempNode.minX       = tempNode.positionX - tempNode.width  / 2;
+    tempNode.maxY       = tempNode.positionY + tempNode.height / 2;
+    tempNode.minY       = tempNode.positionY - tempNode.height / 2;
+    tempNode.padLeft    = parseFloat( n.style('padding-left') );
+    tempNode.padRight   = parseFloat( n.style('padding-right') );
+    tempNode.padTop     = parseFloat( n.style('padding-top') );
+    tempNode.padBottom  = parseFloat( n.style('padding-bottom') );
+
+    // forces
+    tempNode.nodeRepulsion = is.fn( options.nodeRepulsion ) ? options.nodeRepulsion.call( n, n ) : options.nodeRepulsion;
+
+    // Add new node
+    layoutInfo.layoutNodes.push(tempNode);
+    // Add entry to id-index map
+    layoutInfo.idToIndex[tempNode.id] = i;
+  }
+
+  // Inline implementation of a queue, used for traversing the graph in BFS order
+  var queue = [];
+  var start = 0;   // Points to the start the queue
+  var end   = -1;  // Points to the end of the queue
+
+  var tempGraph = [];
+
+  // Second pass to add child information and
+  // initialize queue for hierarchical traversal
+  for (var i = 0; i < layoutInfo.nodeSize; i++) {
+    var n = layoutInfo.layoutNodes[i];
+    var p_id = n.parentId;
+    // Check if node n has a parent node
+    if (null != p_id) {
+    // Add node Id to parent's list of children
+    layoutInfo.layoutNodes[layoutInfo.idToIndex[p_id]].children.push(n.id);
+    } else {
+    // If a node doesn't have a parent, then it's in the root graph
+    queue[++end] = n.id;
+    tempGraph.push(n.id);
+    }
+  }
+
+  // Add root graph to graphSet
+  layoutInfo.graphSet.push(tempGraph);
+
+  // Traverse the graph, level by level,
+  while (start <= end) {
+    // Get the node to visit and remove it from queue
+    var node_id  = queue[start++];
+    var node_ix  = layoutInfo.idToIndex[node_id];
+    var node     = layoutInfo.layoutNodes[node_ix];
+    var children = node.children;
+    if (children.length > 0) {
+    // Add children nodes as a new graph to graph set
+    layoutInfo.graphSet.push(children);
+    // Add children to que queue to be visited
+    for (var i = 0; i < children.length; i++) {
+      queue[++end] = children[i];
+    }
+    }
+  }
+
+  // Create indexToGraph map
+  for (var i = 0; i < layoutInfo.graphSet.length; i++) {
+    var graph = layoutInfo.graphSet[i];
+    for (var j = 0; j < graph.length; j++) {
+    var index = layoutInfo.idToIndex[graph[j]];
+    layoutInfo.indexToGraph[index] = i;
+    }
+  }
+
+  // Iterate over all edges, creating Layout Edges
+  for (var i = 0; i < layoutInfo.edgeSize; i++) {
+    var e = edges[i];
+    var tempEdge = {};
+    tempEdge.id       = e.data('id');
+    tempEdge.sourceId = e.data('source');
+    tempEdge.targetId = e.data('target');
+
+    // Compute ideal length
+    var idealLength = is.fn( options.idealEdgeLength ) ? options.idealEdgeLength.call( e, e ) : options.idealEdgeLength;
+    var elasticity = is.fn( options.edgeElasticity ) ? options.edgeElasticity.call( e, e ) : options.edgeElasticity;
+
+    // Check if it's an inter graph edge
+    var sourceIx    = layoutInfo.idToIndex[tempEdge.sourceId];
+    var targetIx    = layoutInfo.idToIndex[tempEdge.targetId];
+    var sourceGraph = layoutInfo.indexToGraph[sourceIx];
+    var targetGraph = layoutInfo.indexToGraph[targetIx];
+
+    if (sourceGraph != targetGraph) {
+      // Find lowest common graph ancestor
+      var lca = findLCA(tempEdge.sourceId, tempEdge.targetId, layoutInfo);
+
+      // Compute sum of node depths, relative to lca graph
+      var lcaGraph = layoutInfo.graphSet[lca];
+      var depth    = 0;
+
+      // Source depth
+      var tempNode = layoutInfo.layoutNodes[sourceIx];
+      while ( -1 === lcaGraph.indexOf(tempNode.id) ) {
+        tempNode = layoutInfo.layoutNodes[layoutInfo.idToIndex[tempNode.parentId]];
+        depth++;
+      }
+
+      // Target depth
+      tempNode = layoutInfo.layoutNodes[targetIx];
+      while ( -1 === lcaGraph.indexOf(tempNode.id) ) {
+        tempNode = layoutInfo.layoutNodes[layoutInfo.idToIndex[tempNode.parentId]];
+        depth++;
+      }
+
+      // logDebug('LCA of nodes ' + tempEdge.sourceId + ' and ' + tempEdge.targetId +
+        //  ". Index: " + lca + " Contents: " + lcaGraph.toString() +
+        //  ". Depth: " + depth);
+
+      // Update idealLength
+      idealLength *= depth * options.nestingFactor;
+    }
+
+    tempEdge.idealLength = idealLength;
+    tempEdge.elasticity = elasticity;
+
+    layoutInfo.layoutEdges.push(tempEdge);
+  }
+
+  // Finally, return layoutInfo object
+  return layoutInfo;
+};
+
+
+/**
+ * @brief : This function finds the index of the lowest common
+ *          graph ancestor between 2 nodes in the subtree
+ *          (from the graph hierarchy induced tree) whose
+ *          root is graphIx
+ *
+ * @arg node1: node1's ID
+ * @arg node2: node2's ID
+ * @arg layoutInfo: layoutInfo object
+ *
+ */
+var findLCA = function(node1, node2, layoutInfo) {
+  // Find their common ancester, starting from the root graph
+  var res = findLCA_aux(node1, node2, 0, layoutInfo);
+  if (2 > res.count) {
+    // If aux function couldn't find the common ancester,
+    // then it is the root graph
+    return 0;
+  } else {
+    return res.graph;
+  }
+};
+
+
+/**
+ * @brief          : Auxiliary function used for LCA computation
+ *
+ * @arg node1      : node1's ID
+ * @arg node2      : node2's ID
+ * @arg graphIx    : subgraph index
+ * @arg layoutInfo : layoutInfo object
+ *
+ * @return         : object of the form {count: X, graph: Y}, where:
+ *                   X is the number of ancesters (max: 2) found in
+ *                   graphIx (and it's subgraphs),
+ *                   Y is the graph index of the lowest graph containing
+ *                   all X nodes
+ */
+var findLCA_aux = function(node1, node2, graphIx, layoutInfo) {
+  var graph = layoutInfo.graphSet[graphIx];
+  // If both nodes belongs to graphIx
+  if (-1 < graph.indexOf(node1) && -1 < graph.indexOf(node2)) {
+    return {count:2, graph:graphIx};
+  }
+
+  // Make recursive calls for all subgraphs
+  var c = 0;
+  for (var i = 0; i < graph.length; i++) {
+    var nodeId   = graph[i];
+    var nodeIx   = layoutInfo.idToIndex[nodeId];
+    var children = layoutInfo.layoutNodes[nodeIx].children;
+
+    // If the node has no child, skip it
+    if (0 === children.length) {
+    continue;
+    }
+
+    var childGraphIx = layoutInfo.indexToGraph[layoutInfo.idToIndex[children[0]]];
+    var result = findLCA_aux(node1, node2, childGraphIx, layoutInfo);
+    if (0 === result.count) {
+    // Neither node1 nor node2 are present in this subgraph
+    continue;
+    } else if (1 === result.count) {
+    // One of (node1, node2) is present in this subgraph
+    c++;
+    if (2 === c) {
+      // We've already found both nodes, no need to keep searching
+      break;
+    }
+    } else {
+    // Both nodes are present in this subgraph
+    return result;
+    }
+  }
+
+  return {count:c, graph:graphIx};
+};
+
+
+/**
+ * @brief: printsLayoutInfo into js console
+ *         Only used for debbuging
+ */
+var printLayoutInfo = function(layoutInfo) {
+  /* jshint ignore:start */
+
+  if (!DEBUG) {
+    return;
+  }
+  console.debug("layoutNodes:");
+  for (var i = 0; i < layoutInfo.nodeSize; i++) {
+    var n = layoutInfo.layoutNodes[i];
+    var s =
+    "\nindex: "     + i +
+    "\nId: "        + n.id +
+    "\nChildren: "  + n.children.toString() +
+    "\nparentId: "  + n.parentId  +
+    "\npositionX: " + n.positionX +
+    "\npositionY: " + n.positionY +
+    "\nOffsetX: " + n.offsetX +
+    "\nOffsetY: " + n.offsetY +
+    "\npadLeft: " + n.padLeft +
+    "\npadRight: " + n.padRight +
+    "\npadTop: " + n.padTop +
+    "\npadBottom: " + n.padBottom;
+
+    console.debug(s);
+  }
+
+  console.debug('idToIndex');
+  for (var i in layoutInfo.idToIndex) {
+    console.debug("Id: " + i + "\nIndex: " + layoutInfo.idToIndex[i]);
+  }
+
+  console.debug('Graph Set');
+  var set = layoutInfo.graphSet;
+  for (var i = 0; i < set.length; i ++) {
+    console.debug("Set : " + i + ": " + set[i].toString());
+  }
+
+  var s = 'IndexToGraph';
+  for (var i = 0; i < layoutInfo.indexToGraph.length; i ++) {
+    s += "\nIndex : " + i + " Graph: "+ layoutInfo.indexToGraph[i];
+  }
+  console.debug(s);
+
+  s = 'Layout Edges';
+  for (var i = 0; i < layoutInfo.layoutEdges.length; i++) {
+    var e = layoutInfo.layoutEdges[i];
+    s += "\nEdge Index: " + i + " ID: " + e.id +
+    " SouceID: " + e.sourceId + " TargetId: " + e.targetId +
+    " Ideal Length: " + e.idealLength;
+  }
+  console.debug(s);
+
+  s =  "nodeSize: " + layoutInfo.nodeSize;
+  s += "\nedgeSize: " + layoutInfo.edgeSize;
+  s += "\ntemperature: " + layoutInfo.temperature;
+  console.debug(s);
+
+  return;
+  /* jshint ignore:end */
+};
+
+
+/**
+ * @brief : Randomizes the position of all nodes
+ */
+var randomizePositions = function(layoutInfo, cy) {
+  var width     = layoutInfo.clientWidth;
+  var height    = layoutInfo.clientHeight;
+
+  for (var i = 0; i < layoutInfo.nodeSize; i++) {
+    var n = layoutInfo.layoutNodes[i];
+
+    // No need to randomize compound nodes or locked nodes
+    if ( 0 === n.children.length && !n.isLocked ) {
+      n.positionX = Math.random() * width;
+      n.positionY = Math.random() * height;
+    }
+  }
+};
+
+
+/**
+ * @brief          : Updates the positions of nodes in the network
+ * @arg layoutInfo : LayoutInfo object
+ * @arg cy         : Cytoscape object
+ * @arg options    : Layout options
+ */
+var refreshPositions = function(layoutInfo, cy, options) {
+  // var s = 'Refreshing positions';
+  // logDebug(s);
+
+  var layout = options.layout;
+  var nodes = options.eles.nodes();
+  var bb = layoutInfo.boundingBox;
+  var coseBB = { x1: Infinity, x2: -Infinity, y1: Infinity, y2: -Infinity };
+
+  if( options.boundingBox ){
+    nodes.forEach(function( node ){
+      var lnode = layoutInfo.layoutNodes[layoutInfo.idToIndex[node.data('id')]];
+
+      coseBB.x1 = Math.min( coseBB.x1, lnode.positionX );
+      coseBB.x2 = Math.max( coseBB.x2, lnode.positionX );
+
+      coseBB.y1 = Math.min( coseBB.y1, lnode.positionY );
+      coseBB.y2 = Math.max( coseBB.y2, lnode.positionY );
+    });
+
+    coseBB.w = coseBB.x2 - coseBB.x1;
+    coseBB.h = coseBB.y2 - coseBB.y1;
+  }
+
+  nodes.positions(function(i, ele) {
+    var lnode = layoutInfo.layoutNodes[layoutInfo.idToIndex[ele.data('id')]];
+    // s = "Node: " + lnode.id + ". Refreshed position: (" +
+    // lnode.positionX + ", " + lnode.positionY + ").";
+    // logDebug(s);
+
+    if( options.boundingBox ){ // then add extra bounding box constraint
+      var pctX = (lnode.positionX - coseBB.x1) / coseBB.w;
+      var pctY = (lnode.positionY - coseBB.y1) / coseBB.h;
+
+      return {
+        x: bb.x1 + pctX * bb.w,
+        y: bb.y1 + pctY * bb.h
+      };
+    } else {
+      return {
+        x: lnode.positionX,
+        y: lnode.positionY
+      };
+    }
+  });
+
+  // Trigger layoutReady only on first call
+  if (true !== layoutInfo.ready) {
+    // s = 'Triggering layoutready';
+    // logDebug(s);
+    layoutInfo.ready = true;
+    layout.one('layoutready', options.ready);
+    layout.trigger({ type: 'layoutready', layout: this });
+  }
+};
+
+/**
+ * @brief : Logs a debug message in JS console, if DEBUG is ON
+ */
+// var logDebug = function(text) {
+//   if (DEBUG) {
+//     console.debug(text);
+//   }
+// };
+
+module.exports = CoseLayout;
+
+},{"../../is":77,"../../math":79,"../../thread":92,"../../util":94}],49:[function(_dereq_,module,exports){
+'use strict';
+
+var util = _dereq_('../../util');
+var math = _dereq_('../../math');
+
+var defaults = {
+  fit: true, // whether to fit the viewport to the graph
+  padding: 30, // padding used on fit
+  boundingBox: undefined, // constrain layout bounds; { x1, y1, x2, y2 } or { x1, y1, w, h }
+  avoidOverlap: true, // prevents node overlap, may overflow boundingBox if not enough space
+  avoidOverlapPadding: 10, // extra spacing around nodes when avoidOverlap: true
+  condense: false, // uses all available space on false, uses minimal space on true
+  rows: undefined, // force num of rows in the grid
+  cols: undefined, // force num of columns in the grid
+  position: function( node ){}, // returns { row, col } for element
+  sort: undefined, // a sorting function to order the nodes; e.g. function(a, b){ return a.data('weight') - b.data('weight') }
+  animate: false, // whether to transition the node positions
+  animationDuration: 500, // duration of animation in ms if enabled
+  animationEasing: undefined, // easing of animation if enabled
+  ready: undefined, // callback on layoutready
+  stop: undefined // callback on layoutstop
+};
+
+function GridLayout( options ){
+  this.options = util.extend({}, defaults, options);
+}
+
+GridLayout.prototype.run = function(){
+  var params = this.options;
+  var options = params;
+
+  var cy = params.cy;
+  var eles = options.eles;
+  var nodes = eles.nodes().not(':parent');
+
+  if( options.sort ){
+    nodes = nodes.sort( options.sort );
+  }
+
+  var bb = math.makeBoundingBox( options.boundingBox ? options.boundingBox : {
+    x1: 0, y1: 0, w: cy.width(), h: cy.height()
+  } );
+
+  if( bb.h === 0 || bb.w === 0){
+    nodes.layoutPositions(this, options, function(){
+      return { x: bb.x1, y: bb.y1 };
+    });
+
+  } else {
+
+    // width/height * splits^2 = cells where splits is number of times to split width
+    var cells = nodes.size();
+    var splits = Math.sqrt( cells * bb.h/bb.w );
+    var rows = Math.round( splits );
+    var cols = Math.round( bb.w/bb.h * splits );
+
+    var small = function(val){
+      if( val == null ){
+        return Math.min(rows, cols);
+      } else {
+        var min = Math.min(rows, cols);
+        if( min == rows ){
+          rows = val;
+        } else {
+          cols = val;
+        }
+      }
+    };
+
+    var large = function(val){
+      if( val == null ){
+        return Math.max(rows, cols);
+      } else {
+        var max = Math.max(rows, cols);
+        if( max == rows ){
+          rows = val;
+        } else {
+          cols = val;
+        }
+      }
+    };
+
+    var oRows = options.rows;
+    var oCols = options.cols != null ? options.cols : options.columns;
+
+    // if rows or columns were set in options, use those values
+    if( oRows != null && oCols != null ){
+      rows = oRows;
+      cols = oCols;
+    } else if( oRows != null && oCols == null ){
+      rows = oRows;
+      cols = Math.ceil( cells / rows );
+    } else if( oRows == null && oCols != null ){
+      cols = oCols;
+      rows = Math.ceil( cells / cols );
+    }
+
+    // otherwise use the automatic values and adjust accordingly
+
+    // if rounding was up, see if we can reduce rows or columns
+    else if( cols * rows > cells ){
+      var sm = small();
+      var lg = large();
+
+      // reducing the small side takes away the most cells, so try it first
+      if( (sm - 1) * lg >= cells ){
+        small(sm - 1);
+      } else if( (lg - 1) * sm >= cells ){
+        large(lg - 1);
+      }
+    } else {
+
+      // if rounding was too low, add rows or columns
+      while( cols * rows < cells ){
+        var sm = small();
+        var lg = large();
+
+        // try to add to larger side first (adds less in multiplication)
+        if( (lg + 1) * sm >= cells ){
+          large(lg + 1);
+        } else {
+          small(sm + 1);
+        }
+      }
+    }
+
+    var cellWidth = bb.w / cols;
+    var cellHeight = bb.h / rows;
+
+    if( options.condense ){
+      cellWidth = 0;
+      cellHeight = 0;
+    }
+
+    if( options.avoidOverlap ){
+      for( var i = 0; i < nodes.length; i++ ){
+        var node = nodes[i];
+        var pos = node._private.position;
+
+        if( pos.x == null || pos.y == null ){ // for bb
+          pos.x = 0;
+          pos.y = 0;
+        }
+
+        var nbb = node.boundingBox();
+        var p = options.avoidOverlapPadding;
+
+        var w = nbb.w + p;
+        var h = nbb.h + p;
+
+        cellWidth = Math.max( cellWidth, w );
+        cellHeight = Math.max( cellHeight, h );
+      }
+    }
+
+    var cellUsed = {}; // e.g. 'c-0-2' => true
+
+    var used = function(row, col){
+      return cellUsed['c-' + row + '-' + col] ? true : false;
+    };
+
+    var use = function(row, col){
+      cellUsed['c-' + row + '-' + col] = true;
+    };
+
+    // to keep track of current cell position
+    var row = 0;
+    var col = 0;
+    var moveToNextCell = function(){
+      col++;
+      if( col >= cols ){
+        col = 0;
+        row++;
+      }
+    };
+
+    // get a cache of all the manual positions
+    var id2manPos = {};
+    for( var i = 0; i < nodes.length; i++ ){
+      var node = nodes[i];
+      var rcPos = options.position( node );
+
+      if( rcPos && (rcPos.row !== undefined || rcPos.col !== undefined) ){ // must have at least row or col def'd
+        var pos = {
+          row: rcPos.row,
+          col: rcPos.col
+        };
+
+        if( pos.col === undefined ){ // find unused col
+          pos.col = 0;
+
+          while( used(pos.row, pos.col) ){
+            pos.col++;
+          }
+        } else if( pos.row === undefined ){ // find unused row
+          pos.row = 0;
+
+          while( used(pos.row, pos.col) ){
+            pos.row++;
+          }
+        }
+
+        id2manPos[ node.id() ] = pos;
+        use( pos.row, pos.col );
+      }
+    }
+
+    var getPos = function(i, element){
+      var x, y;
+
+      if( element.locked() || element.isFullAutoParent() ){
+        return false;
+      }
+
+      // see if we have a manual position set
+      var rcPos = id2manPos[ element.id() ];
+      if( rcPos ){
+        x = rcPos.col * cellWidth + cellWidth/2 + bb.x1;
+        y = rcPos.row * cellHeight + cellHeight/2 + bb.y1;
+
+      } else { // otherwise set automatically
+
+        while( used(row, col) ){
+          moveToNextCell();
+        }
+
+        x = col * cellWidth + cellWidth/2 + bb.x1;
+        y = row * cellHeight + cellHeight/2 + bb.y1;
+        use( row, col );
+
+        moveToNextCell();
+      }
+
+      return { x: x, y: y };
+
+    };
+
+    nodes.layoutPositions( this, options, getPos );
+  }
+
+  return this; // chaining
+
+};
+
+module.exports = GridLayout;
+
+},{"../../math":79,"../../util":94}],50:[function(_dereq_,module,exports){
+'use strict';
+
+module.exports = [
+  { name: 'breadthfirst', impl: _dereq_('./breadthfirst') },
+  { name: 'circle', impl: _dereq_('./circle') },
+  { name: 'concentric',impl: _dereq_('./concentric') },
+  { name: 'cose', impl: _dereq_('./cose') },
+  { name: 'grid', impl: _dereq_('./grid') },
+  { name: 'null', impl: _dereq_('./null') },
+  { name: 'preset', impl: _dereq_('./preset') },
+  { name: 'random', impl: _dereq_('./random') }
+];
+
+},{"./breadthfirst":45,"./circle":46,"./concentric":47,"./cose":48,"./grid":49,"./null":51,"./preset":52,"./random":53}],51:[function(_dereq_,module,exports){
+'use strict';
+
+var util = _dereq_('../../util');
+
+// default layout options
+var defaults = {
+  ready: function(){}, // on layoutready
+  stop: function(){} // on layoutstop
+};
+
+// constructor
+// options : object containing layout options
+function NullLayout( options ){
+  this.options = util.extend({}, defaults, options);
+}
+
+// runs the layout
+NullLayout.prototype.run = function(){
+  var options = this.options;
+  var eles = options.eles; // elements to consider in the layout
+  var layout = this;
+
+  // cy is automatically populated for us in the constructor
+  var cy = options.cy; // jshint ignore:line
+
+  layout.trigger('layoutstart');
+
+  // puts all nodes at (0, 0)
+  eles.nodes().positions(function(){
+    return {
+      x: 0,
+      y: 0
+    };
+  });
+
+  // trigger layoutready when each node has had its position set at least once
+  layout.one('layoutready', options.ready);
+  layout.trigger('layoutready');
+
+  // trigger layoutstop when the layout stops (e.g. finishes)
+  layout.one('layoutstop', options.stop);
+  layout.trigger('layoutstop');
+
+  return this; // chaining
+};
+
+// called on continuous layouts to stop them before they finish
+NullLayout.prototype.stop = function(){
+  return this; // chaining
+};
+
+module.exports = NullLayout;
+
+},{"../../util":94}],52:[function(_dereq_,module,exports){
+'use strict';
+
+var util = _dereq_('../../util');
+var is = _dereq_('../../is');
+
+var defaults = {
+  positions: undefined, // map of (node id) => (position obj); or function(node){ return somPos; }
+  zoom: undefined, // the zoom level to set (prob want fit = false if set)
+  pan: undefined, // the pan level to set (prob want fit = false if set)
+  fit: true, // whether to fit to viewport
+  padding: 30, // padding on fit
+  animate: false, // whether to transition the node positions
+  animationDuration: 500, // duration of animation in ms if enabled
+  animationEasing: undefined, // easing of animation if enabled
+  ready: undefined, // callback on layoutready
+  stop: undefined // callback on layoutstop
+};
+
+function PresetLayout( options ){
+  this.options = util.extend({}, defaults, options);
+}
+
+PresetLayout.prototype.run = function(){
+  var options = this.options;
+  var eles = options.eles;
+
+  var nodes = eles.nodes();
+  var posIsFn = is.fn( options.positions );
+
+  function getPosition(node){
+    if( options.positions == null ){
+      return null;
+    }
+
+    if( posIsFn ){
+      return options.positions.apply( node, [ node ] );
+    }
+
+    var pos = options.positions[node._private.data.id];
+
+    if( pos == null ){
+      return null;
+    }
+
+    return pos;
+  }
+
+  nodes.layoutPositions(this, options, function(i, node){
+    var position = getPosition(node);
+
+    if( node.locked() || position == null ){
+      return false;
+    }
+
+    return position;
+  });
+
+  return this; // chaining
+};
+
+module.exports = PresetLayout;
+
+},{"../../is":77,"../../util":94}],53:[function(_dereq_,module,exports){
+'use strict';
+
+var util = _dereq_('../../util');
+var math = _dereq_('../../math');
+
+var defaults = {
+  fit: true, // whether to fit to viewport
+  padding: 30, // fit padding
+  boundingBox: undefined, // constrain layout bounds; { x1, y1, x2, y2 } or { x1, y1, w, h }
+  animate: false, // whether to transition the node positions
+  animationDuration: 500, // duration of animation in ms if enabled
+  animationEasing: undefined, // easing of animation if enabled
+  ready: undefined, // callback on layoutready
+  stop: undefined // callback on layoutstop
+};
+
+function RandomLayout( options ){
+  this.options = util.extend({}, defaults, options);
+}
+
+RandomLayout.prototype.run = function(){
+  var options = this.options;
+  var cy = options.cy;
+  var eles = options.eles;
+  var nodes = eles.nodes().not(':parent');
+
+  var bb = math.makeBoundingBox( options.boundingBox ? options.boundingBox : {
+    x1: 0, y1: 0, w: cy.width(), h: cy.height()
+  } );
+
+  var getPos = function( i, node ){
+    return {
+      x: bb.x1 + Math.round( Math.random() * bb.w ),
+      y: bb.y1 + Math.round( Math.random() * bb.h )
+    };
+  };
+
+  nodes.layoutPositions( this, options, getPos );
+
+  return this; // chaining
+};
+
+module.exports = RandomLayout;
+
+},{"../../math":79,"../../util":94}],54:[function(_dereq_,module,exports){
+'use strict';
+
+var math = _dereq_('../../../math');
+var is = _dereq_('../../../is');
+var util = _dereq_('../../../util');
+
+var BRp = {};
+
+BRp.arrowShapeHeight = 0.3;
+
+BRp.registerArrowShapes = function(){
+  var arrowShapes = this.arrowShapes = {};
+  var renderer = this;
+
+  // Contract for arrow shapes:
+  // 0, 0 is arrow tip
+  // (0, 1) is direction towards node
+  // (1, 0) is right
+  //
+  // functional api:
+  // collide: check x, y in shape
+  // roughCollide: called before collide, no false negatives
+  // draw: draw
+  // spacing: dist(arrowTip, nodeBoundary)
+  // gap: dist(edgeTip, nodeBoundary), edgeTip may != arrowTip
+
+  var bbCollide = function( x, y, size, angle, translation, padding ){
+    var x1 = translation.x - size/2 - padding;
+    var x2 = translation.x + size/2 + padding;
+    var y1 = translation.y - size/2 - padding;
+    var y2 = translation.y + size/2 + padding;
+
+    var inside = (x1 <= x && x <= x2) && (y1 <= y && y <= y2);
+
+    return inside;
+  };
+
+  var transform = function( x, y, size, angle, translation ){
+    var xRotated = x * Math.cos(angle) - y * Math.sin(angle);
+    var yRotated = x * Math.sin(angle) + y * Math.cos(angle);
+
+    var xScaled = xRotated * size;
+    var yScaled = yRotated * size;
+
+    var xTranslated = xScaled + translation.x;
+    var yTranslated = yScaled + translation.y;
+
+    return {
+      x: xTranslated,
+      y: yTranslated
+    };
+  };
+
+  var transformPoints = function( pts, size, angle, translation ){
+    var retPts = [];
+
+    for( var i = 0; i < pts.length; i += 2 ){
+      var x = pts[i];
+      var y = pts[i + 1];
+
+      retPts.push( transform(x, y, size, angle, translation) );
+    }
+
+    return retPts;
+  };
+
+  var pointsToArr = function( pts ){
+    var ret = [];
+
+    for( var i = 0; i < pts.length; i++ ){
+      var p = pts[i];
+
+      ret.push( p.x, p.y );
+    }
+
+    return ret;
+  };
+
+  var defineArrowShape = function( name, defn ){
+    if( is.string(defn) ){
+      defn = arrowShapes[ defn ];
+    }
+
+    arrowShapes[ name ] = util.extend( {
+      name: name,
+
+      points: [
+        -0.15, -0.3,
+        0.15, -0.3,
+        0.15, 0.3,
+        -0.15, 0.3
+      ],
+
+      collide: function( x, y, size, angle, translation, padding ){
+        var points = pointsToArr( transformPoints( this.points, size + 2*padding, angle, translation ) );
+        var inside = math.pointInsidePolygonPoints( x, y, points );
+
+        return inside;
+      },
+
+      roughCollide: bbCollide,
+
+      draw: function( context, size, angle, translation ){
+        var points = transformPoints( this.points, size, angle, translation );
+
+        renderer.arrowShapeImpl('polygon')( context, points );
+      },
+
+      spacing: function( edge ){
+        return 0;
+      },
+
+      gap: function( edge ){
+        return edge._private.style['width'].pfValue * 2;
+      }
+    }, defn );
+  };
+
+  defineArrowShape( 'none', {
+    collide: util.falsify,
+
+    roughCollide: util.falsify,
+
+    draw: util.noop,
+
+    spacing: util.zeroify,
+
+    gap: util.zeroify
+  } );
+
+  defineArrowShape( 'triangle', {
+    points: [
+      -0.15, -0.3,
+      0, 0,
+      0.15, -0.3
+    ]
+  } );
+
+  defineArrowShape( 'arrow', 'triangle' );
+
+  defineArrowShape( 'triangle-backcurve', {
+    points: arrowShapes['triangle'].points,
+
+    controlPoint: [ 0, -0.15 ],
+
+    roughCollide: bbCollide,
+
+    draw: function( context, size, angle, translation ){
+      var ptsTrans = transformPoints( this.points, size, angle, translation );
+      var ctrlPt = this.controlPoint;
+      var ctrlPtTrans = transform( ctrlPt[0], ctrlPt[1], size, angle, translation );
+
+      renderer.arrowShapeImpl( this.name )( context, ptsTrans, ctrlPtTrans );
+    },
+
+    gap: function( edge ){
+      return edge._private.style['width'].pfValue;
+    }
+  } );
+
+
+  defineArrowShape( 'triangle-tee', {
+    points: [
+      -0.15, -0.3,
+      0, 0,
+      0.15, -0.3,
+      -0.15, -0.3
+    ],
+
+    pointsTee: [
+      -0.15, -0.4,
+      -0.15, -0.5,
+      0.15, -0.5,
+      0.15, -0.4
+    ],
+
+    collide: function( x, y, size, angle, translation, padding ){
+      var triPts = pointsToArr( transformPoints( this.points, size + 2*padding, angle, translation ) );
+      var teePts = pointsToArr( transformPoints( this.pointsTee, size + 2*padding, angle, translation ) );
+
+      var inside = math.pointInsidePolygonPoints( x, y, triPts ) || math.pointInsidePolygonPoints( x, y, teePts );
+
+      return inside;
+    },
+
+    draw: function( context, size, angle, translation ){
+      var triPts = transformPoints( this.points, size, angle, translation );
+      var teePts = transformPoints( this.pointsTee, size, angle, translation );
+
+      renderer.arrowShapeImpl( this.name )( context, triPts, teePts );
+    }
+  } );
+
+  defineArrowShape( 'vee', {
+    points: [
+      -0.15, -0.3,
+      0, 0,
+      0.15, -0.3,
+      0, -0.15
+    ],
+
+    gap: function( edge ){
+      return edge._private.style['width'].pfValue;
+    }
+  } );
+
+  defineArrowShape( 'half-triangle-overshot', {
+    points: [
+      0, -0.25,
+      -0.5, -0.25,
+      0.5, 0.25
+    ],
+
+    leavePathOpen: true,
+
+    matchEdgeWidth: true
+  } );
+
+  defineArrowShape( 'circle', {
+    radius: 0.15,
+
+    collide: function( x, y, size, angle, translation, padding ){
+      var t = translation;
+      var inside = ( Math.pow(t.x - x, 2) + Math.pow(t.y - y, 2) <= Math.pow((size + 2*padding) * this.radius, 2) );
+
+      return inside;
+    },
+
+    draw: function( context, size, angle, translation ){
+      renderer.arrowShapeImpl( this.name )( context, translation.x, translation.y, this.radius * size );
+    },
+
+    spacing: function( edge ){
+      return renderer.getArrowWidth(edge._private.style['width'].pfValue)
+        * this.radius;
+    }
+  } );
+
+  defineArrowShape( 'inhibitor', {
+    points: [
+      -0.25, 0,
+      -0.25, -0.1,
+      0.25, -0.1,
+      0.25, 0
+    ],
+
+    spacing: function( edge ){
+      return 1;
+    },
+
+    gap: function( edge ){
+      return 1;
+    }
+  } );
+
+  defineArrowShape( 'tee', 'inhibitor' );
+
+  defineArrowShape( 'square', {
+    points: [
+      -0.15, 0.00,
+      0.15, 0.00,
+      0.15, -0.3,
+      -0.15, -0.3
+    ]
+  } );
+
+  defineArrowShape( 'diamond', {
+    points: [
+      -0.15, -0.15,
+      0, -0.3,
+      0.15, -0.15,
+      0, 0
+    ],
+
+    gap: function( edge ){
+      return edge._private.style['width'].pfValue;
+    }
+  } );
+
+};
+
+module.exports = BRp;
+
+},{"../../../is":77,"../../../math":79,"../../../util":94}],55:[function(_dereq_,module,exports){
+'use strict';
+
+var BRp = {};
+
+var delEleCache = function( r ){
+  r.eleEache = null;
+};
+
+var getEleCache = function( r ){
+  if( !r.eleEache ){
+    r.eleEache = {
+      nodes: r.cy.nodes(),
+      edges: r.cy.edges()
+    };
+  }
+
+  return r.eleEache;
+};
+
+BRp.getCachedElements = function(){
+  return getEleCache( this );
+};
+
+BRp.getCachedNodes = function(){
+  return getEleCache( this ).nodes;
+};
+
+BRp.getCachedEdges = function(){
+  return getEleCache( this ).edges;
+};
+
+BRp.updateElementsCache = function(){
+  var r = this;
+
+  delEleCache( r );
+
+  return getEleCache( r );
+};
+
+module.exports = BRp;
+
+},{}],56:[function(_dereq_,module,exports){
+'use strict';
+
+var math = _dereq_('../../../math');
+var is = _dereq_('../../../is');
+var zIndexSort = _dereq_('../../../collection/zsort');
+
+var BRp = {};
+
+// Project mouse
+BRp.projectIntoViewport = function(clientX, clientY) {
+  var offsets = this.findContainerClientCoords();
+  var offsetLeft = offsets[0];
+  var offsetTop = offsets[1];
+
+  var x = clientX - offsetLeft;
+  var y = clientY - offsetTop;
+
+  x -= this.cy.pan().x; y -= this.cy.pan().y; x /= this.cy.zoom(); y /= this.cy.zoom();
+  return [x, y];
+};
+
+BRp.findContainerClientCoords = function() {
+  var container = this.container;
+
+  var bb = this.containerBB = this.containerBB || container.getBoundingClientRect();
+
+  return [bb.left, bb.top, bb.right - bb.left, bb.bottom - bb.top];
+};
+
+BRp.invalidateContainerClientCoordsCache = function(){
+  this.containerBB = null;
+};
+
+// Find nearest element
+BRp.findNearestElement = function(x, y, visibleElementsOnly, isTouch){
+  var self = this;
+  var r = this;
+  var eles = r.getCachedZSortedEles();
+  var near = [];
+  var zoom = r.cy.zoom();
+  var hasCompounds = r.cy.hasCompoundNodes();
+  var edgeThreshold = (isTouch ? 24 : 8) / zoom;
+  var nodeThreshold = (isTouch ? 8 : 2) / zoom;
+  var labelThreshold = (isTouch ? 8 : 2) / zoom;
+
+  function checkNode(node){
+    var _p = node._private;
+
+    if( _p.style['events'].strValue === 'no' ){ return; }
+
+    var width = node.outerWidth() + 2*nodeThreshold;
+    var height = node.outerHeight() + 2*nodeThreshold;
+    var hw = width/2;
+    var hh = height/2;
+    var pos = _p.position;
+
+    if(
+      pos.x - hw <= x && x <= pos.x + hw // bb check x
+        &&
+      pos.y - hh <= y && y <= pos.y + hh // bb check y
+    ){
+      var visible = !visibleElementsOnly || ( node.visible() && !node.transparent() );
+
+      // exit early if invisible edge and must be visible
+      if( visibleElementsOnly && !visible ){
+        return;
+      }
+
+      var shape = r.nodeShapes[ self.getNodeShape(node) ];
+
+      if(
+        shape.checkPoint(x, y, 0, width, height, pos.x, pos.y)
+      ){
+        near.push( node );
+      }
+
+    }
+  }
+
+  function checkEdge(edge){
+    var _p = edge._private;
+
+    if( _p.style['events'].strValue === 'no' ){ return; }
+
+    var rs = _p.rscratch;
+    var style = _p.style;
+    var width = style['width'].pfValue/2 + edgeThreshold; // more like a distance radius from centre
+    var widthSq = width * width;
+    var width2 = width * 2;
+    var src = _p.source;
+    var tgt = _p.target;
+    var inEdgeBB = false;
+    var sqDist;
+
+    // exit early if invisible edge and must be visible
+    var passedVisibilityCheck;
+    var passesVisibilityCheck = function(){
+      if( passedVisibilityCheck !== undefined ){
+        return passedVisibilityCheck;
+      }
+
+      if( !visibleElementsOnly ){
+        passedVisibilityCheck = true;
+        return true;
+      }
+
+      var visible = edge.visible() && !edge.transparent();
+      if( visible ){
+        passedVisibilityCheck = true;
+        return true;
+      }
+
+      passedVisibilityCheck = false;
+      return false;
+    };
+
+    if( rs.edgeType === 'segments' || rs.edgeType === 'straight' || rs.edgeType === 'haystack' ){
+      var pts = rs.allpts;
+
+      for( var i = 0; i + 3 < pts.length; i += 2 ){
+        if(
+          (inEdgeBB = math.inLineVicinity(x, y, pts[i], pts[i+1], pts[i+2], pts[i+3], width2))
+            && passesVisibilityCheck() &&
+          widthSq > ( sqDist = math.sqDistanceToFiniteLine(x, y, pts[i], pts[i+1], pts[i+2], pts[i+3]) )
+        ){
+          near.push( edge );
+        }
+      }
+
+    } else if( rs.edgeType === 'bezier' || rs.edgeType === 'multibezier' || rs.edgeType === 'self' || rs.edgeType === 'compound' ){
+      var pts = rs.allpts;
+      for( var i = 0; i + 5 < rs.allpts.length; i += 4 ){
+        if(
+          (inEdgeBB = math.inBezierVicinity(x, y, pts[i], pts[i+1], pts[i+2], pts[i+3], pts[i+4], pts[i+5], width2))
+            && passesVisibilityCheck() &&
+          (widthSq > (sqDist = math.sqDistanceToQuadraticBezier(x, y, pts[i], pts[i+1], pts[i+2], pts[i+3], pts[i+4], pts[i+5])) )
+        ){
+          near.push( edge );
+        }
+      }
+    }
+
+    // if we're close to the edge but didn't hit it, maybe we hit its arrows
+    if( inEdgeBB && passesVisibilityCheck() && near.length === 0 || near[near.length - 1] !== edge ){
+      var src = src || _p.source;
+      var tgt = tgt || _p.target;
+
+      var eWidth = style['width'].pfValue;
+      var arSize = self.getArrowWidth( eWidth );
+
+      var arrows = [
+        { name: 'source', x: rs.arrowStartX, y: rs.arrowStartY, angle: rs.srcArrowAngle },
+        { name: 'target', x: rs.arrowEndX, y: rs.arrowEndY, angle: rs.tgtArrowAngle },
+        { name: 'mid-source', x: rs.midX, y: rs.midY, angle: rs.midsrcArrowAngle },
+        { name: 'mid-target', x: rs.midX, y: rs.midY, angle: rs.midtgtArrowAngle }
+      ];
+
+      for( var i = 0; i < arrows.length; i++ ){
+        var ar = arrows[i];
+        var shape = r.arrowShapes[ style[ar.name+'-arrow-shape'].value ];
+
+        if(
+          shape.roughCollide(x, y, arSize, ar.angle, { x: ar.x, y: ar.y }, edgeThreshold)
+           &&
+          shape.collide(x, y, arSize, ar.angle, { x: ar.x, y: ar.y }, edgeThreshold)
+        ){
+          near.push( edge );
+          break;
+        }
+      }
+    }
+
+    // for compound graphs, hitting edge may actually want a connected node instead (b/c edge may have greater z-index precedence)
+    if( hasCompounds &&  near.length > 0 && near[ near.length - 1 ] === edge ){
+      checkNode( src );
+      checkNode( tgt );
+    }
+  }
+
+  function checkLabel(ele){
+    var _p = ele._private;
+    var th = labelThreshold;
+
+    if( _p.style['text-events'].strValue === 'no' ){ return; }
+
+    // adjust bb w/ angle
+    if( _p.group === 'edges' && _p.style['edge-text-rotation'].strValue === 'autorotate' ){
+
+      var rstyle = _p.rstyle;
+      var lw = rstyle.labelWidth + 2*th;
+      var lh = rstyle.labelHeight + 2*th;
+      var lx = rstyle.labelX;
+      var ly = rstyle.labelY;
+
+      var theta = _p.rscratch.labelAngle;
+      var cos = Math.cos( theta );
+      var sin = Math.sin( theta );
+
+      var rotate = function( x, y ){
+        x = x - lx;
+        y = y - ly;
+
+        return {
+          x: x*cos - y*sin + lx,
+          y: x*sin + y*cos + ly
+        };
+      };
+
+      var lx1 = lx - lw/2;
+      var lx2 = lx + lw/2;
+      var ly1 = ly - lh/2;
+      var ly2 = ly + lh/2;
+
+      var px1y1 = rotate( lx1, ly1 );
+      var px1y2 = rotate( lx1, ly2 );
+      var px2y1 = rotate( lx2, ly1 );
+      var px2y2 = rotate( lx2, ly2 );
+
+      var points = [
+        px1y1.x, px1y1.y,
+        px2y1.x, px2y1.y,
+        px2y2.x, px2y2.y,
+        px1y2.x, px1y2.y
+      ];
+
+      if( math.pointInsidePolygonPoints( x, y, points ) ){
+        near.push( ele );
+      }
+
+    } else {
+      var bb = ele.boundingBox({
+        includeLabels: true,
+        includeNodes: false,
+        includeEdges: false
+      });
+
+      // adjust bb w/ threshold
+      bb.x1 -= th;
+      bb.y1 -= th;
+      bb.x2 += th;
+      bb.y2 += th;
+      bb.w = bb.x2 - bb.x1;
+      bb.h = bb.y2 - bb.y1;
+
+      if( math.inBoundingBox( bb, x, y ) ){
+        near.push( ele );
+      }
+    }
+
+  }
+
+  for( var i = eles.length - 1; i >= 0; i-- ){ // reverse order for precedence
+    var ele = eles[i];
+    var _p = ele._private;
+
+    if( near.length > 0 ){ break; } // since we check in z-order, first found is top and best result => exit early
+
+    if( _p.group === 'nodes' ){
+      checkNode( ele );
+
+    } else  { // then edge
+      checkEdge( ele );
+    }
+
+    checkLabel( ele );
+
+  }
+
+
+  if( near.length > 0 ){
+    return near[ near.length - 1 ];
+  } else {
+    return null;
+  }
+};
+
+// 'Give me everything from this box'
+BRp.getAllInBox = function(x1, y1, x2, y2) {
+  var nodes = this.getCachedNodes();
+  var edges = this.getCachedEdges();
+  var box = [];
+
+  var x1c = Math.min(x1, x2);
+  var x2c = Math.max(x1, x2);
+  var y1c = Math.min(y1, y2);
+  var y2c = Math.max(y1, y2);
+
+  x1 = x1c;
+  x2 = x2c;
+  y1 = y1c;
+  y2 = y2c;
+
+  var boxBb = math.makeBoundingBox({
+    x1: x1, y1: y1,
+    x2: x2, y2: y2
+  });
+
+  for ( var i = 0; i < nodes.length; i++ ){
+    var node = nodes[i];
+    var nodeBb = node.boundingBox({
+      includeNodes: true,
+      includeEdges: false,
+      includeLabels: false
+    });
+
+    if( math.boundingBoxesIntersect(boxBb, nodeBb) ){
+      box.push(nodes[i]);
+    }
+  }
+
+  for( var e = 0; e < edges.length; e++ ){
+    var edge = edges[e];
+    var _p = edge._private;
+    var rs = _p.rscratch;
+
+    if( rs.startX != null && rs.startY != null && !math.inBoundingBox( boxBb, rs.startX, rs.startY ) ){ continue; }
+    if( rs.endX != null && rs.endY != null && !math.inBoundingBox( boxBb, rs.endX, rs.endY ) ){ continue; }
+
+    if( rs.edgeType === 'bezier' || rs.edgeType === 'multibezier' || rs.edgeType === 'self' || rs.edgeType === 'compound' || rs.edgeType === 'segments' || rs.edgeType === 'haystack' ){
+
+      var pts = _p.rstyle.bezierPts || _p.rstyle.linePts || _p.rstyle.haystackPts;
+      var allInside = true;
+
+      for( var i = 0; i < pts.length; i++ ){
+        if( !math.pointInBoundingBox( boxBb, pts[i] ) ){
+          allInside = false;
+          break;
+        }
+      }
+
+      if( allInside ){
+        box.push( edge );
+      }
+
+    } else if( rs.edgeType === 'haystack' || rs.edgeType === 'straight' ){
+      box.push( edge );
+    }
+
+  }
+
+  return box;
+};
+
+
+/**
+ * Returns the shape of the given node. If the height or width of the given node
+ * is set to auto, the node is considered to be a compound.
+ *
+ * @param node          a node
+ * @return {String}     shape of the node
+ */
+BRp.getNodeShape = function( node ){
+  var r = this;
+  var style = node._private.style;
+  var shape = style['shape'].value;
+
+  if( node.isParent() ){
+    if( shape === 'rectangle' || shape === 'roundrectangle' ){
+      return shape;
+    } else {
+      return 'rectangle';
+    }
+  }
+
+  if( shape === 'polygon' ){
+    var points = style['shape-polygon-points'].value;
+
+    return r.nodeShapes.makePolygon( points ).name;
+  }
+
+  return shape;
+};
+
+BRp.updateCachedZSortedEles = function(){
+  this.getCachedZSortedEles( true );
+};
+
+BRp.getCachedZSortedEles = function( forceRecalc ){
+  var lastNodes = this.lastZOrderCachedNodes;
+  var lastEdges = this.lastZOrderCachedEdges;
+  var nodes = this.getCachedNodes();
+  var edges = this.getCachedEdges();
+  var eles = [];
+
+  if( forceRecalc || !lastNodes || !lastEdges || lastNodes !== nodes || lastEdges !== edges ){
+    //console.time('cachezorder')
+
+    for( var i = 0; i < nodes.length; i++ ){
+      var n = nodes[i];
+
+      if( n.animated() || (n.visible() && !n.transparent()) ){
+        eles.push( n );
+      }
+    }
+
+    for( var i = 0; i < edges.length; i++ ){
+      var e = edges[i];
+
+      if( e.animated() || (e.visible() && !e.transparent()) ){
+        eles.push( e );
+      }
+    }
+
+    eles.sort( zIndexSort );
+    this.cachedZSortedEles = eles;
+    //console.log('make cache')
+
+    //console.timeEnd('cachezorder')
+  } else {
+    eles = this.cachedZSortedEles;
+    //console.log('read cache')
+  }
+
+  this.lastZOrderCachedNodes = nodes;
+  this.lastZOrderCachedEdges = edges;
+
+  return eles;
+};
+
+function pushBezierPts(edge, pts){
+  var qbezierAt = function( p1, p2, p3, t ){ return math.qbezierAt(p1, p2, p3, t); };
+  var _p = edge._private;
+  var bpts = _p.rstyle.bezierPts;
+
+  bpts.push({
+    x: qbezierAt( pts[0], pts[2], pts[4], 0.05 ),
+    y: qbezierAt( pts[1], pts[3], pts[5], 0.05 )
+  });
+
+  bpts.push({
+    x: qbezierAt( pts[0], pts[2], pts[4], 0.25 ),
+    y: qbezierAt( pts[1], pts[3], pts[5], 0.25 )
+  });
+
+  bpts.push({
+    x: qbezierAt( pts[0], pts[2], pts[4], 0.4 ),
+    y: qbezierAt( pts[1], pts[3], pts[5], 0.4 )
+  });
+
+  bpts.push({
+    x: qbezierAt( pts[0], pts[2], pts[4], 0.5 ),
+    y: qbezierAt( pts[1], pts[3], pts[5], 0.5 )
+  });
+
+  bpts.push({
+    x: qbezierAt( pts[0], pts[2], pts[4], 0.6 ),
+    y: qbezierAt( pts[1], pts[3], pts[5], 0.6 )
+  });
+
+  bpts.push({
+    x: qbezierAt( pts[0], pts[2], pts[4], 0.75 ),
+    y: qbezierAt( pts[1], pts[3], pts[5], 0.75 )
+  });
+
+  bpts.push({
+    x: qbezierAt( pts[0], pts[2], pts[4], 0.95 ),
+    y: qbezierAt( pts[1], pts[3], pts[5], 0.95 )
+  });
+}
+
+BRp.projectLines = function( edge ){
+  var _p = edge._private;
+  var rs = _p.rscratch;
+  var et = rs.edgeType;
+
+  if( et === 'multibezier' ||  et === 'bezier' ||  et === 'self' ||  et === 'compound' ){
+    var bpts = _p.rstyle.bezierPts = []; // jshint ignore:line
+
+    for( var i = 0; i + 5 < rs.allpts.length; i += 4 ){
+      pushBezierPts( edge, rs.allpts.slice(i, i+6) );
+    }
+  } else if(  et === 'segments' ){
+    var lpts = _p.rstyle.linePts = [];
+
+    for( var i = 0; i + 1 < rs.allpts.length; i += 2 ){
+      lpts.push({
+        x: rs.allpts[i],
+        y: rs.allpts[i+1]
+      });
+    }
+  } else if( et === 'haystack' ){
+    var hpts = rs.haystackPts;
+
+    _p.rstyle.haystackPts = [
+      { x: hpts[0], y: hpts[1] },
+      { x: hpts[2], y: hpts[3] }
+    ];
+  }
+};
+
+BRp.projectBezier = BRp.projectLines;
+
+BRp.recalculateNodeLabelProjection = function( node ){
+  var content = node._private.style['label'].strValue;
+  if( !content || content.match(/^\s+$/) ){ return; }
+
+  var textX, textY;
+  var nodeWidth = node.outerWidth();
+  var nodeHeight = node.outerHeight();
+  var nodePos = node._private.position;
+  var textHalign = node._private.style['text-halign'].strValue;
+  var textValign = node._private.style['text-valign'].strValue;
+  var rs = node._private.rscratch;
+  var rstyle = node._private.rstyle;
+
+  switch( textHalign ){
+    case 'left':
+      textX = nodePos.x - nodeWidth / 2;
+      break;
+
+    case 'right':
+      textX = nodePos.x + nodeWidth / 2;
+      break;
+
+    default: // e.g. center
+      textX = nodePos.x;
+  }
+
+  switch( textValign ){
+    case 'top':
+      textY = nodePos.y - nodeHeight / 2;
+      break;
+
+    case 'bottom':
+      textY = nodePos.y + nodeHeight / 2;
+      break;
+
+    default: // e.g. middle
+      textY = nodePos.y;
+  }
+
+  rs.labelX = textX;
+  rs.labelY = textY;
+  rstyle.labelX = textX;
+  rstyle.labelY = textY;
+
+  this.applyLabelDimensions( node );
+};
+
+BRp.recalculateEdgeLabelProjection = function( edge ){
+  var content = edge._private.style['label'].strValue;
+  if( !content || content.match(/^\s+$/) ){ return; }
+
+  var textX, textY;
+  var _p = edge._private;
+  var rs = _p.rscratch;
+  //var style = _p.style;
+  var rstyle = _p.rstyle;
+
+  textX = rs.midX;
+  textY = rs.midY;
+
+  // add center point to style so bounding box calculations can use it
+  rs.labelX = textX;
+  rs.labelY = textY;
+  rstyle.labelX = textX;
+  rstyle.labelY = textY;
+
+  this.applyLabelDimensions( edge );
+};
+
+BRp.applyLabelDimensions = function( ele ){
+  var rs = ele._private.rscratch;
+  var rstyle = ele._private.rstyle;
+
+  var text = this.getLabelText( ele );
+  var labelDims = this.calculateLabelDimensions( ele, text );
+
+  rstyle.labelWidth = labelDims.width;
+  rs.labelWidth = labelDims.width;
+
+  rstyle.labelHeight = labelDims.height;
+  rs.labelHeight = labelDims.height;
+};
+
+BRp.getLabelText = function( ele ){
+  var style = ele._private.style;
+  var text = ele._private.style['label'].strValue;
+  var textTransform = style['text-transform'].value;
+  var rscratch = ele._private.rscratch;
+
+  if (textTransform == 'none') {
+  } else if (textTransform == 'uppercase') {
+    text = text.toUpperCase();
+  } else if (textTransform == 'lowercase') {
+    text = text.toLowerCase();
+  }
+
+  if( style['text-wrap'].value === 'wrap' ){
+    //console.log('wrap');
+
+    // save recalc if the label is the same as before
+    if( rscratch.labelWrapKey === rscratch.labelKey ){
+      // console.log('wrap cache hit');
+      return rscratch.labelWrapCachedText;
+    }
+    // console.log('wrap cache miss');
+
+    var lines = text.split('\n');
+    var maxW = style['text-max-width'].pfValue;
+    var wrappedLines = [];
+
+    for( var l = 0; l < lines.length; l++ ){
+      var line = lines[l];
+      var lineDims = this.calculateLabelDimensions( ele, line, 'line=' + line );
+      var lineW = lineDims.width;
+
+      if( lineW > maxW ){ // line is too long
+        var words = line.split(/\s+/); // NB: assume collapsed whitespace into single space
+        var subline = '';
+
+        for( var w = 0; w < words.length; w++ ){
+          var word = words[w];
+          var testLine = subline.length === 0 ? word : subline + ' ' + word;
+          var testDims = this.calculateLabelDimensions( ele, testLine, 'testLine=' + testLine );
+          var testW = testDims.width;
+
+          if( testW <= maxW ){ // word fits on current line
+            subline += word + ' ';
+          } else { // word starts new line
+            wrappedLines.push( subline );
+            subline = word + ' ';
+          }
+        }
+
+        // if there's remaining text, put it in a wrapped line
+        if( !subline.match(/^\s+$/) ){
+          wrappedLines.push( subline );
+        }
+      } else { // line is already short enough
+        wrappedLines.push( line );
+      }
+    } // for
+
+    rscratch.labelWrapCachedLines = wrappedLines;
+    rscratch.labelWrapCachedText = text = wrappedLines.join('\n');
+    rscratch.labelWrapKey = rscratch.labelKey;
+
+    // console.log(text)
+  } // if wrap
+
+  return text;
+};
+
+BRp.calculateLabelDimensions = function( ele, text, extraKey ){
+  var r = this;
+  var style = ele._private.style;
+  var fStyle = style['font-style'].strValue;
+  var size = style['font-size'].pfValue + 'px';
+  var family = style['font-family'].strValue;
+  // var variant = style['font-variant'].strValue;
+  var weight = style['font-weight'].strValue;
+
+  var cacheKey = ele._private.labelKey;
+
+  if( extraKey ){
+    cacheKey += '$@$' + extraKey;
+  }
+
+  var cache = r.labelDimCache || (r.labelDimCache = {});
+
+  if( cache[cacheKey] ){
+    return cache[cacheKey];
+  }
+
+  var div = this.labelCalcDiv;
+
+  if( !div ){
+    div = this.labelCalcDiv = document.createElement('div');
+    document.body.appendChild( div );
+  }
+
+  var ds = div.style;
+
+  // from ele style
+  ds.fontFamily = family;
+  ds.fontStyle = fStyle;
+  ds.fontSize = size;
+  // ds.fontVariant = variant;
+  ds.fontWeight = weight;
+
+  // forced style
+  ds.position = 'absolute';
+  ds.left = '-9999px';
+  ds.top = '-9999px';
+  ds.zIndex = '-1';
+  ds.visibility = 'hidden';
+  ds.pointerEvents = 'none';
+  ds.padding = '0';
+  ds.lineHeight = '1';
+
+  if( style['text-wrap'].value === 'wrap' ){
+    ds.whiteSpace = 'pre'; // so newlines are taken into account
+  } else {
+    ds.whiteSpace = 'normal';
+  }
+
+  // put label content in div
+  div.textContent = text;
+
+  cache[cacheKey] = {
+    width: div.clientWidth,
+    height: div.clientHeight
+  };
+
+  return cache[cacheKey];
+};
+
+BRp.recalculateRenderedStyle = function( eles ){
+  var edges = [];
+  var nodes = [];
+  var handledEdge = {};
+
+  for( var i = 0; i < eles.length; i++ ){
+    var ele = eles[i];
+    var _p = ele._private;
+    var style = _p.style;
+    var rs = _p.rscratch;
+    var rstyle = _p.rstyle;
+    var id = _p.data.id;
+    var bbStyleSame = rs.boundingBoxKey != null && _p.boundingBoxKey === rs.boundingBoxKey;
+    var labelStyleSame = rs.labelKey != null && _p.labelKey === rs.labelKey;
+    var styleSame = bbStyleSame && labelStyleSame;
+
+    if( _p.group === 'nodes' ){
+      var pos = _p.position;
+      var posSame = rstyle.nodeX != null && rstyle.nodeY != null && pos.x === rstyle.nodeX && pos.y === rstyle.nodeY;
+      var wSame = rstyle.nodeW != null && rstyle.nodeW === style['width'].pfValue;
+      var hSame = rstyle.nodeH != null && rstyle.nodeH === style['height'].pfValue;
+
+      if( !posSame || !styleSame || !wSame || !hSame ){
+        nodes.push( ele );
+      }
+
+      rstyle.nodeX = pos.x;
+      rstyle.nodeY = pos.y;
+      rstyle.nodeW = style['width'].pfValue;
+      rstyle.nodeH = style['height'].pfValue;
+    } else { // edges
+
+      var srcPos = _p.source._private.position;
+      var tgtPos = _p.target._private.position;
+      var srcSame = rstyle.srcX != null && rstyle.srcY != null && srcPos.x === rstyle.srcX && srcPos.y === rstyle.srcY;
+      var tgtSame = rstyle.tgtX != null && rstyle.tgtY != null && tgtPos.x === rstyle.tgtX && tgtPos.y === rstyle.tgtY;
+      var positionsSame = srcSame && tgtSame;
+
+      if( !positionsSame || !styleSame ){
+        if( rs.edgeType === 'bezier' || rs.edgeType === 'straight' || rs.edgeType === 'self' || rs.edgeType === 'compound' ){
+          if( !handledEdge[ id ] ){
+            edges.push( ele );
+            handledEdge[ id ] = true;
+
+            var parallelEdges = ele.parallelEdges();
+            for( var i = 0; i < parallelEdges.length; i++ ){
+              var pEdge = parallelEdges[i];
+              var pId = pEdge._private.data.id;
+
+              if( !handledEdge[ pId ] ){
+                edges.push( pEdge );
+                handledEdge[ pId ] = true;
+              }
+
+            }
+          }
+        } else {
+          edges.push( ele );
+        }
+      } // if positions diff
+
+      // update rstyle positions
+      rstyle.srcX = srcPos.x;
+      rstyle.srcY = srcPos.y;
+      rstyle.tgtX = tgtPos.x;
+      rstyle.tgtY = tgtPos.y;
+
+    } // if edges
+
+    rs.boundingBoxKey = _p.boundingBoxKey;
+    rs.labelKey = _p.labelKey;
+  }
+
+  this.recalculateEdgeProjections( edges );
+  this.recalculateLabelProjections( nodes, edges );
+};
+
+BRp.recalculateLabelProjections = function( nodes, edges ){
+  for( var i = 0; i < nodes.length; i++ ){
+    this.recalculateNodeLabelProjection( nodes[i] );
+  }
+
+  for( var i = 0; i < edges.length; i++ ){
+    this.recalculateEdgeLabelProjection( edges[i] );
+  }
+};
+
+BRp.recalculateEdgeProjections = function( edges ){
+  this.findEdgeControlPoints( edges );
+};
+
+
+// Find edge control points
+BRp.findEdgeControlPoints = function(edges) {
+  if( !edges || edges.length === 0 ){ return; }
+
+  var r = this;
+  var cy = r.cy;
+  var hasCompounds = cy.hasCompoundNodes();
+  var hashTable = {};
+  var pairIds = [];
+  var haystackEdges = [];
+  var autorotateEdges = [];
+
+  // create a table of edge (src, tgt) => list of edges between them
+  var pairId;
+  for (var i = 0; i < edges.length; i++){
+    var edge = edges[i];
+    var _p = edge._private;
+    var data = _p.data;
+    var style = _p.style;
+    var curveStyle = style['curve-style'].value;
+    var edgeIsUnbundled = curveStyle === 'unbundled-bezier' || curveStyle === 'segments';
+
+    // ignore edges who are not to be displayed
+    // they shouldn't take up space
+    if( style.display.value === 'none' ){
+      continue;
+    }
+
+    if( style['edge-text-rotation'].strValue === 'autorotate' ){
+      autorotateEdges.push( edge );
+    }
+
+    if( curveStyle === 'haystack' ){
+      haystackEdges.push( edge );
+      continue;
+    }
+
+    var srcId = data.source;
+    var tgtId = data.target;
+
+    pairId = srcId > tgtId ?
+      tgtId + '$-$' + srcId :
+      srcId + '$-$' + tgtId ;
+
+    if( edgeIsUnbundled ){
+      pairId = 'unbundled' + '$-$' + data.id;
+    }
+
+    if( hashTable[pairId] == null ){
+      hashTable[pairId] = [];
+      pairIds.push( pairId );
+    }
+
+    hashTable[pairId].push( edge );
+
+    if( edgeIsUnbundled ){
+      hashTable[pairId].hasUnbundled = true;
+    }
+  }
+
+  var src, tgt, src_p, tgt_p, srcPos, tgtPos, srcW, srcH, tgtW, tgtH, srcShape, tgtShape;
+  var vectorNormInverse;
+  var badBezier;
+
+  // for each pair (src, tgt), create the ctrl pts
+  // Nested for loop is OK; total number of iterations for both loops = edgeCount
+  for (var p = 0; p < pairIds.length; p++) {
+    pairId = pairIds[p];
+    var pairEdges = hashTable[pairId];
+
+    // for each pair id, the edges should be sorted by index
+    pairEdges.sort(function(edge1, edge2){
+      return edge1._private.index - edge2._private.index;
+    });
+
+    src = pairEdges[0]._private.source;
+    tgt = pairEdges[0]._private.target;
+
+    src_p = src._private;
+    tgt_p = tgt._private;
+
+    // make sure src/tgt distinction is consistent
+    // (src/tgt in this case are just for ctrlpts and don't actually have to be true src/tgt)
+    if( src_p.data.id > tgt_p.data.id ){
+      var temp = src;
+      src = tgt;
+      tgt = temp;
+    }
+
+    srcPos = src_p.position;
+    tgtPos = tgt_p.position;
+
+    srcW = src.outerWidth();
+    srcH = src.outerHeight();
+
+    tgtW = tgt.outerWidth();
+    tgtH = tgt.outerHeight();
+
+    srcShape = r.nodeShapes[ this.getNodeShape(src) ];
+    tgtShape = r.nodeShapes[ this.getNodeShape(tgt) ];
+
+    badBezier = false;
+
+
+    if( (pairEdges.length > 1 && src !== tgt) || pairEdges.hasUnbundled ){
+
+      // pt outside src shape to calc distance/displacement from src to tgt
+      var srcOutside = srcShape.intersectLine(
+        srcPos.x,
+        srcPos.y,
+        srcW,
+        srcH,
+        tgtPos.x,
+        tgtPos.y,
+        0
+      );
+
+      // pt outside tgt shape to calc distance/displacement from src to tgt
+      var tgtOutside = tgtShape.intersectLine(
+        tgtPos.x,
+        tgtPos.y,
+        tgtW,
+        tgtH,
+        srcPos.x,
+        srcPos.y,
+        0
+      );
+
+      var midptSrcPts = {
+        x1: srcOutside[0],
+        x2: tgtOutside[0],
+        y1: srcOutside[1],
+        y2: tgtOutside[1]
+      };
+
+      var dy = ( tgtOutside[1] - srcOutside[1] );
+      var dx = ( tgtOutside[0] - srcOutside[0] );
+      var l = Math.sqrt( dx*dx + dy*dy );
+
+      var vector = {
+        x: dx,
+        y: dy
+      };
+
+      var vectorNorm = {
+        x: vector.x/l,
+        y: vector.y/l
+      };
+      vectorNormInverse = {
+        x: -vectorNorm.y,
+        y: vectorNorm.x
+      };
+
+
+      // if src intersection is inside tgt or tgt intersection is inside src, then no ctrl pts to draw
+      if(
+        tgtShape.checkPoint( srcOutside[0], srcOutside[1], 0, tgtW, tgtH, tgtPos.x, tgtPos.y )  ||
+        srcShape.checkPoint( tgtOutside[0], tgtOutside[1], 0, srcW, srcH, srcPos.x, srcPos.y )
+      ){
+        vectorNormInverse = {};
+        badBezier = true;
+      }
+
+    }
+
+    var edge;
+    var edge_p;
+    var rs;
+
+    for (var i = 0; i < pairEdges.length; i++) {
+      edge = pairEdges[i];
+      edge_p = edge._private;
+      rs = edge_p.rscratch;
+
+      var edgeIndex1 = rs.lastEdgeIndex;
+      var edgeIndex2 = i;
+
+      var numEdges1 = rs.lastNumEdges;
+      var numEdges2 = pairEdges.length;
+
+      var eStyle = edge_p.style;
+      var style = eStyle;
+      var curveStyle = eStyle['curve-style'].value;
+      var ctrlptDists = eStyle['control-point-distances'];
+      var ctrlptWs = eStyle['control-point-weights'];
+      var bezierN = ctrlptDists && ctrlptWs ? Math.min( ctrlptDists.value.length, ctrlptWs.value.length ) : 1;
+      var stepSize = eStyle['control-point-step-size'].pfValue;
+      var ctrlptDist = ctrlptDists !== undefined ? ctrlptDists.pfValue[0] : undefined;
+      var ctrlptWeight = ctrlptWs.value[0];
+      var edgeIsUnbundled = curveStyle === 'unbundled-bezier' || curveStyle === 'segments';
+
+      var swappedDirection = edge_p.source !== src;
+
+      if( swappedDirection && edgeIsUnbundled ){
+        ctrlptDist *= -1;
+      }
+
+      var srcX1 = rs.lastSrcCtlPtX;
+      var srcX2 = srcPos.x;
+      var srcY1 = rs.lastSrcCtlPtY;
+      var srcY2 = srcPos.y;
+      var srcW1 = rs.lastSrcCtlPtW;
+      var srcW2 = src.outerWidth();
+      var srcH1 = rs.lastSrcCtlPtH;
+      var srcH2 = src.outerHeight();
+
+      var tgtX1 = rs.lastTgtCtlPtX;
+      var tgtX2 = tgtPos.x;
+      var tgtY1 = rs.lastTgtCtlPtY;
+      var tgtY2 = tgtPos.y;
+      var tgtW1 = rs.lastTgtCtlPtW;
+      var tgtW2 = tgt.outerWidth();
+      var tgtH1 = rs.lastTgtCtlPtH;
+      var tgtH2 = tgt.outerHeight();
+
+      var width1 = rs.lastW;
+      var width2 = eStyle['control-point-step-size'].pfValue;
+
+      if( badBezier ){
+        rs.badBezier = true;
+      } else {
+        rs.badBezier = false;
+      }
+
+      if( srcX1 === srcX2 && srcY1 === srcY2 && srcW1 === srcW2 && srcH1 === srcH2
+      &&  tgtX1 === tgtX2 && tgtY1 === tgtY2 && tgtW1 === tgtW2 && tgtH1 === tgtH2
+      &&  width1 === width2
+      &&  ((edgeIndex1 === edgeIndex2 && numEdges1 === numEdges2) || edgeIsUnbundled) ){
+        // console.log('edge ctrl pt cache HIT')
+        continue; // then the control points haven't changed and we can skip calculating them
+      } else {
+        rs.lastSrcCtlPtX = srcX2;
+        rs.lastSrcCtlPtY = srcY2;
+        rs.lastSrcCtlPtW = srcW2;
+        rs.lastSrcCtlPtH = srcH2;
+        rs.lastTgtCtlPtX = tgtX2;
+        rs.lastTgtCtlPtY = tgtY2;
+        rs.lastTgtCtlPtW = tgtW2;
+        rs.lastTgtCtlPtH = tgtH2;
+        rs.lastEdgeIndex = edgeIndex2;
+        rs.lastNumEdges = numEdges2;
+        rs.lastWidth = width2;
+        // console.log('edge ctrl pt cache MISS')
+      }
+
+      if( src === tgt ){
+        // Self-edge
+
+        rs.edgeType = 'self';
+
+        var j = i;
+        var loopDist = stepSize;
+
+        if( edgeIsUnbundled ){
+          j = 0;
+          loopDist = ctrlptDist;
+        }
+
+        rs.ctrlpts = [
+          srcPos.x,
+          srcPos.y - (1 + Math.pow(srcH, 1.12) / 100) * loopDist * (j / 3 + 1),
+
+          srcPos.x - (1 + Math.pow(srcW, 1.12) / 100) * loopDist * (j / 3 + 1),
+          srcPos.y
+        ];
+
+      } else if(
+        hasCompounds &&
+        ( src.isParent() || src.isChild() || tgt.isParent() || tgt.isChild() ) &&
+        ( src.parents().anySame(tgt) || tgt.parents().anySame(src) )
+      ){
+        // Compound edge
+
+        rs.edgeType = 'compound';
+
+        // because the line approximation doesn't apply for compound beziers
+        // (loop/self edges are already elided b/c of cheap src==tgt check)
+        rs.badBezier = false;
+
+        var j = i;
+        var loopDist = stepSize;
+
+        if( edgeIsUnbundled ){
+          j = 0;
+          loopDist = ctrlptDist;
+        }
+
+        var loopW = 50;
+
+        var loopaPos = {
+          x: srcPos.x - srcW/2,
+          y: srcPos.y - srcH/2
+        };
+
+        var loopbPos = {
+          x: tgtPos.x - tgtW/2,
+          y: tgtPos.y - tgtH/2
+        };
+
+        var loopPos = {
+          x: Math.min( loopaPos.x, loopbPos.x ),
+          y: Math.min( loopaPos.y, loopbPos.y )
+        };
+
+        // avoids cases with impossible beziers
+        var minCompoundStretch = 0.5;
+        var compoundStretchA = Math.max( minCompoundStretch, Math.log(srcW * 0.01) );
+        var compoundStretchB = Math.max( minCompoundStretch, Math.log(tgtW * 0.01) );
+
+        rs.ctrlpts = [
+          loopPos.x,
+          loopPos.y - (1 + Math.pow(loopW, 1.12) / 100) * loopDist * (j / 3 + 1) * compoundStretchA,
+
+          loopPos.x - (1 + Math.pow(loopW, 1.12) / 100) * loopDist * (j / 3 + 1) * compoundStretchB,
+          loopPos.y
+        ];
+
+      } else if( curveStyle === 'segments' ){
+        // Segments (multiple straight lines)
+
+        rs.edgeType = 'segments';
+        rs.segpts = [];
+
+        var segmentWs = eStyle['segment-weights'].pfValue;
+        var segmentDs = eStyle['segment-distances'].pfValue;
+        var segmentsN = Math.min( segmentWs.length, segmentDs.length );
+
+        for( var s = 0; s < segmentsN; s++ ){
+          var w = segmentWs[s];
+          var d = segmentDs[s];
+
+          // d = swappedDirection ? -d : d;
+          //
+          // d = Math.abs(d);
+
+          // var w1 = !swappedDirection ? (1 - w) : w;
+          // var w2 = !swappedDirection ? w : (1 - w);
+
+          var w1 = (1 - w);
+          var w2 = w;
+
+          var adjustedMidpt = {
+            x: midptSrcPts.x1 * w1 + midptSrcPts.x2 * w2,
+            y: midptSrcPts.y1 * w1 + midptSrcPts.y2 * w2
+          };
+
+          rs.segpts.push(
+            adjustedMidpt.x + vectorNormInverse.x * d,
+            adjustedMidpt.y + vectorNormInverse.y * d
+          );
+        }
+
+      // Straight edge
+      } else if (
+        pairEdges.length % 2 === 1
+        && i === Math.floor(pairEdges.length / 2)
+        && !edgeIsUnbundled
+      ){
+
+        rs.edgeType = 'straight';
+
+      } else {
+        // (Multi)bezier
+
+        var multi = edgeIsUnbundled;
+
+        rs.edgeType = multi ? 'multibezier' : 'bezier';
+        rs.ctrlpts = [];
+
+        for( var b = 0; b < bezierN; b++ ){
+          var normctrlptDist = (0.5 - pairEdges.length / 2 + i) * stepSize;
+          var manctrlptDist;
+          var sign = math.signum( normctrlptDist );
+
+          if( multi ){
+            ctrlptDist = ctrlptDists ? ctrlptDists.pfValue[b] : stepSize; // fall back on step size
+            ctrlptWeight = ctrlptWs.value[b];
+          }
+
+          if( edgeIsUnbundled ){ // multi or single unbundled
+            manctrlptDist = ctrlptDist;
+          } else {
+            manctrlptDist = ctrlptDist !== undefined ? sign * ctrlptDist : undefined;
+          }
+
+          var distanceFromMidpoint = manctrlptDist !== undefined ? manctrlptDist : normctrlptDist;
+
+          var w1 = !swappedDirection || edgeIsUnbundled ? (1 - ctrlptWeight) : ctrlptWeight;
+          var w2 = !swappedDirection || edgeIsUnbundled ? ctrlptWeight : (1 - ctrlptWeight);
+
+          var adjustedMidpt = {
+            x: midptSrcPts.x1 * w1 + midptSrcPts.x2 * w2,
+            y: midptSrcPts.y1 * w1 + midptSrcPts.y2 * w2
+          };
+
+          rs.ctrlpts.push(
+            adjustedMidpt.x + vectorNormInverse.x * distanceFromMidpoint,
+            adjustedMidpt.y + vectorNormInverse.y * distanceFromMidpoint
+          );
+        }
+
+      }
+
+      // find endpts for edge
+      this.findEndpoints( edge );
+
+      var badStart = !is.number( rs.startX ) || !is.number( rs.startY );
+      var badAStart = !is.number( rs.arrowStartX ) || !is.number( rs.arrowStartY );
+      var badEnd = !is.number( rs.endX ) || !is.number( rs.endY );
+      var badAEnd = !is.number( rs.arrowEndX ) || !is.number( rs.arrowEndY );
+
+      var minCpADistFactor = 3;
+      var arrowW = this.getArrowWidth( eStyle['width'].pfValue ) * this.arrowShapeHeight;
+      var minCpADist = minCpADistFactor * arrowW;
+
+      if( rs.edgeType === 'bezier' ){
+        var startACpDist = math.distance( { x: rs.ctrlpts[0], y: rs.ctrlpts[1] }, { x: rs.startX, y: rs.startY } );
+        var closeStartACp = startACpDist < minCpADist;
+        var endACpDist = math.distance( { x: rs.ctrlpts[0], y: rs.ctrlpts[1] }, { x: rs.endX, y: rs.endY } );
+        var closeEndACp = endACpDist < minCpADist;
+
+        var overlapping = false;
+
+        if( badStart || badAStart || closeStartACp ){
+          overlapping = true;
+
+          // project control point along line from src centre to outside the src shape
+          // (otherwise intersection will yield nothing)
+          var cpD = { // delta
+            x: rs.ctrlpts[0] - srcPos.x,
+            y: rs.ctrlpts[1] - srcPos.y
+          };
+          var cpL = Math.sqrt( cpD.x*cpD.x + cpD.y*cpD.y ); // length of line
+          var cpM = { // normalised delta
+            x: cpD.x / cpL,
+            y: cpD.y / cpL
+          };
+          var radius = Math.max(srcW, srcH);
+          var cpProj = { // *2 radius guarantees outside shape
+            x: rs.ctrlpts[0] + cpM.x * 2 * radius,
+            y: rs.ctrlpts[1] + cpM.y * 2 * radius
+          };
+
+          var srcCtrlPtIntn = srcShape.intersectLine(
+            srcPos.x,
+            srcPos.y,
+            srcW,
+            srcH,
+            cpProj.x,
+            cpProj.y,
+            0
+          );
+
+          if( closeStartACp ){
+            rs.ctrlpts[0] = rs.ctrlpts[0] + cpM.x * (minCpADist - startACpDist);
+            rs.ctrlpts[1] = rs.ctrlpts[1] + cpM.y * (minCpADist - startACpDist);
+          } else {
+            rs.ctrlpts[0] = srcCtrlPtIntn[0] + cpM.x * minCpADist;
+            rs.ctrlpts[1] = srcCtrlPtIntn[1] + cpM.y * minCpADist;
+          }
+        }
+
+        if( badEnd || badAEnd || closeEndACp ){
+          overlapping = true;
+
+          // project control point along line from tgt centre to outside the tgt shape
+          // (otherwise intersection will yield nothing)
+          var cpD = { // delta
+            x: rs.ctrlpts[0] - tgtPos.x,
+            y: rs.ctrlpts[1] - tgtPos.y
+          };
+          var cpL = Math.sqrt( cpD.x*cpD.x + cpD.y*cpD.y ); // length of line
+          var cpM = { // normalised delta
+            x: cpD.x / cpL,
+            y: cpD.y / cpL
+          };
+          var radius = Math.max(srcW, srcH);
+          var cpProj = { // *2 radius guarantees outside shape
+            x: rs.ctrlpts[0] + cpM.x * 2 * radius,
+            y: rs.ctrlpts[1] + cpM.y * 2 * radius
+          };
+
+          var tgtCtrlPtIntn = tgtShape.intersectLine(
+            tgtPos.x,
+            tgtPos.y,
+            tgtW,
+            tgtH,
+            cpProj.x,
+            cpProj.y,
+            0
+          );
+
+          if( closeEndACp ){
+            rs.ctrlpts[0] = rs.ctrlpts[0] + cpM.x * (minCpADist - endACpDist);
+            rs.ctrlpts[1] = rs.ctrlpts[1] + cpM.y * (minCpADist - endACpDist);
+          } else {
+            rs.ctrlpts[0] = tgtCtrlPtIntn[0] + cpM.x * minCpADist;
+            rs.ctrlpts[1] = tgtCtrlPtIntn[1] + cpM.y * minCpADist;
+          }
+
+        }
+
+        if( overlapping ){
+          // recalc endpts
+          this.findEndpoints( edge );
+        }
+
+      }
+
+      if( rs.edgeType === 'multibezier' || rs.edgeType === 'bezier' || rs.edgeType === 'self' || rs.edgeType === 'compound' ){
+        rs.allpts = [];
+
+        rs.allpts.push( rs.startX, rs.startY );
+
+        for( var b = 0; b+1 < rs.ctrlpts.length; b += 2 ){
+          // ctrl pt itself
+          rs.allpts.push( rs.ctrlpts[b], rs.ctrlpts[b+1] );
+
+          // the midpt between ctrlpts as intermediate destination pts
+          if( b + 3 < rs.ctrlpts.length ){
+            rs.allpts.push( (rs.ctrlpts[b] + rs.ctrlpts[b+2])/2, (rs.ctrlpts[b+1] + rs.ctrlpts[b+3])/2 );
+          }
+        }
+
+        rs.allpts.push( rs.endX, rs.endY );
+
+        var m, mt;
+        if( rs.edgeType === 'bezier' ){
+          rs.midX = math.qbezierAt( rs.arrowStartX, rs.ctrlpts[0], rs.arrowEndX, 0.5 );
+          rs.midY = math.qbezierAt( rs.arrowStartY, rs.ctrlpts[1], rs.arrowEndY, 0.5 );
+        } else if( rs.ctrlpts.length/2 % 2 === 0 ){
+          m = rs.allpts.length/2 - 1;
+
+          rs.midX = rs.allpts[m];
+          rs.midY = rs.allpts[m+1];
+        } else {
+          m = rs.allpts.length/2 - 3;
+          mt = 0.5;
+
+          rs.midX = math.qbezierAt( rs.allpts[m], rs.allpts[m+2], rs.allpts[m+4], mt );
+          rs.midY = math.qbezierAt( rs.allpts[m+1], rs.allpts[m+3], rs.allpts[m+5], mt );
+        }
+
+      } else if( rs.edgeType === 'straight' ){
+        // need to calc these after endpts
+        rs.allpts = [ rs.startX, rs.startY, rs.endX, rs.endY ];
+
+        // default midpt for labels etc
+        rs.midX = ( rs.arrowStartX + rs.arrowEndX )/2;
+        rs.midY = ( rs.arrowStartY + rs.arrowEndY )/2;
+
+      } else if( rs.edgeType === 'segments' ){
+        rs.allpts = [];
+        rs.allpts.push( rs.startX, rs.startY );
+        rs.allpts.push.apply( rs.allpts, rs.segpts );
+        rs.allpts.push( rs.endX, rs.endY );
+
+        if( rs.segpts.length % 4 === 0 ){
+          var i2 = rs.segpts.length / 2;
+          var i1 = i2 - 2;
+
+          rs.midX = ( rs.segpts[i1] + rs.segpts[i2] ) / 2;
+          rs.midY = ( rs.segpts[i1+1] + rs.segpts[i2+1] ) / 2;
+        } else {
+          var i1 = rs.segpts.length / 2 - 1;
+
+          rs.midX = rs.segpts[i1];
+          rs.midY = rs.segpts[i1+1];
+        }
+
+
+      }
+
+      this.projectLines( edge );
+      this.calculateArrowAngles( edge );
+      this.recalculateEdgeLabelProjection( edge );
+
+    }
+  }
+
+  for( var i = 0; i < haystackEdges.length; i++ ){
+    var edge = haystackEdges[i];
+    var _p = edge._private;
+    var style = _p.style;
+    var rscratch = _p.rscratch;
+    var rs = rscratch;
+
+    if( !rscratch.haystack ){
+      var angle = Math.random() * 2 * Math.PI;
+
+      rscratch.source = {
+        x: Math.cos(angle),
+        y: Math.sin(angle)
+      };
+
+      var angle = Math.random() * 2 * Math.PI;
+
+      rscratch.target = {
+        x: Math.cos(angle),
+        y: Math.sin(angle)
+      };
+
+    }
+
+    var src = _p.source;
+    var tgt = _p.target;
+    var srcPos = src._private.position;
+    var tgtPos = tgt._private.position;
+    var srcW = src.width();
+    var tgtW = tgt.width();
+    var srcH = src.height();
+    var tgtH = tgt.height();
+    var radius = style['haystack-radius'].value;
+    var halfRadius = radius/2; // b/c have to half width/height
+
+    rs.haystackPts = rs.allpts = [
+      rs.source.x * srcW * halfRadius + srcPos.x,
+      rs.source.y * srcH * halfRadius + srcPos.y,
+      rs.target.x * tgtW * halfRadius + tgtPos.x,
+      rs.target.y * tgtH * halfRadius + tgtPos.y
+    ];
+
+    rs.midX = (rs.allpts[0] + rs.allpts[2])/2;
+    rs.midY = (rs.allpts[1] + rs.allpts[3])/2;
+
+    // always override as haystack in case set to different type previously
+    rscratch.edgeType = 'haystack';
+    rscratch.haystack = true;
+
+    this.projectLines( edge );
+    this.calculateArrowAngles( edge );
+    this.recalculateEdgeLabelProjection( edge );
+  }
+
+  for( var i = 0 ; i < autorotateEdges.length; i++ ){
+    var edge = autorotateEdges[i];
+    var rs = edge._private.rscratch;
+
+    rs.labelAngle = Math.atan( rs.midDispY / rs.midDispX );
+  }
+
+  return hashTable;
+};
+
+var getAngleFromDisp = function( dispX, dispY ){
+  return Math.atan2( dispY, dispX ) - Math.PI/2;
+};
+
+BRp.calculateArrowAngles = function( edge ){
+  var rs = edge._private.rscratch;
+  var isHaystack = rs.edgeType === 'haystack';
+  var isMultibezier = rs.edgeType === 'multibezier';
+  var isSegments = rs.edgeType === 'segments';
+  var isCompound = rs.edgeType === 'compound';
+  var isSelf = rs.edgeType === 'self';
+
+  // Displacement gives direction for arrowhead orientation
+  var dispX, dispY;
+  var startX, startY, endX, endY;
+
+  var srcPos = edge.source().position();
+  var tgtPos = edge.target().position();
+
+  if( isHaystack ){
+    startX = rs.haystackPts[0];
+    startY = rs.haystackPts[1];
+    endX = rs.haystackPts[2];
+    endY = rs.haystackPts[3];
+  } else {
+    startX = rs.arrowStartX;
+    startY = rs.arrowStartY;
+    endX = rs.arrowEndX;
+    endY = rs.arrowEndY;
+  }
+
+  // source
+  //
+
+  dispX = srcPos.x - startX;
+  dispY = srcPos.y - startY;
+
+  rs.srcArrowAngle = getAngleFromDisp( dispX, dispY );
+
+  // mid target
+  //
+
+  var midX = rs.midX;
+  var midY = rs.midY;
+
+  if( isHaystack ){
+    midX = ( startX + endX )/2;
+    midY = ( startY + endY )/2;
+  }
+
+  dispX = endX - startX;
+  dispY = endY - startY;
+
+  if( isSelf ){
+    dispX = -1;
+    dispY = 1;
+  } else if( isSegments ){
+    var pts = rs.allpts;
+
+    if( pts.length / 2 % 2 === 0 ){
+      var i2 = pts.length / 2;
+      var i1 = i2 - 2;
+
+      dispX = ( pts[i2] - pts[i1] );
+      dispY = ( pts[i2+1] - pts[i1+1] );
+    } else {
+      var i2 = pts.length / 2 - 1;
+      var i1 = i2 - 2;
+      var i3 = i2 + 2;
+
+      dispX = ( pts[i2] - pts[i1] );
+      dispY = ( pts[i2+1] - pts[i1+1] );
+    }
+  } else if( isMultibezier || isCompound ){
+    var pts = rs.allpts;
+    var cpts = rs.ctrlpts;
+    var bp0x, bp0y;
+    var bp1x, bp1y;
+
+    if( cpts.length / 2 % 2 === 0 ){
+      var p0 = pts.length / 2 - 1; // startpt
+      var ic = p0 + 2;
+      var p1 = ic + 2;
+
+      bp0x = math.qbezierAt( pts[p0], pts[ic], pts[p1], 0.0 );
+      bp0y = math.qbezierAt( pts[p0+1], pts[ic+1], pts[p1+1], 0.0 );
+
+      bp1x = math.qbezierAt( pts[p0], pts[ic], pts[p1], 0.0001 );
+      bp1y = math.qbezierAt( pts[p0+1], pts[ic+1], pts[p1+1], 0.0001 );
+    } else {
+      var ic = pts.length / 2 - 1; // ctrpt
+      var p0 = ic - 2; // startpt
+      var p1 = ic + 2; // endpt
+
+      bp0x = math.qbezierAt( pts[p0], pts[ic], pts[p1], 0.4999 );
+      bp0y = math.qbezierAt( pts[p0+1], pts[ic+1], pts[p1+1], 0.4999 );
+
+      bp1x = math.qbezierAt( pts[p0], pts[ic], pts[p1], 0.5 );
+      bp1y = math.qbezierAt( pts[p0+1], pts[ic+1], pts[p1+1], 0.5 );
+    }
+
+    dispX = ( bp1x - bp0x );
+    dispY = ( bp1y - bp0y );
+  }
+
+  rs.midtgtArrowAngle = getAngleFromDisp( dispX, dispY );
+
+  rs.midDispX = dispX;
+  rs.midDispY = dispY;
+
+  // mid source
+  //
+
+  dispX *= -1;
+  dispY *= -1;
+
+  if( isSegments ){
+    var pts = rs.allpts;
+
+    if( pts.length / 2 % 2 === 0 ){
+      // already ok
+    } else {
+      var i2 = pts.length / 2 - 1;
+      var i3 = i2 + 2;
+
+      dispX = -( pts[i3] - pts[i2] );
+      dispY = -( pts[i3+1] - pts[i2+1] );
+    }
+  }
+
+  rs.midsrcArrowAngle = getAngleFromDisp( dispX, dispY );
+
+  // target
+  //
+
+  dispX = tgtPos.x - endX;
+  dispY = tgtPos.y - endY;
+
+  rs.tgtArrowAngle = getAngleFromDisp( dispX, dispY );
+};
+
+
+BRp.findEndpoints = function( edge ){
+  var r = this;
+  var intersect;
+
+  var source = edge.source()[0];
+  var target = edge.target()[0];
+
+  var src_p = source._private;
+  var tgt_p = target._private;
+
+  var srcPos = src_p.position;
+  var tgtPos = tgt_p.position;
+
+  var tgtArShape = edge._private.style['target-arrow-shape'].value;
+  var srcArShape = edge._private.style['source-arrow-shape'].value;
+
+  var rs = edge._private.rscratch;
+
+  var et = rs.edgeType;
+  var bezier = et === 'bezier' || et === 'multibezier' || et === 'self' || et === 'compound';
+  var multi = et !== 'bezier';
+  var lines = et === 'straight' || et === 'segments';
+  var segments = et === 'segments';
+
+  var p1, p2;
+
+  if( bezier ){
+    var cpStart = [ rs.ctrlpts[0], rs.ctrlpts[1] ];
+    var cpEnd = multi ? [ rs.ctrlpts[rs.ctrlpts.length - 2], rs.ctrlpts[rs.ctrlpts.length - 1] ] : cpStart;
+
+    p1 = cpEnd;
+    p2 = cpStart;
+  } else if( lines ){
+    var srcArrowFromPt = !segments ? [ tgtPos.x, tgtPos.y ] : rs.segpts.slice( 0, 2 );
+    var tgtArrowFromPt = !segments ? [ srcPos.x, srcPos.y ] : rs.segpts.slice( rs.segpts.length - 2 );
+
+    p1 = tgtArrowFromPt;
+    p2 = srcArrowFromPt;
+  }
+
+  intersect = r.nodeShapes[this.getNodeShape(target)].intersectLine(
+    tgtPos.x,
+    tgtPos.y,
+    target.outerWidth(),
+    target.outerHeight(),
+    p1[0],
+    p1[1],
+    0
+  );
+
+  var arrowEnd = math.shortenIntersection(intersect, p1,
+    r.arrowShapes[tgtArShape].spacing(edge));
+  var edgeEnd = math.shortenIntersection(intersect, p1,
+    r.arrowShapes[tgtArShape].gap(edge));
+
+  rs.endX = edgeEnd[0];
+  rs.endY = edgeEnd[1];
+
+  rs.arrowEndX = arrowEnd[0];
+  rs.arrowEndY = arrowEnd[1];
+
+  intersect = r.nodeShapes[this.getNodeShape(source)].intersectLine(
+    srcPos.x,
+    srcPos.y,
+    source.outerWidth(),
+    source.outerHeight(),
+    p2[0],
+    p2[1],
+    0
+  );
+
+  var arrowStart = math.shortenIntersection(
+    intersect, p2,
+    r.arrowShapes[srcArShape].spacing(edge)
+  );
+  var edgeStart = math.shortenIntersection(
+    intersect, p2,
+    r.arrowShapes[srcArShape].gap(edge)
+  );
+
+  rs.startX = edgeStart[0];
+  rs.startY = edgeStart[1];
+
+  rs.arrowStartX = arrowStart[0];
+  rs.arrowStartY = arrowStart[1];
+
+  if( lines ){
+    if( !is.number(rs.startX) || !is.number(rs.startY) || !is.number(rs.endX) || !is.number(rs.endY) ){
+      rs.badLine = true;
+    } else {
+      rs.badLine = false;
+    }
+  }
+};
+
+BRp.getArrowWidth = BRp.getArrowHeight = function(edgeWidth) {
+  var cache = this.arrowWidthCache = this.arrowWidthCache || {};
+
+  var cachedVal = cache[edgeWidth];
+  if( cachedVal ){
+    return cachedVal;
+  }
+
+  cachedVal =  Math.max(Math.pow(edgeWidth * 13.37, 0.9), 29);
+  cache[edgeWidth] = cachedVal;
+
+  return cachedVal;
+};
+
+module.exports = BRp;
+
+},{"../../../collection/zsort":29,"../../../is":77,"../../../math":79}],57:[function(_dereq_,module,exports){
+'use strict';
+
+var BRp = {};
+
+BRp.getCachedImage = function(url, onLoad) {
+  var r = this;
+  var imageCache = r.imageCache = r.imageCache || {};
+
+  if( imageCache[url] && imageCache[url].image ){
+    return imageCache[url].image;
+  }
+
+  var cache = imageCache[url] = imageCache[url] || {};
+
+  var image = cache.image = new Image();
+  image.addEventListener('load', onLoad);
+  image.src = url;
+
+  return image;
+};
+
+module.exports = BRp;
+
+},{}],58:[function(_dereq_,module,exports){
+'use strict';
+
+var is = _dereq_('../../../is');
+var util = _dereq_('../../../util');
+
+var BaseRenderer = function(){};
+var BR = BaseRenderer;
+var BRp = BR.prototype;
+
+BRp.clientFunctions = [ 'redrawHint', 'render', 'renderTo', 'matchCanvasSize', 'nodeShapeImpl', 'arrowShapeImpl' ];
+
+BRp.init = function( options ){
+  var r = this;
+
+  r.options = options;
+
+  r.cy = options.cy;
+
+  r.container = options.cy.container();
+
+  r.selection = [undefined, undefined, undefined, undefined, 0]; // Coordinates for selection box, plus enabled flag
+
+  //--Pointer-related data
+  r.hoverData = {down: null, last: null,
+      downTime: null, triggerMode: null,
+      dragging: false,
+      initialPan: [null, null], capture: false};
+
+  r.dragData = {possibleDragElements: []};
+
+  r.touchData = {
+      start: null, capture: false,
+
+      // These 3 fields related to tap, taphold events
+      startPosition: [null, null, null, null, null, null],
+      singleTouchStartTime: null,
+      singleTouchMoved: true,
+
+      now: [null, null, null, null, null, null],
+      earlier: [null, null, null, null, null, null]
+  };
+
+  r.redraws = 0;
+  r.showFps = options.showFps;
+
+  r.hideEdgesOnViewport = options.hideEdgesOnViewport;
+  r.hideLabelsOnViewport = options.hideLabelsOnViewport;
+  r.textureOnViewport = options.textureOnViewport;
+  r.wheelSensitivity = options.wheelSensitivity;
+  r.motionBlurEnabled = options.motionBlur; // on by default
+  r.forcedPixelRatio = options.pixelRatio;
+  r.motionBlur = true; // for initial kick off
+  r.motionBlurOpacity = options.motionBlurOpacity;
+  r.motionBlurTransparency = 1 - r.motionBlurOpacity;
+  r.motionBlurPxRatio = 1;
+  r.mbPxRBlurry = 1; //0.8;
+  r.minMbLowQualFrames = 4;
+  r.fullQualityMb = false;
+  r.clearedForMotionBlur = [];
+  r.desktopTapThreshold = options.desktopTapThreshold;
+  r.desktopTapThreshold2 = options.desktopTapThreshold * options.desktopTapThreshold;
+  r.touchTapThreshold = options.touchTapThreshold;
+  r.touchTapThreshold2 = options.touchTapThreshold * options.touchTapThreshold;
+  r.tapholdDuration = 500;
+
+  r.bindings = [];
+
+  r.registerNodeShapes();
+  r.registerArrowShapes();
+  r.load();
+};
+
+BRp.notify = function(params) {
+  var types;
+  var r = this;
+
+  if( is.array( params.type ) ){
+    types = params.type;
+
+  } else {
+    types = [ params.type ];
+  }
+
+  for( var i = 0; i < types.length; i++ ){
+    var type = types[i];
+
+    switch( type ){
+      case 'destroy':
+        r.destroy();
+        return;
+
+      case 'add':
+      case 'remove':
+      case 'load':
+        r.updateElementsCache();
+        break;
+
+      case 'viewport':
+        r.redrawHint('select', true);
+        break;
+
+      case 'style':
+        r.updateCachedZSortedEles();
+        break;
+    }
+
+    if( type === 'load' || type === 'resize' ){
+      r.invalidateContainerClientCoordsCache();
+      r.matchCanvasSize(r.container);
+    }
+  } // for
+
+  r.redrawHint('eles', true);
+  r.redrawHint('drag', true);
+
+  this.startRenderLoop();
+
+  this.redraw();
+};
+
+BRp.destroy = function(){
+  this.destroyed = true;
+
+  this.cy.stopAnimationLoop();
+
+  for( var i = 0; i < this.bindings.length; i++ ){
+    var binding = this.bindings[i];
+    var b = binding;
+
+    b.target.removeEventListener(b.event, b.handler, b.useCapture);
+  }
+
+  if( this.removeObserver ){
+    this.removeObserver.disconnect();
+  }
+
+  if( this.labelCalcDiv ){
+    try{
+      document.body.removeChild(this.labelCalcDiv);
+    } catch(e){
+      // ie10 issue #1014
+    }
+  }
+};
+
+[
+  _dereq_('./arrow-shapes'),
+  _dereq_('./cached-eles'),
+  _dereq_('./coord-ele-math'),
+  _dereq_('./images'),
+  _dereq_('./load-listeners'),
+  _dereq_('./node-shapes'),
+  _dereq_('./redraw')
+].forEach(function( props ){
+  util.extend( BRp, props );
+});
+
+module.exports = BR;
+
+},{"../../../is":77,"../../../util":94,"./arrow-shapes":54,"./cached-eles":55,"./coord-ele-math":56,"./images":57,"./load-listeners":59,"./node-shapes":60,"./redraw":61}],59:[function(_dereq_,module,exports){
+'use strict';
+
+var is = _dereq_('../../../is');
+var util = _dereq_('../../../util');
+var Event = _dereq_('../../../event');
+var Collection = _dereq_('../../../collection');
+
+var BRp = {};
+
+BRp.registerBinding = function(target, event, handler, useCapture){
+  this.bindings.push({
+    target: target,
+    event: event,
+    handler: handler,
+    useCapture: useCapture
+  });
+
+  target.addEventListener(event, handler, useCapture);
+};
+
+BRp.nodeIsDraggable = function(node) {
+  if (node._private.style['opacity'].value !== 0
+    && node._private.style['visibility'].value == 'visible'
+    && node._private.style['display'].value == 'element'
+    && !node.locked()
+    && node.grabbable() ) {
+
+    return true;
+  }
+
+  return false;
+};
+
+BRp.load = function() {
+  var r = this;
+
+  var triggerEvents = function( target, names, e, props ){
+    if( target == null ){
+      target = r.cy;
+    }
+
+    for( var i = 0; i < names.length; i++ ){
+      var name = names[i];
+
+      var event = Event( e, util.extend({ type: name }, props) );
+      target.trigger( event );
+    }
+  };
+
+  var isMultSelKeyDown = function( e ){
+    return e.shiftKey || e.metaKey || e.ctrlKey; // maybe e.altKey
+  };
+
+  var getDragListIds = function(opts){
+    var listHasId;
+
+    if( opts.addToList && r.cy.hasCompoundNodes() ){ // only needed for compound graphs
+      if( !opts.addToList.hasId ){ // build ids lookup if doesn't already exist
+        opts.addToList.hasId = {};
+
+        for( var i = 0; i < opts.addToList.length; i++ ){
+          var ele = opts.addToList[i];
+
+          opts.addToList.hasId[ ele.id() ] = true;
+        }
+      }
+
+      listHasId = opts.addToList.hasId;
+    }
+
+    return listHasId || {};
+  };
+
+  // helper function to determine which child nodes and inner edges
+  // of a compound node to be dragged as well as the grabbed and selected nodes
+  var addDescendantsToDrag = function(node, opts){
+    if( !node._private.cy.hasCompoundNodes() ){
+      return;
+    }
+
+    if( opts.inDragLayer == null && opts.addToList == null ){ return; } // nothing to do
+
+    var listHasId = getDragListIds( opts );
+
+    var innerNodes = node.descendants();
+
+    for( var i = 0; i < innerNodes.size(); i++ ){
+      var iNode = innerNodes[i];
+      var _p = iNode._private;
+
+      if( opts.inDragLayer ){
+        _p.rscratch.inDragLayer = true;
+      }
+
+      if( opts.addToList && !listHasId[ iNode.id() ] ){
+        opts.addToList.push( iNode );
+        listHasId[ iNode.id() ] = true;
+
+        _p.grabbed = true;
+      }
+
+      var edges = _p.edges;
+      for( var j = 0; opts.inDragLayer && j < edges.length; j++ ){
+        edges[j]._private.rscratch.inDragLayer = true;
+      }
+    }
+  };
+
+  // adds the given nodes, and its edges to the drag layer
+  var addNodeToDrag = function(node, opts){
+
+    var _p = node._private;
+    var listHasId = getDragListIds( opts );
+
+    if( opts.inDragLayer ){
+      _p.rscratch.inDragLayer = true;
+    }
+
+    if( opts.addToList && !listHasId[ node.id() ] ){
+      opts.addToList.push( node );
+      listHasId[ node.id() ] = true;
+
+      _p.grabbed = true;
+    }
+
+    var edges = _p.edges;
+    for( var i = 0; opts.inDragLayer && i < edges.length; i++ ){
+      edges[i]._private.rscratch.inDragLayer = true;
+    }
+
+    addDescendantsToDrag( node, opts ); // always add to drag
+
+    // also add nodes and edges related to the topmost ancestor
+    updateAncestorsInDragLayer( node, {
+      inDragLayer: opts.inDragLayer
+    } );
+  };
+
+  var freeDraggedElements = function( draggedElements ){
+    if( !draggedElements ){ return; }
+
+    for (var i=0; i < draggedElements.length; i++) {
+
+      var dEi_p = draggedElements[i]._private;
+
+      if(dEi_p.group === 'nodes') {
+        dEi_p.rscratch.inDragLayer = false;
+        dEi_p.grabbed = false;
+
+        var sEdges = dEi_p.edges;
+        for( var j = 0; j < sEdges.length; j++ ){ sEdges[j]._private.rscratch.inDragLayer = false; }
+
+        // for compound nodes, also remove related nodes and edges from the drag layer
+        updateAncestorsInDragLayer(draggedElements[i], { inDragLayer: false });
+
+      } else if( dEi_p.group === 'edges' ){
+        dEi_p.rscratch.inDragLayer = false;
+      }
+
+    }
+  };
+
+  // helper function to determine which ancestor nodes and edges should go
+  // to the drag layer (or should be removed from drag layer).
+  var updateAncestorsInDragLayer = function(node, opts) {
+
+    if( opts.inDragLayer == null && opts.addToList == null ){ return; } // nothing to do
+
+    // find top-level parent
+    var parent = node;
+
+    if( !node._private.cy.hasCompoundNodes() ){
+      return;
+    }
+
+    while( parent.parent().nonempty() ){
+      parent = parent.parent()[0];
+    }
+
+    // no parent node: no nodes to add to the drag layer
+    if( parent == node ){
+      return;
+    }
+
+    var nodes = parent.descendants()
+      .merge( parent )
+      .unmerge( node )
+      .unmerge( node.descendants() )
+    ;
+
+    var edges = nodes.connectedEdges();
+
+    var listHasId = getDragListIds( opts );
+
+    for( var i = 0; i < nodes.size(); i++ ){
+      if( opts.inDragLayer !== undefined ){
+        nodes[i]._private.rscratch.inDragLayer = opts.inDragLayer;
+      }
+
+      if( opts.addToList && !listHasId[ nodes[i].id() ] ){
+        opts.addToList.push( nodes[i] );
+        listHasId[ nodes[i].id() ] = true;
+
+        nodes[i]._private.grabbed = true;
+      }
+    }
+
+    for( var j = 0; opts.inDragLayer !== undefined && j < edges.length; j++ ) {
+      edges[j]._private.rscratch.inDragLayer = opts.inDragLayer;
+    }
+  };
+
+  if( typeof MutationObserver !== 'undefined' ){
+    r.removeObserver = new MutationObserver(function( mutns ){
+      for( var i = 0; i < mutns.length; i++ ){
+        var mutn = mutns[i];
+        var rNodes = mutn.removedNodes;
+
+        if( rNodes ){ for( var j = 0; j < rNodes.length; j++ ){
+          var rNode = rNodes[j];
+
+          if( rNode === r.container ){
+            r.destroy();
+            break;
+          }
+        } }
+      }
+    });
+
+    if( r.container.parentNode ){
+      r.removeObserver.observe( r.container.parentNode, { childList: true } );
+    }
+  } else {
+    r.registerBinding(r.container, 'DOMNodeRemoved', function(e){
+      r.destroy();
+    });
+  }
+
+
+
+  // auto resize
+  r.registerBinding(window, 'resize', util.debounce( function(e) {
+    r.invalidateContainerClientCoordsCache();
+
+    r.matchCanvasSize(r.container);
+    r.redrawHint('eles', true);
+    r.redraw();
+  }, 100 ) );
+
+  var invalCtnrBBOnScroll = function(domEle){
+    r.registerBinding(domEle, 'scroll', function(e){
+      r.invalidateContainerClientCoordsCache();
+    } );
+  };
+
+  var bbCtnr = r.cy.container();
+
+  for( ;; ){
+
+    invalCtnrBBOnScroll( bbCtnr );
+
+    if( bbCtnr.parentNode ){
+      bbCtnr = bbCtnr.parentNode;
+    } else {
+      break;
+    }
+
+  }
+
+  // stop right click menu from appearing on cy
+  r.registerBinding(r.container, 'contextmenu', function(e){
+    e.preventDefault();
+  });
+
+  var inBoxSelection = function(){
+    return r.selection[4] !== 0;
+  };
+
+  // Primary key
+  r.registerBinding(r.container, 'mousedown', function(e) {
+    e.preventDefault();
+    r.hoverData.capture = true;
+    r.hoverData.which = e.which;
+
+    var cy = r.cy;
+    var pos = r.projectIntoViewport(e.clientX, e.clientY);
+    var select = r.selection;
+    var near = r.findNearestElement(pos[0], pos[1], true, false);
+    var draggedElements = r.dragData.possibleDragElements;
+
+    r.hoverData.mdownPos = pos;
+
+    var checkForTaphold = function(){
+      r.hoverData.tapholdCancelled = false;
+
+      clearTimeout( r.hoverData.tapholdTimeout );
+
+      r.hoverData.tapholdTimeout = setTimeout(function(){
+
+        if( r.hoverData.tapholdCancelled ){
+          return;
+        } else {
+          var ele = r.hoverData.down;
+
+          if( ele ){
+            ele.trigger( Event(e, {
+              type: 'taphold',
+              cyPosition: { x: pos[0], y: pos[1] }
+            }) );
+          } else {
+            cy.trigger( Event(e, {
+              type: 'taphold',
+              cyPosition: { x: pos[0], y: pos[1] }
+            }) );
+          }
+        }
+
+      }, r.tapholdDuration);
+    };
+
+    // Right click button
+    if( e.which == 3 ){
+
+      r.hoverData.cxtStarted = true;
+
+      var cxtEvt = Event(e, {
+        type: 'cxttapstart',
+        cyPosition: { x: pos[0], y: pos[1] }
+      });
+
+      if( near ){
+        near.activate();
+        near.trigger( cxtEvt );
+
+        r.hoverData.down = near;
+      } else {
+        cy.trigger( cxtEvt );
+      }
+
+      r.hoverData.downTime = (new Date()).getTime();
+      r.hoverData.cxtDragged = false;
+
+    // Primary button
+    } else if (e.which == 1) {
+
+      if( near ){
+        near.activate();
+      }
+
+      // Element dragging
+      {
+        // If something is under the cursor and it is draggable, prepare to grab it
+        if (near != null) {
+
+          if( r.nodeIsDraggable(near) ){
+
+            var grabEvent = Event(e, {
+              type: 'grab',
+              cyPosition: { x: pos[0], y: pos[1] }
+            });
+
+            if ( near.isNode() && !near.selected() ){
+
+              draggedElements = r.dragData.possibleDragElements = [];
+              addNodeToDrag( near, { addToList: draggedElements } );
+
+              near.trigger(grabEvent);
+
+            } else if ( near.isNode() && near.selected() ){
+              draggedElements = r.dragData.possibleDragElements = [  ];
+
+              var selectedNodes = cy.$(function(){ return this.isNode() && this.selected(); });
+
+              for( var i = 0; i < selectedNodes.length; i++ ){
+
+                // Only add this selected node to drag if it is draggable, eg. has nonzero opacity
+                if( r.nodeIsDraggable( selectedNodes[i] ) ){
+                  addNodeToDrag( selectedNodes[i], { addToList: draggedElements } );
+                }
+              }
+
+              near.trigger( grabEvent );
+            }
+
+            r.redrawHint('eles', true);
+            r.redrawHint('drag', true);
+
+          }
+
+        }
+
+        r.hoverData.down = near;
+        r.hoverData.downTime = (new Date()).getTime();
+      }
+
+      triggerEvents( near, ['mousedown', 'tapstart', 'vmousedown'], e, {
+        cyPosition: { x: pos[0], y: pos[1] }
+      } );
+
+      if ( near == null ) {
+        select[4] = 1;
+
+        r.data.bgActivePosistion = {
+          x: pos[0],
+          y: pos[1]
+        };
+
+        r.redrawHint('select', true);
+
+        r.redraw();
+      } else if( near.isEdge() ){
+        select[4] = 1; // for future pan
+      }
+
+      checkForTaphold();
+
+    }
+
+    // Initialize selection box coordinates
+    select[0] = select[2] = pos[0];
+    select[1] = select[3] = pos[1];
+
+  }, false);
+
+  r.registerBinding(window, 'mousemove', function(e) {
+    var preventDefault = false;
+    var capture = r.hoverData.capture;
+
+    // save cycles if mouse events aren't to be captured
+    if ( !capture ){
+      var containerPageCoords = r.findContainerClientCoords();
+
+      if (e.clientX > containerPageCoords[0] && e.clientX < containerPageCoords[0] + r.canvasWidth
+        && e.clientY > containerPageCoords[1] && e.clientY < containerPageCoords[1] + r.canvasHeight
+      ) {
+        // inside container bounds so OK
+      } else {
+        return;
+      }
+
+      var cyContainer = r.container;
+      var target = e.target;
+      var tParent = target.parentNode;
+      var containerIsTarget = false;
+
+      while( tParent ){
+        if( tParent === cyContainer ){
+          containerIsTarget = true;
+          break;
+        }
+
+        tParent = tParent.parentNode;
+      }
+
+      if( !containerIsTarget ){ return; } // if target is outisde cy container, then this event is not for us
+    }
+
+    var cy = r.cy;
+    var zoom = cy.zoom();
+    var pos = r.projectIntoViewport(e.clientX, e.clientY);
+    var select = r.selection;
+
+    var near = null;
+    if( !r.hoverData.draggingEles ){
+      near = r.findNearestElement(pos[0], pos[1], true, false);
+    }
+    var last = r.hoverData.last;
+    var down = r.hoverData.down;
+
+    var disp = [pos[0] - select[2], pos[1] - select[3]];
+
+    var draggedElements = r.dragData.possibleDragElements;
+
+    var dx = select[2] - select[0];
+    var dx2 = dx * dx;
+    var dy = select[3] - select[1];
+    var dy2 = dy * dy;
+    var dist2 = dx2 + dy2;
+    var rdist2 = dist2 * zoom * zoom;
+
+    var multSelKeyDown = isMultSelKeyDown( e );
+
+    r.hoverData.tapholdCancelled = true;
+
+    var updateDragDelta = function(){
+      var dragDelta = r.hoverData.dragDelta = r.hoverData.dragDelta || [];
+
+      if( dragDelta.length === 0 ){
+        dragDelta.push( disp[0] );
+        dragDelta.push( disp[1] );
+      } else {
+        dragDelta[0] += disp[0];
+        dragDelta[1] += disp[1];
+      }
+    };
+
+
+    preventDefault = true;
+
+    triggerEvents( near, ['mousemove', 'vmousemove', 'tapdrag'], e, {
+      cyPosition: { x: pos[0], y: pos[1] }
+    } );
+
+    // trigger context drag if rmouse down
+    if( r.hoverData.which === 3 ){
+      var cxtEvt = Event(e, {
+        type: 'cxtdrag',
+        cyPosition: { x: pos[0], y: pos[1] }
+      });
+
+      if( down ){
+        down.trigger( cxtEvt );
+      } else {
+        cy.trigger( cxtEvt );
+      }
+
+      r.hoverData.cxtDragged = true;
+
+      if( !r.hoverData.cxtOver || near !== r.hoverData.cxtOver ){
+
+        if( r.hoverData.cxtOver ){
+          r.hoverData.cxtOver.trigger( Event(e, {
+            type: 'cxtdragout',
+            cyPosition: { x: pos[0], y: pos[1] }
+          }) );
+        }
+
+        r.hoverData.cxtOver = near;
+
+        if( near ){
+          near.trigger( Event(e, {
+            type: 'cxtdragover',
+            cyPosition: { x: pos[0], y: pos[1] }
+          }) );
+        }
+
+      }
+
+    // Check if we are drag panning the entire graph
+    } else if (r.hoverData.dragging) {
+      preventDefault = true;
+
+      if( cy.panningEnabled() && cy.userPanningEnabled() ){
+        var deltaP;
+
+        if( r.hoverData.justStartedPan ){
+          var mdPos = r.hoverData.mdownPos;
+
+          deltaP = {
+            x: ( pos[0] - mdPos[0] ) * zoom,
+            y: ( pos[1] - mdPos[1] ) * zoom
+          };
+
+          r.hoverData.justStartedPan = false;
+
+        } else {
+          deltaP = {
+            x: disp[0] * zoom,
+            y: disp[1] * zoom
+          };
+
+        }
+
+        cy.panBy( deltaP );
+
+        r.hoverData.dragged = true;
+      }
+
+      // Needs reproject due to pan changing viewport
+      pos = r.projectIntoViewport(e.clientX, e.clientY);
+
+    // Checks primary button down & out of time & mouse not moved much
+    } else if(
+        select[4] == 1 && (down == null || down.isEdge())
+    ){
+
+      if( !r.hoverData.dragging && cy.boxSelectionEnabled() && ( multSelKeyDown || !cy.panningEnabled() || !cy.userPanningEnabled() ) ){
+        r.data.bgActivePosistion = undefined;
+        r.hoverData.selecting = true;
+
+        r.redrawHint('select', true);
+        r.redraw();
+
+      } else if( !r.hoverData.selecting && cy.panningEnabled() && cy.userPanningEnabled() ){
+        r.hoverData.dragging = true;
+        r.hoverData.justStartedPan = true;
+        select[4] = 0;
+
+        r.data.bgActivePosistion = {
+          x: pos[0],
+          y: pos[1]
+        };
+
+        r.redrawHint('select', true);
+        r.redraw();
+      }
+
+      if( down && down.isEdge() && down.active() ){ down.unactivate(); }
+
+    } else {
+      if( down && down.isEdge() && down.active() ){ down.unactivate(); }
+
+      if (near != last) {
+
+        if (last) {
+          triggerEvents( last, ['mouseout', 'tapdragout'], e, {
+            cyPosition: { x: pos[0], y: pos[1] }
+          } );
+        }
+
+        if (near) {
+          triggerEvents( near, ['mouseover', 'tapdragover'], e, {
+            cyPosition: { x: pos[0], y: pos[1] }
+          } );
+        }
+
+        r.hoverData.last = near;
+      }
+
+      if( down && down.isNode() && r.nodeIsDraggable(down) ){
+
+        if( rdist2 >= r.desktopTapThreshold2 ){ // then drag
+
+          var justStartedDrag = !r.dragData.didDrag;
+
+          if( justStartedDrag ) {
+            r.redrawHint('eles', true);
+          }
+
+          r.dragData.didDrag = true; // indicate that we actually did drag the node
+
+          var toTrigger = [];
+
+          for( var i = 0; i < draggedElements.length; i++ ){
+            var dEle = draggedElements[i];
+
+            // now, add the elements to the drag layer if not done already
+            if( !r.hoverData.draggingEles ){
+              addNodeToDrag( dEle, { inDragLayer: true } );
+            }
+
+            // Locked nodes not draggable, as well as non-visible nodes
+            if( dEle.isNode() && r.nodeIsDraggable(dEle) && dEle.grabbed() ){
+              var dPos = dEle._private.position;
+
+              toTrigger.push( dEle );
+
+              if( is.number(disp[0]) && is.number(disp[1]) ){
+                var updatePos = !dEle.isParent();
+
+                if( updatePos ){
+                  dPos.x += disp[0];
+                  dPos.y += disp[1];
+                }
+
+                if( justStartedDrag ){
+                  var dragDelta = r.hoverData.dragDelta;
+
+                  if( updatePos && is.number(dragDelta[0]) && is.number(dragDelta[1]) ){
+                    dPos.x += dragDelta[0];
+                    dPos.y += dragDelta[1];
+                  }
+                }
+              }
+
+            }
+          }
+
+          r.hoverData.draggingEles = true;
+
+          var tcol = (Collection(cy, toTrigger));
+
+          tcol.updateCompoundBounds();
+          tcol.trigger('position drag');
+
+          r.redrawHint('drag', true);
+          r.redraw();
+
+        } else { // otherwise save drag delta for when we actually start dragging so the relative grab pos is constant
+          updateDragDelta();
+        }
+      }
+
+      // prevent the dragging from triggering text selection on the page
+      preventDefault = true;
+    }
+
+    select[2] = pos[0]; select[3] = pos[1];
+
+    if( preventDefault ){
+      if(e.stopPropagation) e.stopPropagation();
+        if(e.preventDefault) e.preventDefault();
+        return false;
+      }
+  }, false);
+
+  r.registerBinding(window, 'mouseup', function(e) {
+    var capture = r.hoverData.capture;
+    if (!capture) { return; }
+    r.hoverData.capture = false;
+
+    var cy = r.cy; var pos = r.projectIntoViewport(e.clientX, e.clientY); var select = r.selection;
+    var near = r.findNearestElement(pos[0], pos[1], true, false);
+    var draggedElements = r.dragData.possibleDragElements; var down = r.hoverData.down;
+    var multSelKeyDown = isMultSelKeyDown( e );
+
+    if( r.data.bgActivePosistion ){
+      r.redrawHint('select', true);
+      r.redraw();
+    }
+
+    r.hoverData.tapholdCancelled = true;
+
+    r.data.bgActivePosistion = undefined; // not active bg now
+
+    if( down ){
+      down.unactivate();
+    }
+
+    if( r.hoverData.which === 3 ){
+      var cxtEvt = Event(e, {
+        type: 'cxttapend',
+        cyPosition: { x: pos[0], y: pos[1] }
+      });
+
+      if( down ){
+        down.trigger( cxtEvt );
+      } else {
+        cy.trigger( cxtEvt );
+      }
+
+      if( !r.hoverData.cxtDragged ){
+        var cxtTap = Event(e, {
+          type: 'cxttap',
+          cyPosition: { x: pos[0], y: pos[1] }
+        });
+
+        if( down ){
+          down.trigger( cxtTap );
+        } else {
+          cy.trigger( cxtTap );
+        }
+      }
+
+      r.hoverData.cxtDragged = false;
+      r.hoverData.which = null;
+
+    } else if( r.hoverData.which === 1 ) {
+
+      // Deselect all elements if nothing is currently under the mouse cursor and we aren't dragging something
+      if ( (down == null) // not mousedown on node
+        && !r.dragData.didDrag // didn't move the node around
+        && !r.hoverData.selecting // not box selection
+        && !r.hoverData.dragged // didn't pan
+        && !isMultSelKeyDown( e )
+      ) {
+
+        cy.$(function(){
+          return this.selected();
+        }).unselect();
+
+        if (draggedElements.length > 0) {
+          r.redrawHint('eles', true);
+        }
+
+        r.dragData.possibleDragElements = draggedElements = [];
+      }
+
+      triggerEvents( near, ['mouseup', 'tapend', 'vmouseup'], e, {
+        cyPosition: { x: pos[0], y: pos[1] }
+      } );
+
+      if(
+        !r.dragData.didDrag // didn't move a node around
+        && !r.hoverData.dragged // didn't pan
+      ){
+        triggerEvents( near, ['click', 'tap', 'vclick'], e, {
+          cyPosition: { x: pos[0], y: pos[1] }
+        } );
+      }
+
+      // Single selection
+      if( near == down && !r.dragData.didDrag && !r.hoverData.selecting ){
+        if( near != null && near._private.selectable ){
+
+          if( r.hoverData.dragging ){
+            // if panning, don't change selection state
+          } else if( cy.selectionType() === 'additive' || multSelKeyDown ){
+            if( near.selected() ){
+              near.unselect();
+            } else {
+              near.select();
+            }
+          } else {
+            if( !multSelKeyDown ){
+              cy.$(':selected').unmerge( near ).unselect();
+              near.select();
+            }
+          }
+
+          r.redrawHint('eles', true);
+        }
+      }
+
+      if ( r.hoverData.selecting ) {
+        var newlySelected = [];
+        var box = r.getAllInBox( select[0], select[1], select[2], select[3] );
+
+        r.redrawHint('select', true);
+
+        if( box.length > 0 ) {
+          r.redrawHint('eles', true);
+        }
+
+        for( var i = 0; i < box.length; i++ ){
+          if( box[i]._private.selectable ){
+            newlySelected.push( box[i] );
+          }
+        }
+
+        var newlySelCol = Collection( cy, newlySelected );
+
+        if( cy.selectionType() === 'additive' ){
+          newlySelCol.select();
+        } else {
+          if( !multSelKeyDown ){
+            cy.$(':selected').unmerge( newlySelCol ).unselect();
+          }
+
+          newlySelCol.select();
+        }
+
+        // always need redraw in case eles unselectable
+        r.redraw();
+
+      }
+
+      // Cancel drag pan
+      if( r.hoverData.dragging ){
+        r.hoverData.dragging = false;
+
+        r.redrawHint('select', true);
+        r.redrawHint('eles', true);
+
+        r.redraw();
+      }
+
+      if (!select[4]) {
+
+
+        r.redrawHint('drag', true);
+        r.redrawHint('eles', true);
+
+        freeDraggedElements( draggedElements );
+
+        if( down ){ down.trigger('free'); }
+      }
+
+    } // else not right mouse
+
+    select[4] = 0; r.hoverData.down = null;
+
+    r.hoverData.cxtStarted = false;
+    r.hoverData.draggingEles = false;
+    r.hoverData.selecting = false;
+    r.dragData.didDrag = false;
+    r.hoverData.dragged = false;
+    r.hoverData.dragDelta = [];
+
+  }, false);
+
+  var wheelHandler = function(e) {
+
+
+    if( r.scrollingPage ){ return; } // while scrolling, ignore wheel-to-zoom
+
+    var cy = r.cy;
+    var pos = r.projectIntoViewport(e.clientX, e.clientY);
+    var rpos = [pos[0] * cy.zoom() + cy.pan().x,
+                  pos[1] * cy.zoom() + cy.pan().y];
+
+    if( r.hoverData.draggingEles || r.hoverData.dragging || r.hoverData.cxtStarted || inBoxSelection() ){ // if pan dragging or cxt dragging, wheel movements make no zoom
+      e.preventDefault();
+      return;
+    }
+
+    if( cy.panningEnabled() && cy.userPanningEnabled() && cy.zoomingEnabled() && cy.userZoomingEnabled() ){
+      e.preventDefault();
+
+      r.data.wheelZooming = true;
+      clearTimeout( r.data.wheelTimeout );
+      r.data.wheelTimeout = setTimeout(function(){
+        r.data.wheelZooming = false;
+
+        r.redrawHint('eles', true);
+        r.redraw();
+      }, 150);
+
+      var diff = e.deltaY / -250 || e.wheelDeltaY / 1000 || e.wheelDelta / 1000;
+      diff = diff * r.wheelSensitivity;
+
+      var needsWheelFix = e.deltaMode === 1;
+      if( needsWheelFix ){ // fixes slow wheel events on ff/linux and ff/windows
+        diff *= 33;
+      }
+
+      cy.zoom({
+        level: cy.zoom() * Math.pow(10, diff),
+        renderedPosition: { x: rpos[0], y: rpos[1] }
+      });
+    }
+
+  };
+
+  // Functions to help with whether mouse wheel should trigger zooming
+  // --
+  r.registerBinding(r.container, 'wheel', wheelHandler, true);
+
+  // disable nonstandard wheel events
+  // r.registerBinding(r.container, 'mousewheel', wheelHandler, true);
+  // r.registerBinding(r.container, 'DOMMouseScroll', wheelHandler, true);
+  // r.registerBinding(r.container, 'MozMousePixelScroll', wheelHandler, true); // older firefox
+
+  r.registerBinding(window, 'scroll', function(e){
+    r.scrollingPage = true;
+
+    clearTimeout( r.scrollingPageTimeout );
+    r.scrollingPageTimeout = setTimeout(function(){
+      r.scrollingPage = false;
+    }, 250);
+  }, true);
+
+  // Functions to help with handling mouseout/mouseover on the Cytoscape container
+        // Handle mouseout on Cytoscape container
+  r.registerBinding(r.container, 'mouseout', function(e) {
+    var pos = r.projectIntoViewport(e.clientX, e.clientY);
+
+    r.cy.trigger(Event(e, {
+      type: 'mouseout',
+      cyPosition: { x: pos[0], y: pos[1] }
+    }));
+  }, false);
+
+  r.registerBinding(r.container, 'mouseover', function(e) {
+    var pos = r.projectIntoViewport(e.clientX, e.clientY);
+
+    r.cy.trigger(Event(e, {
+      type: 'mouseover',
+      cyPosition: { x: pos[0], y: pos[1] }
+    }));
+  }, false);
+
+  var f1x1, f1y1, f2x1, f2y1; // starting points for pinch-to-zoom
+  var distance1, distance1Sq; // initial distance between finger 1 and finger 2 for pinch-to-zoom
+  var center1, modelCenter1; // center point on start pinch to zoom
+  var offsetLeft, offsetTop;
+  var containerWidth, containerHeight;
+  var twoFingersStartInside;
+
+  var distance = function(x1, y1, x2, y2){
+    return Math.sqrt( (x2-x1)*(x2-x1) + (y2-y1)*(y2-y1) );
+  };
+
+  var distanceSq = function(x1, y1, x2, y2){
+    return (x2-x1)*(x2-x1) + (y2-y1)*(y2-y1);
+  };
+
+  var touchstartHandler;
+  r.registerBinding(r.container, 'touchstart', touchstartHandler = function(e) {
+    r.touchData.capture = true;
+    r.data.bgActivePosistion = undefined;
+
+    var cy = r.cy;
+    var nodes = r.getCachedNodes();
+    var edges = r.getCachedEdges();
+    var now = r.touchData.now;
+    var earlier = r.touchData.earlier;
+
+    if (e.touches[0]) { var pos = r.projectIntoViewport(e.touches[0].clientX, e.touches[0].clientY); now[0] = pos[0]; now[1] = pos[1]; }
+    if (e.touches[1]) { var pos = r.projectIntoViewport(e.touches[1].clientX, e.touches[1].clientY); now[2] = pos[0]; now[3] = pos[1]; }
+    if (e.touches[2]) { var pos = r.projectIntoViewport(e.touches[2].clientX, e.touches[2].clientY); now[4] = pos[0]; now[5] = pos[1]; }
+
+
+    // record starting points for pinch-to-zoom
+    if( e.touches[1] ){
+
+      // anything in the set of dragged eles should be released
+      var release = function( eles ){
+        for( var i = 0; i < eles.length; i++ ){
+          eles[i]._private.grabbed = false;
+          eles[i]._private.rscratch.inDragLayer = false;
+          if( eles[i].active() ){ eles[i].unactivate(); }
+        }
+      };
+      release(nodes);
+      release(edges);
+
+      var offsets = r.findContainerClientCoords();
+      offsetLeft = offsets[0];
+      offsetTop = offsets[1];
+      containerWidth = offsets[2];
+      containerHeight = offsets[3];
+
+      f1x1 = e.touches[0].clientX - offsetLeft;
+      f1y1 = e.touches[0].clientY - offsetTop;
+
+      f2x1 = e.touches[1].clientX - offsetLeft;
+      f2y1 = e.touches[1].clientY - offsetTop;
+
+      twoFingersStartInside =
+           0 <= f1x1 && f1x1 <= containerWidth
+        && 0 <= f2x1 && f2x1 <= containerWidth
+        && 0 <= f1y1 && f1y1 <= containerHeight
+        && 0 <= f2y1 && f2y1 <= containerHeight
+      ;
+
+      var pan = cy.pan();
+      var zoom = cy.zoom();
+
+      distance1 = distance( f1x1, f1y1, f2x1, f2y1 );
+      distance1Sq = distanceSq( f1x1, f1y1, f2x1, f2y1 );
+      center1 = [ (f1x1 + f2x1)/2, (f1y1 + f2y1)/2 ];
+      modelCenter1 = [
+        (center1[0] - pan.x) / zoom,
+        (center1[1] - pan.y) / zoom
+      ];
+
+      // consider context tap
+      var cxtDistThreshold = 200;
+      var cxtDistThresholdSq = cxtDistThreshold * cxtDistThreshold;
+      if( distance1Sq < cxtDistThresholdSq && !e.touches[2] ){
+
+        var near1 = r.findNearestElement(now[0], now[1], true, true);
+        var near2 = r.findNearestElement(now[2], now[3], true, true);
+
+        if( near1 && near1.isNode() ){
+          near1.activate().trigger( Event(e, {
+            type: 'cxttapstart',
+            cyPosition: { x: now[0], y: now[1] }
+          }) );
+          r.touchData.start = near1;
+
+        } else if( near2 && near2.isNode() ){
+          near2.activate().trigger( Event(e, {
+            type: 'cxttapstart',
+            cyPosition: { x: now[0], y: now[1] }
+          }) );
+          r.touchData.start = near2;
+
+        } else {
+          cy.trigger( Event(e, {
+            type: 'cxttapstart',
+            cyPosition: { x: now[0], y: now[1] }
+          }) );
+          r.touchData.start = null;
+        }
+
+        if( r.touchData.start ){ r.touchData.start._private.grabbed = false; }
+        r.touchData.cxt = true;
+        r.touchData.cxtDragged = false;
+        r.data.bgActivePosistion = undefined;
+
+        r.redraw();
+        return;
+
+      }
+
+    }
+
+    if (e.touches[2]) {
+
+    } else if (e.touches[1]) {
+
+    } else if (e.touches[0]) {
+      var near = r.findNearestElement(now[0], now[1], true, true);
+
+      if (near != null) {
+        near.activate();
+
+        r.touchData.start = near;
+
+        if( near.isNode() && r.nodeIsDraggable(near) ){
+
+          var draggedEles = r.dragData.touchDragEles = [];
+
+          r.redrawHint('eles', true);
+          r.redrawHint('drag', true);
+
+          if( near.selected() ){
+            // reset drag elements, since near will be added again
+
+            var selectedNodes = cy.$(function(){
+              return this.isNode() && this.selected();
+            });
+
+            for( var k = 0; k < selectedNodes.length; k++ ){
+              var selectedNode = selectedNodes[k];
+
+              if( r.nodeIsDraggable(selectedNode) ){
+                addNodeToDrag( selectedNode, { addToList: draggedEles } );
+              }
+            }
+          } else {
+            addNodeToDrag( near, { addToList: draggedEles } );
+          }
+
+          near.trigger( Event(e, {
+            type: 'grab',
+            cyPosition: { x: now[0], y: now[1] }
+          }) );
+        }
+      }
+
+      triggerEvents( near, ['touchstart', 'tapstart', 'vmousedown'], e, {
+        cyPosition: { x: now[0], y: now[1] }
+      } );
+
+      if (near == null) {
+        r.data.bgActivePosistion = {
+          x: pos[0],
+          y: pos[1]
+        };
+
+        r.redrawHint('select', true);
+        r.redraw();
+      }
+
+
+      // Tap, taphold
+      // -----
+
+      for (var i=0; i<now.length; i++) {
+        earlier[i] = now[i];
+        r.touchData.startPosition[i] = now[i];
+      }
+
+      r.touchData.singleTouchMoved = false;
+      r.touchData.singleTouchStartTime = +new Date();
+
+      clearTimeout( r.touchData.tapholdTimeout );
+      r.touchData.tapholdTimeout = setTimeout(function() {
+        if(
+            r.touchData.singleTouchMoved === false
+            && !r.pinching // if pinching, then taphold unselect shouldn't take effect
+            && !r.touchData.selecting // box selection shouldn't allow taphold through
+        ){
+          triggerEvents( r.touchData.start, ['taphold'], e, {
+            cyPosition: { x: now[0], y: now[1] }
+          } );
+
+          if (!r.touchData.start) {
+            cy.$(':selected').unselect();
+          }
+
+        }
+      }, r.tapholdDuration);
+    }
+
+  }, false);
+
+  var touchmoveHandler;
+  r.registerBinding(window, 'touchmove', touchmoveHandler = function(e) {
+
+    var select = r.selection;
+    var capture = r.touchData.capture;
+    var cy = r.cy;
+    var now = r.touchData.now; var earlier = r.touchData.earlier;
+    var zoom = cy.zoom();
+
+    if (e.touches[0]) { var pos = r.projectIntoViewport(e.touches[0].clientX, e.touches[0].clientY); now[0] = pos[0]; now[1] = pos[1]; }
+    if (e.touches[1]) { var pos = r.projectIntoViewport(e.touches[1].clientX, e.touches[1].clientY); now[2] = pos[0]; now[3] = pos[1]; }
+    if (e.touches[2]) { var pos = r.projectIntoViewport(e.touches[2].clientX, e.touches[2].clientY); now[4] = pos[0]; now[5] = pos[1]; }
+
+    var disp = []; for (var j=0;j<now.length;j++) { disp[j] = now[j] - earlier[j]; }
+    var startPos = r.touchData.startPosition;
+    var dx = now[0] - startPos[0];
+    var dx2 = dx * dx;
+    var dy = now[1] - startPos[1];
+    var dy2 = dy * dy;
+    var dist2 = dx2 + dy2;
+    var rdist2 = dist2 * zoom * zoom;
+
+    // context swipe cancelling
+    if( capture && r.touchData.cxt ){
+      e.preventDefault();
+
+      var f1x2 = e.touches[0].clientX - offsetLeft, f1y2 = e.touches[0].clientY - offsetTop;
+      var f2x2 = e.touches[1].clientX - offsetLeft, f2y2 = e.touches[1].clientY - offsetTop;
+      // var distance2 = distance( f1x2, f1y2, f2x2, f2y2 );
+      var distance2Sq = distanceSq( f1x2, f1y2, f2x2, f2y2 );
+      var factorSq = distance2Sq / distance1Sq;
+
+      var distThreshold = 150;
+      var distThresholdSq = distThreshold * distThreshold;
+      var factorThreshold = 1.5;
+      var factorThresholdSq = factorThreshold * factorThreshold;
+
+      // cancel ctx gestures if the distance b/t the fingers increases
+      if( factorSq >= factorThresholdSq || distance2Sq >= distThresholdSq ){
+        r.touchData.cxt = false;
+        if( r.touchData.start ){ r.touchData.start.unactivate(); r.touchData.start = null; }
+        r.data.bgActivePosistion = undefined;
+        r.redrawHint('select', true);
+
+        var cxtEvt = Event(e, {
+          type: 'cxttapend',
+          cyPosition: { x: now[0], y: now[1] }
+        });
+        if( r.touchData.start ){
+          r.touchData.start.trigger( cxtEvt );
+        } else {
+          cy.trigger( cxtEvt );
+        }
+      }
+
+    }
+
+    // context swipe
+    if( capture && r.touchData.cxt ){
+      var cxtEvt = Event(e, {
+        type: 'cxtdrag',
+        cyPosition: { x: now[0], y: now[1] }
+      });
+      r.data.bgActivePosistion = undefined;
+      r.redrawHint('select', true);
+
+      if( r.touchData.start ){
+        r.touchData.start.trigger( cxtEvt );
+      } else {
+        cy.trigger( cxtEvt );
+      }
+
+      if( r.touchData.start ){ r.touchData.start._private.grabbed = false; }
+      r.touchData.cxtDragged = true;
+
+      var near = r.findNearestElement(now[0], now[1], true, true);
+
+      if( !r.touchData.cxtOver || near !== r.touchData.cxtOver ){
+
+        if( r.touchData.cxtOver ){
+          r.touchData.cxtOver.trigger( Event(e, {
+            type: 'cxtdragout',
+            cyPosition: { x: now[0], y: now[1] }
+          }) );
+        }
+
+        r.touchData.cxtOver = near;
+
+        if( near ){
+          near.trigger( Event(e, {
+            type: 'cxtdragover',
+            cyPosition: { x: now[0], y: now[1] }
+          }) );
+
+        }
+
+      }
+
+    // box selection
+    } else if( capture && e.touches[2] && cy.boxSelectionEnabled() ){
+      e.preventDefault();
+
+      r.data.bgActivePosistion = undefined;
+
+      this.lastThreeTouch = +new Date();
+      r.touchData.selecting = true;
+
+      r.redrawHint('select', true);
+
+      if( !select || select.length === 0 || select[0] === undefined ){
+        select[0] = (now[0] + now[2] + now[4])/3;
+        select[1] = (now[1] + now[3] + now[5])/3;
+        select[2] = (now[0] + now[2] + now[4])/3 + 1;
+        select[3] = (now[1] + now[3] + now[5])/3 + 1;
+      } else {
+        select[2] = (now[0] + now[2] + now[4])/3;
+        select[3] = (now[1] + now[3] + now[5])/3;
+      }
+
+      select[4] = 1;
+      r.touchData.selecting = true;
+
+      r.redraw();
+
+    // pinch to zoom
+    } else if ( capture && e.touches[1] && cy.zoomingEnabled() && cy.panningEnabled() && cy.userZoomingEnabled() && cy.userPanningEnabled() ) { // two fingers => pinch to zoom
+      e.preventDefault();
+
+      r.data.bgActivePosistion = undefined;
+      r.redrawHint('select', true);
+
+      var draggedEles = r.dragData.touchDragEles;
+      if( draggedEles ){
+        r.redrawHint('drag', true);
+
+        for( var i = 0; i < draggedEles.length; i++ ){
+          draggedEles[i]._private.grabbed = false;
+          draggedEles[i]._private.rscratch.inDragLayer = false;
+        }
+      }
+
+      // (x2, y2) for fingers 1 and 2
+      var f1x2 = e.touches[0].clientX - offsetLeft, f1y2 = e.touches[0].clientY - offsetTop;
+      var f2x2 = e.touches[1].clientX - offsetLeft, f2y2 = e.touches[1].clientY - offsetTop;
+
+
+      var distance2 = distance( f1x2, f1y2, f2x2, f2y2 );
+      // var distance2Sq = distanceSq( f1x2, f1y2, f2x2, f2y2 );
+      // var factor = Math.sqrt( distance2Sq ) / Math.sqrt( distance1Sq );
+      var factor = distance2 / distance1;
+
+      if( factor != 1 && twoFingersStartInside){
+        // delta finger1
+        var df1x = f1x2 - f1x1;
+        var df1y = f1y2 - f1y1;
+
+        // delta finger 2
+        var df2x = f2x2 - f2x1;
+        var df2y = f2y2 - f2y1;
+
+        // translation is the normalised vector of the two fingers movement
+        // i.e. so pinching cancels out and moving together pans
+        var tx = (df1x + df2x)/2;
+        var ty = (df1y + df2y)/2;
+
+        // adjust factor by the speed multiplier
+        // var speed = 1.5;
+        // if( factor > 1 ){
+        //   factor = (factor - 1) * speed + 1;
+        // } else {
+        //   factor = 1 - (1 - factor) * speed;
+        // }
+
+        // now calculate the zoom
+        var zoom1 = cy.zoom();
+        var zoom2 = zoom1 * factor;
+        var pan1 = cy.pan();
+
+        // the model center point converted to the current rendered pos
+        var ctrx = modelCenter1[0] * zoom1 + pan1.x;
+        var ctry = modelCenter1[1] * zoom1 + pan1.y;
+
+        var pan2 = {
+          x: -zoom2/zoom1 * (ctrx - pan1.x - tx) + ctrx,
+          y: -zoom2/zoom1 * (ctry - pan1.y - ty) + ctry
+        };
+
+        // remove dragged eles
+        if( r.touchData.start ){
+          var draggedEles = r.dragData.touchDragEles;
+
+          if( draggedEles ){ for( var i = 0; i < draggedEles.length; i++ ){
+            var dEi_p = draggedEles[i]._private;
+
+            dEi_p.grabbed = false;
+            dEi_p.rscratch.inDragLayer = false;
+          } }
+
+          var start_p = r.touchData.start._private;
+          start_p.active = false;
+          start_p.grabbed = false;
+          start_p.rscratch.inDragLayer = false;
+
+          r.redrawHint('drag', true);
+
+          r.touchData.start
+            .trigger('free')
+            .trigger('unactivate')
+          ;
+        }
+
+        cy.viewport({
+          zoom: zoom2,
+          pan: pan2,
+          cancelOnFailedZoom: true
+        });
+
+        distance1 = distance2;
+        f1x1 = f1x2;
+        f1y1 = f1y2;
+        f2x1 = f2x2;
+        f2y1 = f2y2;
+
+        r.pinching = true;
+      }
+
+      // Re-project
+      if (e.touches[0]) { var pos = r.projectIntoViewport(e.touches[0].clientX, e.touches[0].clientY); now[0] = pos[0]; now[1] = pos[1]; }
+      if (e.touches[1]) { var pos = r.projectIntoViewport(e.touches[1].clientX, e.touches[1].clientY); now[2] = pos[0]; now[3] = pos[1]; }
+      if (e.touches[2]) { var pos = r.projectIntoViewport(e.touches[2].clientX, e.touches[2].clientY); now[4] = pos[0]; now[5] = pos[1]; }
+
+    } else if (e.touches[0]) {
+      var start = r.touchData.start;
+      var last = r.touchData.last;
+      var near = near || r.findNearestElement(now[0], now[1], true, true);
+
+      if( start != null ){
+        e.preventDefault();
+      }
+
+      // dragging nodes
+      if( start != null && start._private.group == 'nodes' && r.nodeIsDraggable(start) ){
+
+        if( rdist2 >= r.touchTapThreshold2 ){ // then dragging can happen
+          var draggedEles = r.dragData.touchDragEles;
+          var justStartedDrag = !r.dragData.didDrag;
+
+          for( var k = 0; k < draggedEles.length; k++ ){
+            var draggedEle = draggedEles[k];
+
+            if( justStartedDrag ){
+              addNodeToDrag( draggedEle, { inDragLayer: true } );
+            }
+
+            if( r.nodeIsDraggable(draggedEle) && draggedEle.isNode() && draggedEle.grabbed() ){
+              r.dragData.didDrag = true;
+              var dPos = draggedEle._private.position;
+              var updatePos = !draggedEle.isParent();
+
+              if( updatePos && is.number(disp[0]) && is.number(disp[1]) ){
+                dPos.x += disp[0];
+                dPos.y += disp[1];
+              }
+
+              if( justStartedDrag ){
+                r.redrawHint('eles', true);
+
+                var dragDelta = r.touchData.dragDelta;
+
+                if( updatePos && is.number(dragDelta[0]) && is.number(dragDelta[1]) ){
+                  dPos.x += dragDelta[0];
+                  dPos.y += dragDelta[1];
+                }
+
+              }
+            }
+          }
+
+          var tcol = Collection(cy, draggedEles);
+
+          tcol.updateCompoundBounds();
+          tcol.trigger('position drag');
+
+          r.hoverData.draggingEles = true;
+
+          r.redrawHint('drag', true);
+
+          if(
+               r.touchData.startPosition[0] == earlier[0]
+            && r.touchData.startPosition[1] == earlier[1]
+          ){
+
+            r.redrawHint('eles', true);
+          }
+
+          r.redraw();
+        } else { // otherise keep track of drag delta for later
+          var dragDelta = r.touchData.dragDelta = r.touchData.dragDelta || [];
+
+          if( dragDelta.length === 0 ){
+            dragDelta.push( disp[0] );
+            dragDelta.push( disp[1] );
+          } else {
+            dragDelta[0] += disp[0];
+            dragDelta[1] += disp[1];
+          }
+        }
+      }
+
+      // touchmove
+      {
+        triggerEvents( (start || near), ['touchmove', 'tapdrag', 'vmousemove'], e, {
+          cyPosition: { x: now[0], y: now[1] }
+        } );
+
+        if (near != last) {
+          if (last) { last.trigger(Event(e, { type: 'tapdragout', cyPosition: { x: now[0], y: now[1] } })); }
+          if (near) { near.trigger(Event(e, { type: 'tapdragover', cyPosition: { x: now[0], y: now[1] } })); }
+        }
+
+        r.touchData.last = near;
+      }
+
+      // check to cancel taphold
+      for (var i=0;i<now.length;i++) {
+        if( now[i]
+          && r.touchData.startPosition[i]
+          && rdist2 > r.touchTapThreshold2 ){
+
+          r.touchData.singleTouchMoved = true;
+        }
+      }
+
+      // panning
+      if(
+          capture
+          && ( start == null || start.isEdge() )
+          && cy.panningEnabled() && cy.userPanningEnabled()
+      ){
+
+        e.preventDefault();
+
+        if( r.swipePanning ){
+          cy.panBy({
+            x: disp[0] * zoom,
+            y: disp[1] * zoom
+          });
+
+        } else if( rdist2 >= r.touchTapThreshold2 ){
+          r.swipePanning = true;
+
+          cy.panBy({
+            x: dx * zoom,
+            y: dy * zoom
+          });
+
+          if( start ){
+            start.unactivate();
+
+            if( !r.data.bgActivePosistion ){
+              r.data.bgActivePosistion = {
+                x: now[0],
+                y: now[1]
+              };
+            }
+
+            r.redrawHint('select', true);
+
+            r.touchData.start = null;
+          }
+        }
+
+        // Re-project
+        var pos = r.projectIntoViewport(e.touches[0].clientX, e.touches[0].clientY);
+        now[0] = pos[0]; now[1] = pos[1];
+      }
+    }
+
+    for (var j=0; j<now.length; j++) { earlier[j] = now[j]; }
+    //r.redraw();
+
+  }, false);
+
+  var touchcancelHandler;
+  r.registerBinding(window, 'touchcancel', touchcancelHandler = function(e) {
+    var start = r.touchData.start;
+
+    r.touchData.capture = false;
+
+    if( start ){
+      start.unactivate();
+    }
+  });
+
+  var touchendHandler;
+  r.registerBinding(window, 'touchend', touchendHandler = function(e) {
+    var start = r.touchData.start;
+
+    var capture = r.touchData.capture;
+
+    if( capture ){
+      r.touchData.capture = false;
+
+      e.preventDefault();
+    } else {
+      return;
+    }
+
+    var select = r.selection;
+
+    r.swipePanning = false;
+    r.hoverData.draggingEles = false;
+
+    var cy = r.cy;
+    var zoom = cy.zoom();
+    var now = r.touchData.now;
+    var earlier = r.touchData.earlier;
+
+    if (e.touches[0]) { var pos = r.projectIntoViewport(e.touches[0].clientX, e.touches[0].clientY); now[0] = pos[0]; now[1] = pos[1]; }
+    if (e.touches[1]) { var pos = r.projectIntoViewport(e.touches[1].clientX, e.touches[1].clientY); now[2] = pos[0]; now[3] = pos[1]; }
+    if (e.touches[2]) { var pos = r.projectIntoViewport(e.touches[2].clientX, e.touches[2].clientY); now[4] = pos[0]; now[5] = pos[1]; }
+
+    if( start ){
+      start.unactivate();
+    }
+
+    var ctxTapend;
+    if( r.touchData.cxt ){
+      ctxTapend = Event(e, {
+        type: 'cxttapend',
+        cyPosition: { x: now[0], y: now[1] }
+      });
+
+      if( start ){
+        start.trigger( ctxTapend );
+      } else {
+        cy.trigger( ctxTapend );
+      }
+
+      if( !r.touchData.cxtDragged ){
+        var ctxTap = Event(e, {
+          type: 'cxttap',
+          cyPosition: { x: now[0], y: now[1] }
+        });
+
+        if( start ){
+          start.trigger( ctxTap );
+        } else {
+          cy.trigger( ctxTap );
+        }
+
+      }
+
+      if( r.touchData.start ){ r.touchData.start._private.grabbed = false; }
+      r.touchData.cxt = false;
+      r.touchData.start = null;
+
+      r.redraw();
+      return;
+    }
+
+    // no more box selection if we don't have three fingers
+    if( !e.touches[2] && cy.boxSelectionEnabled() && r.touchData.selecting ){
+      r.touchData.selecting = false;
+
+      var newlySelected = [];
+      var box = r.getAllInBox( select[0], select[1], select[2], select[3] );
+
+      select[0] = undefined;
+      select[1] = undefined;
+      select[2] = undefined;
+      select[3] = undefined;
+      select[4] = 0;
+
+      r.redrawHint('select', true);
+
+      for( var i = 0; i< box.length; i++ ) {
+        if( box[i]._private.selectable ){
+          newlySelected.push( box[i] );
+        }
+      }
+
+      var newlySelCol = Collection( cy, newlySelected );
+
+      newlySelCol.select();
+
+      if( newlySelCol.length > 0 ) {
+        r.redrawHint('eles', true);
+      } else {
+        r.redraw();
+      }
+    }
+
+    var updateStartStyle = false;
+
+    if( start != null ){
+      start._private.active = false;
+      updateStartStyle = true;
+      start.unactivate();
+    }
+
+    if (e.touches[2]) {
+      r.data.bgActivePosistion = undefined;
+      r.redrawHint('select', true);
+    } else if (e.touches[1]) {
+
+    } else if (e.touches[0]) {
+
+    // Last touch released
+    } else if (!e.touches[0]) {
+
+      r.data.bgActivePosistion = undefined;
+      r.redrawHint('select', true);
+
+      var draggedEles = r.dragData.touchDragEles;
+
+      if (start != null ) {
+
+        var startWasGrabbed = start._private.grabbed;
+
+        freeDraggedElements( draggedEles );
+
+        r.redrawHint('drag', true);
+        r.redrawHint('eles', true);
+
+        if( startWasGrabbed ){
+          start.trigger('free');
+        }
+
+        triggerEvents( start, ['touchend', 'tapend', 'vmouseup'], e, {
+          cyPosition: { x: now[0], y: now[1] }
+        } );
+
+        start.unactivate();
+
+        r.touchData.start = null;
+
+      } else {
+        var near = r.findNearestElement(now[0], now[1], true, true);
+
+        triggerEvents( near, ['touchend', 'tapend', 'vmouseup'], e, {
+          cyPosition: { x: now[0], y: now[1] }
+        } );
+
+      }
+
+      var dx = r.touchData.startPosition[0] - now[0];
+      var dx2 = dx * dx;
+      var dy = r.touchData.startPosition[1] - now[1];
+      var dy2 = dy * dy;
+      var dist2 = dx2 + dy2;
+      var rdist2 = dist2 * zoom * zoom;
+
+      // Prepare to select the currently touched node, only if it hasn't been dragged past a certain distance
+      if (start != null
+          && !r.dragData.didDrag // didn't drag nodes around
+          && start._private.selectable
+          && rdist2 < r.touchTapThreshold2
+          && !r.pinching // pinch to zoom should not affect selection
+      ) {
+
+        if( cy.selectionType() === 'single' ){
+          cy.$(':selected').unmerge( start ).unselect();
+          start.select();
+        } else {
+          if( start.selected() ){
+            start.unselect();
+          } else {
+            start.select();
+          }
+        }
+
+        updateStartStyle = true;
+
+
+        r.redrawHint('eles', true);
+      }
+
+      // Tap event, roughly same as mouse click event for touch
+      if( !r.touchData.singleTouchMoved ){
+        triggerEvents( start, ['tap', 'vclick'], e, {
+          cyPosition: { x: now[0], y: now[1] }
+        } );
+      }
+
+      r.touchData.singleTouchMoved = true;
+    }
+
+    for( var j = 0; j < now.length; j++ ){ earlier[j] = now[j]; }
+
+    r.dragData.didDrag = false; // reset for next mousedown
+
+    if( e.touches.length === 0 ){
+      r.touchData.dragDelta = [];
+    }
+
+    if( updateStartStyle && start ){
+      start.updateStyle(false);
+    }
+
+    if( e.touches.length < 2 ){
+      r.pinching = false;
+      r.redrawHint('eles', true);
+      r.redraw();
+    }
+
+    //r.redraw();
+
+  }, false);
+
+  // fallback compatibility layer for ms pointer events
+  if( typeof TouchEvent === 'undefined' ){
+
+    var pointers = [];
+
+    var makeTouch = function( e ){
+      return {
+        clientX: e.clientX,
+        clientY: e.clientY,
+        force: 1,
+        identifier: e.pointerId,
+        pageX: e.pageX,
+        pageY: e.pageY,
+        radiusX: e.width/2,
+        radiusY: e.height/2,
+        screenX: e.screenX,
+        screenY: e.screenY,
+        target: e.target
+      };
+    };
+
+    var makePointer = function( e ){
+      return {
+        event: e,
+        touch: makeTouch(e)
+      };
+    };
+
+    var addPointer = function( e ){
+      pointers.push( makePointer(e) );
+    };
+
+    var removePointer = function( e ){
+      for( var i = 0; i < pointers.length; i++ ){
+        var p = pointers[i];
+
+        if( p.event.pointerId === e.pointerId ){
+          pointers.splice( i, 1 );
+          return;
+        }
+      }
+    };
+
+    var updatePointer = function( e ){
+      var p = pointers.filter(function( p ){
+        return p.event.pointerId === e.pointerId;
+      })[0];
+
+      p.event = e;
+      p.touch = makeTouch(e);
+    };
+
+    var addTouchesToEvent = function( e ){
+      e.touches = pointers.map(function( p ){
+        return p.touch;
+      });
+    };
+
+    var pointerIsMouse = function( e ){
+      return e.pointerType === 'mouse' || e.pointerType === 4;
+    };
+
+    r.registerBinding(r.container, 'pointerdown', function(e){
+      if( pointerIsMouse(e) ){ return; } // mouse already handled
+
+      e.preventDefault();
+
+      addPointer( e );
+
+      addTouchesToEvent( e );
+      touchstartHandler( e );
+    });
+
+    r.registerBinding(r.container, 'pointerup', function(e){
+      if( pointerIsMouse(e) ){ return; } // mouse already handled
+
+      removePointer( e );
+
+      addTouchesToEvent( e );
+      touchendHandler( e );
+    });
+
+    r.registerBinding(r.container, 'pointercancel', function(e){
+      if( pointerIsMouse(e) ){ return; } // mouse already handled
+
+      removePointer( e );
+
+      addTouchesToEvent( e );
+      touchcancelHandler( e );
+    });
+
+    r.registerBinding(r.container, 'pointermove', function(e){
+      if( pointerIsMouse(e) ){ return; } // mouse already handled
+
+      e.preventDefault();
+
+      updatePointer( e );
+
+      addTouchesToEvent( e );
+      touchmoveHandler( e );
+    });
+
+  }
+};
+
+module.exports = BRp;
+
+},{"../../../collection":23,"../../../event":42,"../../../is":77,"../../../util":94}],60:[function(_dereq_,module,exports){
+'use strict';
+
+var math = _dereq_('../../../math');
+
+var BRp = {};
+
+BRp.registerNodeShapes = function(){
+  var nodeShapes = this.nodeShapes = {};
+  var renderer = this;
+
+  nodeShapes['ellipse'] = {
+    name: 'ellipse',
+
+    draw: function( context, centerX, centerY, width, height ){
+      renderer.nodeShapeImpl( this.name )( context, centerX, centerY, width, height );
+    },
+
+    intersectLine: function( nodeX, nodeY, width, height, x, y, padding ){
+      return math.intersectLineEllipse(
+        x, y,
+        nodeX,
+        nodeY,
+        width / 2 + padding,
+        height / 2 + padding)
+      ;
+    },
+
+    checkPoint: function( x, y, padding, width, height, centerX, centerY ){
+      x -= centerX;
+      y -= centerY;
+
+      x /= (width / 2 + padding);
+      y /= (height / 2 + padding);
+
+      return x*x + y*y <= 1;
+    }
+  };
+
+  function generatePolygon( name, points ){
+    return ( nodeShapes[name] = {
+      name: name,
+
+      points: points,
+
+      draw: function( context, centerX, centerY, width, height ){
+        renderer.nodeShapeImpl('polygon')( context, centerX, centerY, width, height, this.points );
+      },
+
+      intersectLine: function( nodeX, nodeY, width, height, x, y, padding ){
+        return math.polygonIntersectLine(
+            x, y,
+            this.points,
+            nodeX,
+            nodeY,
+            width / 2, height / 2,
+            padding)
+          ;
+      },
+
+      checkPoint: function( x, y, padding, width, height, centerX, centerY ){
+        return math.pointInsidePolygon(x, y, nodeShapes[name].points,
+          centerX, centerY, width, height, [0, -1], padding)
+        ;
+      }
+    } );
+  }
+
+  generatePolygon( 'triangle', math.generateUnitNgonPointsFitToSquare(3, 0) );
+
+  generatePolygon( 'square', math.generateUnitNgonPointsFitToSquare(4, 0) );
+  nodeShapes['rectangle'] = nodeShapes['square'];
+
+  nodeShapes['roundrectangle'] = {
+    name: 'roundrectangle',
+
+    points: math.generateUnitNgonPointsFitToSquare(4, 0),
+
+    draw: function( context, centerX, centerY, width, height ){
+      renderer.nodeShapeImpl( this.name )( context, centerX, centerY, width, height );
+    },
+
+    intersectLine: function( nodeX, nodeY, width, height, x, y, padding ){
+      return math.roundRectangleIntersectLine(
+        x, y,
+        nodeX,
+        nodeY,
+        width, height,
+        padding)
+      ;
+    },
+
+    // Looks like the width passed into this function is actually the total width / 2
+    checkPoint: function(
+      x, y, padding, width, height, centerX, centerY ){
+
+      var cornerRadius = math.getRoundRectangleRadius(width, height);
+
+      // Check hBox
+      if (math.pointInsidePolygon(x, y, this.points,
+        centerX, centerY, width, height - 2 * cornerRadius, [0, -1], padding) ){
+        return true;
+      }
+
+      // Check vBox
+      if (math.pointInsidePolygon(x, y, this.points,
+        centerX, centerY, width - 2 * cornerRadius, height, [0, -1], padding) ){
+        return true;
+      }
+
+      var checkInEllipse = function( x, y, centerX, centerY, width, height, padding ){
+        x -= centerX;
+        y -= centerY;
+
+        x /= (width / 2 + padding);
+        y /= (height / 2 + padding);
+
+        return (x*x + y*y <= 1);
+      };
+
+
+      // Check top left quarter circle
+      if (checkInEllipse(x, y,
+        centerX - width / 2 + cornerRadius,
+        centerY - height / 2 + cornerRadius,
+        cornerRadius * 2, cornerRadius * 2, padding) ){
+
+        return true;
+      }
+
+      // Check top right quarter circle
+      if (checkInEllipse(x, y,
+        centerX + width / 2 - cornerRadius,
+        centerY - height / 2 + cornerRadius,
+        cornerRadius * 2, cornerRadius * 2, padding) ){
+
+        return true;
+      }
+
+      // Check bottom right quarter circle
+      if (checkInEllipse(x, y,
+        centerX + width / 2 - cornerRadius,
+        centerY + height / 2 - cornerRadius,
+        cornerRadius * 2, cornerRadius * 2, padding) ){
+
+        return true;
+      }
+
+      // Check bottom left quarter circle
+      if (checkInEllipse(x, y,
+        centerX - width / 2 + cornerRadius,
+        centerY + height / 2 - cornerRadius,
+        cornerRadius * 2, cornerRadius * 2, padding) ){
+
+        return true;
+      }
+
+      return false;
+    }
+  };
+
+  generatePolygon( 'diamond', [
+    0, 1,
+    1, 0,
+    0, -1,
+    -1, 0
+  ] );
+
+  generatePolygon( 'pentagon', math.generateUnitNgonPointsFitToSquare(5, 0) );
+
+  generatePolygon( 'hexagon', math.generateUnitNgonPointsFitToSquare(6, 0) );
+
+  generatePolygon( 'heptagon', math.generateUnitNgonPointsFitToSquare(7, 0) );
+
+  generatePolygon( 'octagon', math.generateUnitNgonPointsFitToSquare(8, 0) );
+
+  var star5Points = new Array(20);
+  {
+    var outerPoints = math.generateUnitNgonPoints(5, 0);
+    var innerPoints = math.generateUnitNgonPoints(5, Math.PI / 5);
+
+    // Outer radius is 1; inner radius of star is smaller
+    var innerRadius = 0.5 * (3 - Math.sqrt(5));
+    innerRadius *= 1.57;
+
+    for (var i=0;i<innerPoints.length/2;i++ ){
+      innerPoints[i*2] *= innerRadius;
+      innerPoints[i*2+1] *= innerRadius;
+    }
+
+    for (var i=0;i<20/4;i++ ){
+      star5Points[i*4] = outerPoints[i*2];
+      star5Points[i*4+1] = outerPoints[i*2+1];
+
+      star5Points[i*4+2] = innerPoints[i*2];
+      star5Points[i*4+3] = innerPoints[i*2+1];
+    }
+  }
+
+  star5Points = math.fitPolygonToSquare( star5Points );
+
+  generatePolygon( 'star', star5Points );
+
+  generatePolygon( 'vee', [
+    -1, -1,
+    0, -0.333,
+    1, -1,
+    0, 1
+  ] );
+
+  generatePolygon( 'rhomboid', [
+    -1, -1,
+    0.333, -1,
+    1, 1,
+    -0.333, 1
+  ] );
+
+  nodeShapes.makePolygon = function( points ){
+
+    // use caching on user-specified polygons so they are as fast as native shapes
+
+    var key = points.join('$');
+    var name = 'polygon-' + key;
+    var shape;
+
+    if( (shape = nodeShapes[name]) ){ // got cached shape
+      return shape;
+    }
+
+    // create and cache new shape
+    return generatePolygon( name, points );
+  };
+
+};
+
+module.exports = BRp;
+
+},{"../../../math":79}],61:[function(_dereq_,module,exports){
+'use strict';
+
+var util = _dereq_('../../../util');
+
+var BRp = {};
+
+BRp.timeToRender = function(){
+  return this.redrawTotalTime / this.redrawCount;
+};
+
+var minRedrawLimit = 1000/60; // people can't see much better than 60fps
+var maxRedrawLimit = 1000;  // don't cap max b/c it's more important to be responsive than smooth
+
+BRp.redraw = function( options ){
+  options = options || util.staticEmptyObject();
+
+  var r = this;
+  var forcedContext = options.forcedContext;
+
+  if( r.averageRedrawTime === undefined ){ r.averageRedrawTime = 0; }
+  if( r.lastRedrawTime === undefined ){ r.lastRedrawTime = 0; }
+
+  var redrawLimit = r.lastRedrawTime; // estimate the ideal redraw limit based on how fast we can draw
+  redrawLimit = minRedrawLimit > redrawLimit ? minRedrawLimit : redrawLimit;
+  redrawLimit = redrawLimit < maxRedrawLimit ? redrawLimit : maxRedrawLimit;
+
+  if( r.lastDrawTime === undefined ){ r.lastDrawTime = 0; }
+
+  var nowTime = Date.now();
+  var timeElapsed = nowTime - r.lastDrawTime;
+  var callAfterLimit = timeElapsed >= redrawLimit;
+
+  if( !forcedContext ){
+    if( !callAfterLimit || r.currentlyDrawing ){
+      r.skipFrame = true;
+      return;
+    }
+  }
+
+  r.requestedFrame = true;
+  r.currentlyDrawing = true;
+  r.renderOptions = options;
+};
+
+BRp.startRenderLoop = function(){
+  var r = this;
+
+  var renderFn = function(){
+    if( r.destroyed ){ return; }
+
+    if( r.requestedFrame && !r.skipFrame ){
+      var startTime = util.performanceNow();
+
+      r.render( r.renderOptions );
+
+      var endTime = r.lastRedrawTime = util.performanceNow();
+
+      if( r.averageRedrawTime === undefined ){
+        r.averageRedrawTime = endTime - startTime;
+      }
+
+      if( r.redrawCount === undefined ){
+        r.redrawCount = 0;
+      }
+
+      r.redrawCount++;
+
+      if( r.redrawTotalTime === undefined ){
+        r.redrawTotalTime = 0;
+      }
+
+      var duration = endTime - startTime;
+
+      r.redrawTotalTime += duration;
+      r.lastRedrawTime = duration;
+
+      // use a weighted average with a bias from the previous average so we don't spike so easily
+      r.averageRedrawTime = r.averageRedrawTime/2 + duration/2;
+
+      r.requestedFrame = false;
+    }
+
+    r.skipFrame = false;
+
+    util.requestAnimationFrame( renderFn );
+  };
+
+  util.requestAnimationFrame( renderFn );
+
+};
+
+module.exports = BRp;
+
+},{"../../../util":94}],62:[function(_dereq_,module,exports){
+'use strict';
+
+var CRp = {};
+
+var impl;
+
+CRp.arrowShapeImpl = function( name ){
+  return ( impl || (impl = {
+    'polygon': function( context, points ){
+      for( var i = 0; i < points.length; i++ ){
+        var pt = points[i];
+
+        context.lineTo( pt.x, pt.y );
+      }
+    },
+
+    'triangle-backcurve': function( context, points, controlPoint ){
+      var firstPt;
+
+      for( var i = 0; i < points.length; i++ ){
+        var pt = points[i];
+
+        if( i === 0 ){
+          firstPt = pt;
+        }
+
+        context.lineTo( pt.x, pt.y );
+      }
+
+      context.quadraticCurveTo( controlPoint.x, controlPoint.y, firstPt.x, firstPt.y );
+    },
+
+    'triangle-tee': function( context, trianglePoints, teePoints ){
+      var triPts = trianglePoints;
+      for( var i = 0; i < triPts.length; i++ ){
+        var pt = triPts[i];
+
+        context.lineTo( pt.x, pt.y );
+      }
+
+      var teePts = teePoints;
+      var firstTeePt = teePoints[0];
+      context.moveTo( firstTeePt.x, firstTeePt.y );
+
+      for( var i = 0; i < teePts.length; i++ ){
+        var pt = teePts[i];
+
+        context.lineTo( pt.x, pt.y );
+      }
+    },
+
+    'circle': function( context, rx, ry, r ){
+      context.arc(rx, ry, r, 0, Math.PI * 2, false);
+    }
+  }) )[ name ];
+};
+
+module.exports = CRp;
+
+},{}],63:[function(_dereq_,module,exports){
+'use strict';
+
+var CRp = {};
+
+CRp.drawEdge = function(context, edge, drawOverlayInstead) {
+  var rs = edge._private.rscratch;
+  var usePaths = this.usePaths();
+
+  // if bezier ctrl pts can not be calculated, then die
+  if( rs.badBezier || rs.badLine || isNaN( rs.allpts[0] ) ){ // iNaN in case edge is impossible and browser bugs (e.g. safari)
+    return;
+  }
+
+  var style = edge._private.style;
+
+  // Edge line width
+  if (style['width'].pfValue <= 0) {
+    return;
+  }
+
+  var overlayPadding = style['overlay-padding'].pfValue;
+  var overlayOpacity = style['overlay-opacity'].value;
+  var overlayColor = style['overlay-color'].value;
+
+  // Edge color & opacity
+  if( drawOverlayInstead ){
+
+    if( overlayOpacity === 0 ){ // exit early if no overlay
+      return;
+    }
+
+    this.strokeStyle(context, overlayColor[0], overlayColor[1], overlayColor[2], overlayOpacity);
+    context.lineCap = 'round';
+
+    if( rs.edgeType == 'self' && !usePaths ){
+      context.lineCap = 'butt';
+    }
+
+  } else {
+    var lineColor = style['line-color'].value;
+
+    this.strokeStyle(context, lineColor[0], lineColor[1], lineColor[2], style.opacity.value);
+
+    context.lineCap = 'butt';
+  }
+
+  var edgeWidth = style['width'].pfValue + (drawOverlayInstead ? 2 * overlayPadding : 0);
+  var lineStyle = drawOverlayInstead ? 'solid' : style['line-style'].value;
+  context.lineWidth = edgeWidth;
+
+  var shadowBlur = style['shadow-blur'].pfValue;
+  var shadowOpacity = style['shadow-opacity'].value;
+  var shadowColor = style['shadow-color'].value;
+  var shadowOffsetX = style['shadow-offset-x'].pfValue;
+  var shadowOffsetY = style['shadow-offset-y'].pfValue;
+
+  this.shadowStyle(context,  shadowColor, drawOverlayInstead ? 0 : shadowOpacity, shadowBlur, shadowOffsetX, shadowOffsetY);
+
+  this.drawEdgePath(
+    edge,
+    context,
+    rs.allpts,
+    lineStyle,
+    edgeWidth
+  );
+
+  this.drawArrowheads(context, edge, drawOverlayInstead);
+
+  this.shadowStyle(context, 'transparent', 0); // reset for next guy
+
+};
+
+
+CRp.drawEdgePath = function(edge, context, pts, type, width) {
+  var rs = edge._private.rscratch;
+  var canvasCxt = context;
+  var path;
+  var pathCacheHit = false;
+  var usePaths = this.usePaths();
+
+  if( usePaths ){
+    var pathCacheKey = pts.join('$');
+    var keyMatches = rs.pathCacheKey && rs.pathCacheKey === pathCacheKey;
+
+    if( keyMatches ){
+      path = context = rs.pathCache;
+      pathCacheHit = true;
+    } else {
+      path = context = new Path2D();
+      rs.pathCacheKey = pathCacheKey;
+      rs.pathCache = path;
+    }
+  }
+
+  if( canvasCxt.setLineDash ){ // for very outofdate browsers
+    switch( type ){
+      case 'dotted':
+        canvasCxt.setLineDash([ 1, 1 ]);
+        break;
+
+      case 'dashed':
+        canvasCxt.setLineDash([ 6, 3 ]);
+        break;
+
+      case 'solid':
+        canvasCxt.setLineDash([ ]);
+        break;
+    }
+  }
+
+  if( !pathCacheHit ){
+    if( context.beginPath ){ context.beginPath(); }
+    context.moveTo( pts[0], pts[1] );
+
+    switch( rs.edgeType ){
+      case 'bezier':
+      case 'self':
+      case 'compound':
+      case 'multibezier':
+        if( !rs.badBezier ){
+          for( var i = 2; i + 3 < pts.length; i += 4 ){
+            context.quadraticCurveTo( pts[i], pts[i+1], pts[i+2], pts[i+3] );
+          }
+        }
+        break;
+
+      case 'straight':
+      case 'segments':
+      case 'haystack':
+        if( !rs.badLine ){
+          for( var i = 2; i + 1 < pts.length; i += 2 ){
+            context.lineTo( pts[i], pts[i+1] );
+          }
+        }
+        break;
+    }
+  }
+
+  context = canvasCxt;
+  if( usePaths ){
+    context.stroke( path );
+  } else {
+    context.stroke();
+  }
+
+  // reset any line dashes
+  if( context.setLineDash ){ // for very outofdate browsers
+    context.setLineDash([ ]);
+  }
+
+};
+
+CRp.drawArrowheads = function(context, edge, drawOverlayInstead) {
+  if( drawOverlayInstead ){ return; } // don't do anything for overlays
+
+  var rs = edge._private.rscratch;
+  var isHaystack = rs.edgeType === 'haystack';
+
+  if( !isHaystack ){
+    this.drawArrowhead( context, edge, 'source', rs.arrowStartX, rs.arrowStartY, rs.srcArrowAngle );
+  }
+
+  this.drawArrowhead( context, edge, 'mid-target', rs.midX, rs.midY, rs.midtgtArrowAngle );
+
+  this.drawArrowhead( context, edge, 'mid-source', rs.midX, rs.midY, rs.midsrcArrowAngle );
+
+  if( !isHaystack ){
+    this.drawArrowhead( context, edge, 'target', rs.arrowEndX, rs.arrowEndY, rs.tgtArrowAngle );
+  }
+};
+
+CRp.drawArrowhead = function( context, edge, prefix, x, y, angle ){
+  if( isNaN(x) || x == null || isNaN(y) || y == null || isNaN(angle) || angle == null ){ return; }
+
+  var self = this;
+  var style = edge._private.style;
+  var arrowShape = style[prefix + '-arrow-shape'].value;
+
+  if( arrowShape === 'none' ){
+    return;
+  }
+
+  var gco = context.globalCompositeOperation;
+
+  var arrowClearFill = style[prefix + '-arrow-fill'].value === 'hollow' ? 'both' : 'filled';
+  var arrowFill = style[prefix + '-arrow-fill'].value;
+
+  if( arrowShape === 'half-triangle-overshot' ){
+    arrowFill = 'hollow';
+    arrowClearFill = 'hollow';
+  }
+
+  if( style.opacity.value !== 1 || arrowFill === 'hollow' ){ // then extra clear is needed
+    context.globalCompositeOperation = 'destination-out';
+
+    self.fillStyle(context, 255, 255, 255, 1);
+    self.strokeStyle(context, 255, 255, 255, 1);
+
+    self.drawArrowShape( edge, prefix, context,
+      arrowClearFill, style['width'].pfValue, style[prefix + '-arrow-shape'].value,
+      x, y, angle
+    );
+
+    context.globalCompositeOperation = gco;
+  } // otherwise, the opaque arrow clears it for free :)
+
+  var color = style[prefix + '-arrow-color'].value;
+  self.fillStyle(context, color[0], color[1], color[2], style.opacity.value);
+  self.strokeStyle(context, color[0], color[1], color[2], style.opacity.value);
+
+  self.drawArrowShape( edge, prefix, context,
+    arrowFill, style['width'].pfValue, style[prefix + '-arrow-shape'].value,
+    x, y, angle
+  );
+};
+
+CRp.drawArrowShape = function(edge, arrowType, context, fill, edgeWidth, shape, x, y, angle) {
+  var r = this;
+  var usePaths = this.usePaths();
+  var rs = edge._private.rscratch;
+  var pathCacheHit = false;
+  var path;
+  var canvasContext = context;
+  var translation = { x: x, y: y };
+  var size = this.getArrowWidth( edgeWidth );
+  var shapeImpl = r.arrowShapes[shape];
+
+  if( usePaths ){
+    var pathCacheKey = size + '$' + shape + '$' + angle + '$' + x + '$' + y;
+    rs.arrowPathCacheKey = rs.arrowPathCacheKey || {};
+    rs.arrowPathCache = rs.arrowPathCache || {};
+
+    var alreadyCached = rs.arrowPathCacheKey[arrowType] === pathCacheKey;
+    if( alreadyCached ){
+      path = context = rs.arrowPathCache[arrowType];
+      pathCacheHit = true;
+    } else {
+      path = context = new Path2D();
+      rs.arrowPathCacheKey[arrowType] = pathCacheKey;
+      rs.arrowPathCache[arrowType] = path;
+    }
+  }
+
+  if( context.beginPath ){ context.beginPath(); }
+
+  if( !pathCacheHit ){
+    shapeImpl.draw(context, size, angle, translation);
+  }
+
+  if( !shapeImpl.leavePathOpen && context.closePath ){
+    context.closePath();
+  }
+
+  context = canvasContext;
+
+  if( fill === 'filled' || fill === 'both' ){
+    if( usePaths ){
+      context.fill( path );
+    } else {
+      context.fill();
+    }
+  }
+
+  if( fill === 'hollow' || fill === 'both' ){
+    context.lineWidth = ( shapeImpl.matchEdgeWidth ? edgeWidth : 1 );
+    context.lineJoin = 'miter';
+
+    if( usePaths ){
+      context.stroke( path );
+    } else {
+      context.stroke();
+    }
+
+  }
+};
+
+module.exports = CRp;
+
+},{}],64:[function(_dereq_,module,exports){
+'use strict';
+
+var CRp = {};
+
+CRp.safeDrawImage = function( context, img, ix, iy, iw, ih, x, y, w, h ){
+  var r = this;
+
+  try {
+    context.drawImage( img, ix, iy, iw, ih, x, y, w, h );
+  } catch(e){
+    r.data.canvasNeedsRedraw[r.NODE] = true;
+    r.data.canvasNeedsRedraw[r.DRAG] = true;
+
+    r.drawingImage = true;
+
+    r.redraw();
+  }
+};
+
+CRp.drawInscribedImage = function(context, img, node) {
+  var r = this;
+  var nodeX = node._private.position.x;
+  var nodeY = node._private.position.y;
+  var style = node._private.style;
+  var fit = style['background-fit'].value;
+  var xPos = style['background-position-x'];
+  var yPos = style['background-position-y'];
+  var repeat = style['background-repeat'].value;
+  var nodeW = node.width();
+  var nodeH = node.height();
+  var rs = node._private.rscratch;
+  var clip = style['background-clip'].value;
+  var shouldClip = clip === 'node';
+  var imgOpacity = style['background-image-opacity'].value;
+
+  var imgW = img.width || img.cachedW;
+  var imgH = img.height || img.cachedH;
+
+  // workaround for broken browsers like ie
+  if( null == imgW || null == imgH ){
+    document.body.appendChild( img );
+
+    imgW = img.cachedW = img.width || img.offsetWidth;
+    imgH = img.cachedH = img.height || img.offsetHeight;
+
+    document.body.removeChild( img );
+  }
+
+  var w = imgW;
+  var h = imgH;
+
+  var bgW = style['background-width'];
+  if( bgW.value !== 'auto' ){
+    if( bgW.units === '%' ){
+      w = bgW.value/100 * nodeW;
+    } else {
+      w = bgW.pfValue;
+    }
+  }
+
+  var bgH = style['background-height'];
+  if( bgH.value !== 'auto' ){
+    if( bgH.units === '%' ){
+      h = bgH.value/100 * nodeH;
+    } else {
+      h = bgH.pfValue;
+    }
+  }
+
+  if( w === 0 || h === 0 ){
+    return; // no point in drawing empty image (and chrome is broken in this case)
+  }
+
+  if( fit === 'contain' ){
+    var scale = Math.min( nodeW/w, nodeH/h );
+
+    w *= scale;
+    h *= scale;
+
+  } else if( fit === 'cover' ){
+    var scale = Math.max( nodeW/w, nodeH/h );
+
+    w *= scale;
+    h *= scale;
+  }
+
+  var x = (nodeX - nodeW/2); // left
+  if( xPos.units === '%' ){
+    x += (nodeW - w) * xPos.value/100;
+  } else {
+    x += xPos.pfValue;
+  }
+
+  var y = (nodeY - nodeH/2); // top
+  if( yPos.units === '%' ){
+    y += (nodeH - h) * yPos.value/100;
+  } else {
+    y += yPos.pfValue;
+  }
+
+  if( rs.pathCache ){
+    x -= nodeX;
+    y -= nodeY;
+
+    nodeX = 0;
+    nodeY = 0;
+  }
+
+  var gAlpha = context.globalAlpha;
+
+  context.globalAlpha = imgOpacity;
+
+  if( repeat === 'no-repeat' ){
+
+    if( shouldClip ){
+      context.save();
+
+      if( rs.pathCache ){
+        context.clip( rs.pathCache );
+      } else {
+        r.nodeShapes[r.getNodeShape(node)].draw(
+          context,
+          nodeX, nodeY,
+          nodeW, nodeH);
+
+        context.clip();
+      }
+    }
+
+    r.safeDrawImage( context, img, 0, 0, imgW, imgH, x, y, w, h );
+
+    if( shouldClip ){
+      context.restore();
+    }
+  } else {
+    var pattern = context.createPattern( img, repeat );
+    context.fillStyle = pattern;
+
+    r.nodeShapes[r.getNodeShape(node)].draw(
+        context,
+        nodeX, nodeY,
+        nodeW, nodeH);
+
+      context.translate(x, y);
+      context.fill();
+      context.translate(-x, -y);
+  }
+
+  context.globalAlpha = gAlpha;
+
+};
+
+module.exports = CRp;
+
+},{}],65:[function(_dereq_,module,exports){
+'use strict';
+
+var is = _dereq_('../../../is');
+
+var CRp = {};
+
+// Draw edge text
+CRp.drawEdgeText = function(context, edge) {
+  var text = edge._private.style['label'].strValue;
+
+  if( !text || text.match(/^\s+$/) ){
+    return;
+  }
+
+  if( this.hideEdgesOnViewport && (this.dragData.didDrag || this.pinching || this.hoverData.dragging || this.data.wheel || this.swipePanning) ){ return; } // save cycles on pinching
+
+  var computedSize = edge._private.style['font-size'].pfValue * edge.cy().zoom();
+  var minSize = edge._private.style['min-zoomed-font-size'].pfValue;
+
+  if( computedSize < minSize ){
+    return;
+  }
+
+  // Calculate text draw position
+
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+
+  var rs = edge._private.rscratch;
+  if( !is.number( rs.labelX ) || !is.number( rs.labelY ) ){ return; } // no pos => label can't be rendered
+
+  var style = edge._private.style;
+  var autorotate = style['edge-text-rotation'].strValue === 'autorotate';
+  var theta;
+
+  if( autorotate ){
+    theta = rs.labelAngle;
+
+    context.translate(rs.labelX, rs.labelY);
+    context.rotate(theta);
+
+    this.drawText(context, edge, 0, 0);
+
+    context.rotate(-theta);
+    context.translate(-rs.labelX, -rs.labelY);
+  } else {
+    this.drawText(context, edge, rs.labelX, rs.labelY);
+  }
+
+};
+
+// Draw node text
+CRp.drawNodeText = function(context, node) {
+  var text = node._private.style['label'].strValue;
+
+  if ( !text || text.match(/^\s+$/) ) {
+    return;
+  }
+
+  var computedSize = node._private.style['font-size'].pfValue * node.cy().zoom();
+  var minSize = node._private.style['min-zoomed-font-size'].pfValue;
+
+  if( computedSize < minSize ){
+    return;
+  }
+
+  // this.recalculateNodeLabelProjection( node );
+
+  var textHalign = node._private.style['text-halign'].strValue;
+  var textValign = node._private.style['text-valign'].strValue;
+  var rs = node._private.rscratch;
+  if( !is.number( rs.labelX ) || !is.number( rs.labelY ) ){ return; } // no pos => label can't be rendered
+
+  switch( textHalign ){
+    case 'left':
+      context.textAlign = 'right';
+      break;
+
+    case 'right':
+      context.textAlign = 'left';
+      break;
+
+    default: // e.g. center
+      context.textAlign = 'center';
+  }
+
+  switch( textValign ){
+    case 'top':
+      context.textBaseline = 'bottom';
+      break;
+
+    case 'bottom':
+      context.textBaseline = 'top';
+      break;
+
+    default: // e.g. center
+      context.textBaseline = 'middle';
+  }
+
+  this.drawText(context, node, rs.labelX, rs.labelY);
+};
+
+CRp.getFontCache = function(context){
+  var cache;
+
+  this.fontCaches = this.fontCaches || [];
+
+  for( var i = 0; i < this.fontCaches.length; i++ ){
+    cache = this.fontCaches[i];
+
+    if( cache.context === context ){
+      return cache;
+    }
+  }
+
+  cache = {
+    context: context
+  };
+  this.fontCaches.push(cache);
+
+  return cache;
+};
+
+// set up canvas context with font
+// returns transformed text string
+CRp.setupTextStyle = function( context, element ){
+  // Font style
+  var parentOpacity = element.effectiveOpacity();
+  var style = element._private.style;
+  var labelStyle = style['font-style'].strValue;
+  var labelSize = style['font-size'].pfValue + 'px';
+  var labelFamily = style['font-family'].strValue;
+  var labelWeight = style['font-weight'].strValue;
+  var opacity = style['text-opacity'].value * style['opacity'].value * parentOpacity;
+  var outlineOpacity = style['text-outline-opacity'].value * opacity;
+  var color = style['color'].value;
+  var outlineColor = style['text-outline-color'].value;
+  var shadowBlur = style['text-shadow-blur'].pfValue;
+  var shadowOpacity = style['text-shadow-opacity'].value;
+  var shadowColor = style['text-shadow-color'].value;
+  var shadowOffsetX = style['text-shadow-offset-x'].pfValue;
+  var shadowOffsetY = style['text-shadow-offset-y'].pfValue;
+
+  var fontCacheKey = element._private.fontKey;
+  var cache = this.getFontCache(context);
+
+  if( cache.key !== fontCacheKey ){
+    context.font = labelStyle + ' ' + labelWeight + ' ' + labelSize + ' ' + labelFamily;
+
+    cache.key = fontCacheKey;
+  }
+
+  var text = this.getLabelText( element );
+
+  // Calculate text draw position based on text alignment
+
+  // so text outlines aren't jagged
+  context.lineJoin = 'round';
+
+  this.fillStyle(context, color[0], color[1], color[2], opacity);
+
+  this.strokeStyle(context, outlineColor[0], outlineColor[1], outlineColor[2], outlineOpacity);
+
+  this.shadowStyle(context, shadowColor, shadowOpacity, shadowBlur, shadowOffsetX, shadowOffsetY);
+
+  return text;
+};
+
+function roundRect(ctx, x, y, width, height, radius) {
+  var radius = radius || 5;
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + width - radius, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+  ctx.lineTo(x + width, y + height - radius);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+  ctx.lineTo(x + radius, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
+  ctx.fill();
+}
+
+// Draw text
+CRp.drawText = function(context, element, textX, textY) {
+  var _p = element._private;
+  var style = _p.style;
+  var rstyle = _p.rstyle;
+  var rscratch = _p.rscratch;
+  var parentOpacity = element.effectiveOpacity();
+  if( parentOpacity === 0 || style['text-opacity'].value === 0){ return; }
+
+  var text = this.setupTextStyle( context, element );
+  var halign = style['text-halign'].value;
+  var valign = style['text-valign'].value;
+
+  if( element.isEdge() ){
+    halign = 'center';
+    valign = 'center';
+  }
+
+  if( element.isNode() ){
+    var pLeft = style['padding-left'].pfValue;
+    var pRight = style['padding-right'].pfValue;
+    var pTop = style['padding-top'].pfValue;
+    var pBottom = style['padding-bottom'].pfValue;
+
+    textX += pLeft/2;
+    textX -= pRight/2;
+
+    textY += pTop/2;
+    textY -= pBottom/2;
+  }
+
+  if ( text != null && !isNaN(textX) && !isNaN(textY)) {
+    var backgroundOpacity = style['text-background-opacity'].value;
+    var borderOpacity = style['text-border-opacity'].value;
+    var textBorderWidth = style['text-border-width'].pfValue;
+
+    if( backgroundOpacity > 0 || (textBorderWidth > 0 && borderOpacity > 0) ){
+      var margin = 4 + textBorderWidth/2;
+
+      if (element.isNode()) {
+        //Move textX, textY to include the background margins
+        if (valign === 'top') {
+          textY -= margin;
+        } else if (valign === 'bottom') {
+          textY += margin;
+        }
+        if (halign === 'left') {
+          textX -= margin;
+        } else if (halign === 'right') {
+          textX += margin;
+        }
+      }
+
+      var bgWidth = rstyle.labelWidth;
+      var bgHeight = rstyle.labelHeight;
+      var bgX = textX;
+
+      if (halign) {
+        if (halign == 'center') {
+          bgX = bgX - bgWidth / 2;
+        } else if (halign == 'left') {
+          bgX = bgX- bgWidth;
+        }
+      }
+
+      var bgY = textY;
+
+      if (element.isNode()) {
+        if (valign == 'top') {
+           bgY = bgY - bgHeight;
+        } else if (valign == 'center') {
+          bgY = bgY- bgHeight / 2;
+        }
+      } else {
+        bgY = bgY - bgHeight / 2;
+      }
+
+      if (style['edge-text-rotation'].strValue === 'autorotate') {
+        textY = 0;
+        bgWidth += 4;
+        bgX = textX - bgWidth / 2;
+        bgY = textY - bgHeight / 2;
+      } else {
+        // Adjust with border width & margin
+        bgX -= margin;
+        bgY -= margin;
+        bgHeight += margin*2;
+        bgWidth += margin*2;
+      }
+
+      if( backgroundOpacity > 0 ){
+        var textFill = context.fillStyle;
+        var textBackgroundColor = style['text-background-color'].value;
+
+        context.fillStyle = 'rgba(' + textBackgroundColor[0] + ',' + textBackgroundColor[1] + ',' + textBackgroundColor[2] + ',' + backgroundOpacity * parentOpacity + ')';
+        var styleShape = style['text-background-shape'].strValue;
+        if (styleShape == 'roundrectangle') {
+          roundRect(context, bgX, bgY, bgWidth, bgHeight, 2);
+        } else {
+          context.fillRect(bgX,bgY,bgWidth,bgHeight);
+        }
+        context.fillStyle = textFill;
+      }
+
+      if( textBorderWidth > 0 && borderOpacity > 0 ){
+        var textStroke = context.strokeStyle;
+        var textLineWidth = context.lineWidth;
+        var textBorderColor = style['text-border-color'].value;
+        var textBorderStyle = style['text-border-style'].value;
+
+        context.strokeStyle = 'rgba(' + textBorderColor[0] + ',' + textBorderColor[1] + ',' + textBorderColor[2] + ',' + borderOpacity * parentOpacity + ')';
+        context.lineWidth = textBorderWidth;
+
+        if( context.setLineDash ){ // for very outofdate browsers
+          switch( textBorderStyle ){
+            case 'dotted':
+              context.setLineDash([ 1, 1 ]);
+              break;
+            case 'dashed':
+              context.setLineDash([ 4, 2 ]);
+              break;
+            case 'double':
+              context.lineWidth = textBorderWidth/4; // 50% reserved for white between the two borders
+              context.setLineDash([ ]);
+              break;
+            case 'solid':
+              context.setLineDash([ ]);
+              break;
+          }
+        }
+
+        context.strokeRect(bgX,bgY,bgWidth,bgHeight);
+
+        if( textBorderStyle === 'double' ){
+          var whiteWidth = textBorderWidth/2;
+
+          context.strokeRect(bgX+whiteWidth,bgY+whiteWidth,bgWidth-whiteWidth*2,bgHeight-whiteWidth*2);
+        }
+
+        if( context.setLineDash ){ // for very outofdate browsers
+          context.setLineDash([ ]);
+        }
+        context.lineWidth = textLineWidth;
+        context.strokeStyle = textStroke;
+      }
+
+    }
+
+    var lineWidth = 2  * style['text-outline-width'].pfValue; // *2 b/c the stroke is drawn centred on the middle
+
+    if( lineWidth > 0 ){
+      context.lineWidth = lineWidth;
+    }
+
+    if( style['text-wrap'].value === 'wrap' ){
+      var lines = rscratch.labelWrapCachedLines;
+      var lineHeight = rstyle.labelHeight / lines.length;
+
+      switch( valign ){
+        case 'top':
+          textY -= (lines.length - 1) * lineHeight;
+          break;
+
+        case 'bottom':
+          // nothing required
+          break;
+
+        default:
+        case 'center':
+          textY -= (lines.length - 1) * lineHeight / 2;
+      }
+
+      for( var l = 0; l < lines.length; l++ ){
+        if( lineWidth > 0 ){
+          context.strokeText( lines[l], textX, textY );
+        }
+
+        context.fillText( lines[l], textX, textY );
+
+        textY += lineHeight;
+      }
+
+    } else {
+      if( lineWidth > 0 ){
+        context.strokeText( text, textX, textY );
+      }
+
+      context.fillText( text, textX, textY );
+    }
+
+
+    this.shadowStyle(context, 'transparent', 0); // reset for next guy
+  }
+};
+
+
+module.exports = CRp;
+
+},{"../../../is":77}],66:[function(_dereq_,module,exports){
+'use strict';
+
+var is = _dereq_('../../../is');
+
+var CRp = {};
+
+// Draw node
+CRp.drawNode = function(context, node, drawOverlayInstead) {
+
+  var r = this;
+  var nodeWidth, nodeHeight;
+  var style = node._private.style;
+  var rs = node._private.rscratch;
+  var _p = node._private;
+  var pos = _p.position;
+
+  if( !is.number(pos.x) || !is.number(pos.y) ){
+    return; // can't draw node with undefined position
+  }
+
+  var usePaths = this.usePaths();
+  var canvasContext = context;
+  var path;
+  var pathCacheHit = false;
+
+  var overlayPadding = style['overlay-padding'].pfValue;
+  var overlayOpacity = style['overlay-opacity'].value;
+  var overlayColor = style['overlay-color'].value;
+
+  if( drawOverlayInstead && overlayOpacity === 0 ){ // exit early if drawing overlay but none to draw
+    return;
+  }
+
+  var parentOpacity = node.effectiveOpacity();
+  if( parentOpacity === 0 ){ return; }
+
+  nodeWidth = node.width() + style['padding-left'].pfValue + style['padding-right'].pfValue;
+  nodeHeight = node.height() + style['padding-top'].pfValue + style['padding-bottom'].pfValue;
+
+  context.lineWidth = style['border-width'].pfValue;
+
+  if( drawOverlayInstead === undefined || !drawOverlayInstead ){
+
+    var url = style['background-image'].value[2] ||
+      style['background-image'].value[1];
+    var image;
+
+    if (url !== undefined) {
+
+      // get image, and if not loaded then ask to redraw when later loaded
+      image = this.getCachedImage(url, function(){
+        r.data.canvasNeedsRedraw[r.NODE] = true;
+        r.data.canvasNeedsRedraw[r.DRAG] = true;
+
+        r.drawingImage = true;
+
+        r.redraw();
+      });
+
+      var prevBging = _p.backgrounding;
+      _p.backgrounding = !image.complete;
+
+      if( prevBging !== _p.backgrounding ){ // update style b/c :backgrounding state changed
+        node.updateStyle( false );
+      }
+    }
+
+    // Node color & opacity
+
+    var bgColor = style['background-color'].value;
+    var borderColor = style['border-color'].value;
+    var borderStyle = style['border-style'].value;
+
+    this.fillStyle(context, bgColor[0], bgColor[1], bgColor[2], style['background-opacity'].value * parentOpacity);
+
+    this.strokeStyle(context, borderColor[0], borderColor[1], borderColor[2], style['border-opacity'].value * parentOpacity);
+
+    var shadowBlur = style['shadow-blur'].pfValue;
+    var shadowOpacity = style['shadow-opacity'].value;
+    var shadowColor = style['shadow-color'].value;
+    var shadowOffsetX = style['shadow-offset-x'].pfValue;
+    var shadowOffsetY = style['shadow-offset-y'].pfValue;
+
+    this.shadowStyle(context, shadowColor, shadowOpacity, shadowBlur, shadowOffsetX, shadowOffsetY);
+
+    context.lineJoin = 'miter'; // so borders are square with the node shape
+
+    if( context.setLineDash ){ // for very outofdate browsers
+      switch( borderStyle ){
+        case 'dotted':
+          context.setLineDash([ 1, 1 ]);
+          break;
+
+        case 'dashed':
+          context.setLineDash([ 4, 2 ]);
+          break;
+
+        case 'solid':
+        case 'double':
+          context.setLineDash([ ]);
+          break;
+      }
+    }
+
+
+    var styleShape = style['shape'].strValue;
+
+    if( usePaths ){
+      var pathCacheKey = styleShape + '$' + nodeWidth +'$' + nodeHeight;
+
+      context.translate( pos.x, pos.y );
+
+      if( rs.pathCacheKey === pathCacheKey ){
+        path = context = rs.pathCache;
+        pathCacheHit = true;
+      } else {
+        path = context = new Path2D();
+        rs.pathCacheKey = pathCacheKey;
+        rs.pathCache = path;
+      }
+    }
+
+    if( !pathCacheHit ){
+
+      var npos = pos;
+
+      if( usePaths ){
+        npos = {
+          x: 0,
+          y: 0
+        };
+      }
+
+      r.nodeShapes[this.getNodeShape(node)].draw(
+            context,
+            npos.x,
+            npos.y,
+            nodeWidth,
+            nodeHeight);
+    }
+
+    context = canvasContext;
+
+    if( usePaths ){
+      context.fill( path );
+    } else {
+      context.fill();
+    }
+
+    this.shadowStyle(context, 'transparent', 0); // reset for next guy
+
+    if (url !== undefined) {
+      if( image.complete ){
+        this.drawInscribedImage(context, image, node);
+      }
+    }
+
+    var darkness = style['background-blacken'].value;
+    var borderWidth = style['border-width'].pfValue;
+
+    if( this.hasPie(node) ){
+      this.drawPie( context, node, parentOpacity );
+
+      // redraw path for blacken and border
+      if( darkness !== 0 || borderWidth !== 0 ){
+
+        if( !usePaths ){
+          r.nodeShapes[this.getNodeShape(node)].draw(
+              context,
+              pos.x,
+              pos.y,
+              nodeWidth,
+              nodeHeight);
+        }
+      }
+    }
+
+    if( darkness > 0 ){
+      this.fillStyle(context, 0, 0, 0, darkness);
+
+      if( usePaths ){
+        context.fill( path );
+      } else {
+        context.fill();
+      }
+
+    } else if( darkness < 0 ){
+      this.fillStyle(context, 255, 255, 255, -darkness);
+
+      if( usePaths ){
+        context.fill( path );
+      } else {
+        context.fill();
+      }
+    }
+
+    // Border width, draw border
+    if (borderWidth > 0) {
+
+      if( usePaths ){
+        context.stroke( path );
+      } else {
+        context.stroke();
+      }
+
+      if( borderStyle === 'double' ){
+        context.lineWidth = style['border-width'].pfValue/3;
+
+        var gco = context.globalCompositeOperation;
+        context.globalCompositeOperation = 'destination-out';
+
+        if( usePaths ){
+          context.stroke( path );
+        } else {
+          context.stroke();
+        }
+
+        context.globalCompositeOperation = gco;
+      }
+
+    }
+
+    if( usePaths ){
+      context.translate( -pos.x, -pos.y );
+    }
+
+    // reset in case we changed the border style
+    if( context.setLineDash ){ // for very outofdate browsers
+      context.setLineDash([ ]);
+    }
+
+  // draw the overlay
+  } else {
+
+    if( overlayOpacity > 0 ){
+      this.fillStyle(context, overlayColor[0], overlayColor[1], overlayColor[2], overlayOpacity);
+
+      r.nodeShapes['roundrectangle'].draw(
+        context,
+        node._private.position.x,
+        node._private.position.y,
+        nodeWidth + overlayPadding * 2,
+        nodeHeight + overlayPadding * 2
+      );
+
+      context.fill();
+    }
+  }
+
+};
+
+// does the node have at least one pie piece?
+CRp.hasPie = function(node){
+  node = node[0]; // ensure ele ref
+
+  return node._private.hasPie;
+};
+
+CRp.drawPie = function( context, node, nodeOpacity ){
+  node = node[0]; // ensure ele ref
+
+  var _p = node._private;
+  var cyStyle = node.cy().style();
+  var style = _p.style;
+  var pieSize = style['pie-size'];
+  var nodeW = node.width();
+  var nodeH = node.height();
+  var x = _p.position.x;
+  var y = _p.position.y;
+  var radius = Math.min( nodeW, nodeH ) / 2; // must fit in node
+  var lastPercent = 0; // what % to continue drawing pie slices from on [0, 1]
+  var usePaths = this.usePaths();
+
+  if( usePaths ){
+    x = 0;
+    y = 0;
+  }
+
+  if( pieSize.units === '%' ){
+    radius = radius * pieSize.value / 100;
+  } else if( pieSize.pfValue !== undefined ){
+    radius = pieSize.pfValue / 2;
+  }
+
+  for( var i = 1; i <= cyStyle.pieBackgroundN; i++ ){ // 1..N
+    var size = style['pie-' + i + '-background-size'].value;
+    var color = style['pie-' + i + '-background-color'].value;
+    var opacity = style['pie-' + i + '-background-opacity'].value * nodeOpacity;
+    var percent = size / 100; // map integer range [0, 100] to [0, 1]
+
+    // percent can't push beyond 1
+    if( percent + lastPercent > 1 ){
+      percent = 1 - lastPercent;
+    }
+
+    var angleStart = 1.5 * Math.PI + 2 * Math.PI * lastPercent; // start at 12 o'clock and go clockwise
+    var angleDelta = 2 * Math.PI * percent;
+    var angleEnd = angleStart + angleDelta;
+
+    // ignore if
+    // - zero size
+    // - we're already beyond the full circle
+    // - adding the current slice would go beyond the full circle
+    if( size === 0 || lastPercent >= 1 || lastPercent + percent > 1 ){
+      continue;
+    }
+
+    context.beginPath();
+    context.moveTo(x, y);
+    context.arc( x, y, radius, angleStart, angleEnd );
+    context.closePath();
+
+    this.fillStyle(context, color[0], color[1], color[2], opacity);
+
+    context.fill();
+
+    lastPercent += percent;
+  }
+
+};
+
+
+module.exports = CRp;
+
+},{"../../../is":77}],67:[function(_dereq_,module,exports){
+'use strict';
+
+var CRp = {};
+
+var util = _dereq_('../../../util');
+var math = _dereq_('../../../math');
+
+var motionBlurDelay = 100;
+
+// var isFirefox = typeof InstallTrigger !== 'undefined';
+
+CRp.getPixelRatio = function(){
+  var context = this.data.contexts[0];
+
+  if( this.forcedPixelRatio != null ){
+    return this.forcedPixelRatio;
+  }
+
+  var backingStore = context.backingStorePixelRatio ||
+    context.webkitBackingStorePixelRatio ||
+    context.mozBackingStorePixelRatio ||
+    context.msBackingStorePixelRatio ||
+    context.oBackingStorePixelRatio ||
+    context.backingStorePixelRatio || 1;
+
+  return (window.devicePixelRatio || 1) / backingStore;
+};
+
+CRp.paintCache = function(context){
+  var caches = this.paintCaches = this.paintCaches || [];
+  var needToCreateCache = true;
+  var cache;
+
+  for(var i = 0; i < caches.length; i++ ){
+    cache = caches[i];
+
+    if( cache.context === context ){
+      needToCreateCache = false;
+      break;
+    }
+  }
+
+  if( needToCreateCache ){
+    cache = {
+      context: context
+    };
+    caches.push( cache );
+  }
+
+  return cache;
+};
+
+CRp.fillStyle = function(context, r, g, b, a){
+  context.fillStyle = 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')';
+
+  // turn off for now, seems context does its own caching
+
+  // var cache = this.paintCache(context);
+
+  // var fillStyle = 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')';
+
+  // if( cache.fillStyle !== fillStyle ){
+  //   context.fillStyle = cache.fillStyle = fillStyle;
+  // }
+};
+
+CRp.strokeStyle = function(context, r, g, b, a){
+  context.strokeStyle = 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')';
+
+  // turn off for now, seems context does its own caching
+
+  // var cache = this.paintCache(context);
+
+  // var strokeStyle = 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')';
+
+  // if( cache.strokeStyle !== strokeStyle ){
+  //   context.strokeStyle = cache.strokeStyle = strokeStyle;
+  // }
+};
+
+CRp.shadowStyle = function(context, color, opacity, blur, offsetX, offsetY){
+  var zoom = this.cy.zoom();
+
+  var cache = this.paintCache(context);
+
+  // don't make expensive changes to the shadow style if it's not used
+  if( cache.shadowOpacity === 0 && opacity === 0 ){
+    return;
+  }
+
+  cache.shadowOpacity = opacity;
+
+  if (opacity > 0) {
+    context.shadowBlur = blur * zoom;
+    context.shadowColor = "rgba(" + color[0] + "," + color[1] + "," + color[2] + "," + opacity + ")";
+    context.shadowOffsetX = offsetX * zoom;
+    context.shadowOffsetY = offsetY * zoom;
+  } else {
+    context.shadowBlur = 0;
+    context.shadowColor = "transparent";
+  }
+};
+
+// Resize canvas
+CRp.matchCanvasSize = function(container) {
+  var r = this;
+  var data = r.data;
+  var width = container.clientWidth;
+  var height = container.clientHeight;
+  var pixelRatio = r.getPixelRatio();
+  var mbPxRatio = r.motionBlurPxRatio;
+
+  if(
+    container === r.data.bufferCanvases[r.MOTIONBLUR_BUFFER_NODE] ||
+    container === r.data.bufferCanvases[r.MOTIONBLUR_BUFFER_DRAG]
+  ){
+    pixelRatio = mbPxRatio;
+  }
+
+  var canvasWidth = width * pixelRatio;
+  var canvasHeight = height * pixelRatio;
+  var canvas;
+
+  if( canvasWidth === r.canvasWidth && canvasHeight === r.canvasHeight ){
+    return; // save cycles if same
+  }
+
+  r.fontCaches = null; // resizing resets the style
+
+  var canvasContainer = data.canvasContainer;
+  canvasContainer.style.width = width + 'px';
+  canvasContainer.style.height = height + 'px';
+
+  for (var i = 0; i < r.CANVAS_LAYERS; i++) {
+
+    canvas = data.canvases[i];
+
+    if (canvas.width !== canvasWidth || canvas.height !== canvasHeight) {
+
+      canvas.width = canvasWidth;
+      canvas.height = canvasHeight;
+
+      canvas.style.width = width + 'px';
+      canvas.style.height = height + 'px';
+    }
+  }
+
+  for (var i = 0; i < r.BUFFER_COUNT; i++) {
+
+    canvas = data.bufferCanvases[i];
+
+    if (canvas.width !== canvasWidth || canvas.height !== canvasHeight) {
+
+      canvas.width = canvasWidth;
+      canvas.height = canvasHeight;
+
+      canvas.style.width = width + 'px';
+      canvas.style.height = height + 'px';
+    }
+  }
+
+  r.textureMult = 1;
+  if( pixelRatio <= 1 ){
+    canvas = data.bufferCanvases[ r.TEXTURE_BUFFER ];
+
+    r.textureMult = 2;
+    canvas.width = canvasWidth * r.textureMult;
+    canvas.height = canvasHeight * r.textureMult;
+  }
+
+  r.canvasWidth = canvasWidth;
+  r.canvasHeight = canvasHeight;
+
+};
+
+CRp.renderTo = function( cxt, zoom, pan, pxRatio ){
+  this.render({
+    forcedContext: cxt,
+    forcedZoom: zoom,
+    forcedPan: pan,
+    drawAllLayers: true,
+    forcedPxRatio: pxRatio
+  });
+};
+
+CRp.render = function( options ) {
+  options = options || util.staticEmptyObject();
+
+  var forcedContext = options.forcedContext;
+  var drawAllLayers = options.drawAllLayers;
+  var drawOnlyNodeLayer = options.drawOnlyNodeLayer;
+  var forcedZoom = options.forcedZoom;
+  var forcedPan = options.forcedPan;
+  var r = this;
+  var pixelRatio = options.forcedPxRatio === undefined ? this.getPixelRatio() : options.forcedPxRatio;
+  var cy = r.cy; var data = r.data;
+  var needDraw = data.canvasNeedsRedraw;
+  var textureDraw = r.textureOnViewport && !forcedContext && (r.pinching || r.hoverData.dragging || r.swipePanning || r.data.wheelZooming);
+  var motionBlur = options.motionBlur !== undefined ? options.motionBlur : r.motionBlur;
+  var mbPxRatio = r.motionBlurPxRatio;
+  var hasCompoundNodes = cy.hasCompoundNodes();
+  var inNodeDragGesture = r.hoverData.draggingEles;
+  var inBoxSelection = r.hoverData.selecting || r.touchData.selecting ? true : false;
+  motionBlur = motionBlur && !forcedContext && r.motionBlurEnabled && !inBoxSelection;
+  var motionBlurFadeEffect = motionBlur;
+
+  if( !forcedContext && r.motionBlurTimeout ){
+    clearTimeout( r.motionBlurTimeout );
+  }
+
+  if( motionBlur ){
+    if( r.mbFrames == null ){
+      r.mbFrames = 0;
+    }
+
+    if( !r.drawingImage ){ // image loading frames don't count towards motion blur blurry frames
+      r.mbFrames++;
+    }
+
+    if( r.mbFrames < 3 ){ // need several frames before even high quality motionblur
+      motionBlurFadeEffect = false;
+    }
+
+    // go to lower quality blurry frames when several m/b frames have been rendered (avoids flashing)
+    if( r.mbFrames > r.minMbLowQualFrames ){
+      //r.fullQualityMb = false;
+      r.motionBlurPxRatio = r.mbPxRBlurry;
+    }
+  }
+
+  if( r.clearingMotionBlur ){
+    r.motionBlurPxRatio = 1;
+  }
+
+  // b/c drawToContext() may be async w.r.t. redraw(), keep track of last texture frame
+  // because a rogue async texture frame would clear needDraw
+  if( r.textureDrawLastFrame && !textureDraw ){
+    needDraw[r.NODE] = true;
+    needDraw[r.SELECT_BOX] = true;
+  }
+
+  var edges = r.getCachedEdges();
+  var coreStyle = cy.style()._private.coreStyle;
+
+  var zoom = cy.zoom();
+  var effectiveZoom = forcedZoom !== undefined ? forcedZoom : zoom;
+  var pan = cy.pan();
+  var effectivePan = {
+    x: pan.x,
+    y: pan.y
+  };
+
+  var vp = {
+    zoom: zoom,
+    pan: {
+      x: pan.x,
+      y: pan.y
+    }
+  };
+  var prevVp = r.prevViewport;
+  var viewportIsDiff = prevVp === undefined || vp.zoom !== prevVp.zoom || vp.pan.x !== prevVp.pan.x || vp.pan.y !== prevVp.pan.y;
+
+  // we want the low quality motionblur only when the viewport is being manipulated etc (where it's not noticed)
+  if( !viewportIsDiff && !(inNodeDragGesture && !hasCompoundNodes) ){
+    r.motionBlurPxRatio = 1;
+  }
+
+  if( forcedPan ){
+    effectivePan = forcedPan;
+  }
+
+  // apply pixel ratio
+
+  effectiveZoom *= pixelRatio;
+  effectivePan.x *= pixelRatio;
+  effectivePan.y *= pixelRatio;
+
+  var eles = {
+    drag: {
+      nodes: [],
+      edges: [],
+      eles: []
+    },
+    nondrag: {
+      nodes: [],
+      edges: [],
+      eles: []
+    }
+  };
+
+  function mbclear( context, x, y, w, h ){
+    var gco = context.globalCompositeOperation;
+
+    context.globalCompositeOperation = 'destination-out';
+    r.fillStyle( context, 255, 255, 255, r.motionBlurTransparency );
+    context.fillRect(x, y, w, h);
+
+    context.globalCompositeOperation = gco;
+  }
+
+  function setContextTransform(context, clear){
+    var ePan, eZoom, w, h;
+
+    if( !r.clearingMotionBlur && (context === data.bufferContexts[r.MOTIONBLUR_BUFFER_NODE] || context === data.bufferContexts[r.MOTIONBLUR_BUFFER_DRAG]) ){
+      ePan = {
+        x: pan.x * mbPxRatio,
+        y: pan.y * mbPxRatio
+      };
+
+      eZoom = zoom * mbPxRatio;
+
+      w = r.canvasWidth * mbPxRatio;
+      h = r.canvasHeight * mbPxRatio;
+    } else {
+      ePan = effectivePan;
+      eZoom = effectiveZoom;
+
+      w = r.canvasWidth;
+      h = r.canvasHeight;
+    }
+
+    context.setTransform(1, 0, 0, 1, 0, 0);
+
+    if( clear === 'motionBlur' ){
+      mbclear(context, 0, 0, w, h);
+    } else if( !forcedContext && (clear === undefined || clear) ){
+      context.clearRect(0, 0, w, h);
+    }
+
+    if( !drawAllLayers ){
+      context.translate( ePan.x, ePan.y );
+      context.scale( eZoom, eZoom );
+    }
+    if( forcedPan ){
+      context.translate( forcedPan.x, forcedPan.y );
+    }
+    if( forcedZoom ){
+      context.scale( forcedZoom, forcedZoom );
+    }
+  }
+
+  if( !textureDraw ){
+    r.textureDrawLastFrame = false;
+  }
+
+  if( textureDraw ){
+    r.textureDrawLastFrame = true;
+
+    var bb;
+
+    if( !r.textureCache ){
+      r.textureCache = {};
+
+      bb = r.textureCache.bb = cy.elements().boundingBox();
+
+      r.textureCache.texture = r.data.bufferCanvases[ r.TEXTURE_BUFFER ];
+
+      var cxt = r.data.bufferContexts[ r.TEXTURE_BUFFER ];
+
+      cxt.setTransform(1, 0, 0, 1, 0, 0);
+      cxt.clearRect(0, 0, r.canvasWidth * r.textureMult, r.canvasHeight * r.textureMult);
+
+      r.render({
+        forcedContext: cxt,
+        drawOnlyNodeLayer: true,
+        forcedPxRatio: pixelRatio * r.textureMult
+      });
+
+      var vp = r.textureCache.viewport = {
+        zoom: cy.zoom(),
+        pan: cy.pan(),
+        width: r.canvasWidth,
+        height: r.canvasHeight
+      };
+
+      vp.mpan = {
+        x: (0 - vp.pan.x)/vp.zoom,
+        y: (0 - vp.pan.y)/vp.zoom
+      };
+    }
+
+    needDraw[r.DRAG] = false;
+    needDraw[r.NODE] = false;
+
+    var context = data.contexts[r.NODE];
+
+    var texture = r.textureCache.texture;
+    var vp = r.textureCache.viewport;
+    bb = r.textureCache.bb;
+
+    context.setTransform(1, 0, 0, 1, 0, 0);
+
+    if( motionBlur ){
+      mbclear(context, 0, 0, vp.width, vp.height);
+    } else {
+      context.clearRect(0, 0, vp.width, vp.height);
+    }
+
+    var outsideBgColor = coreStyle['outside-texture-bg-color'].value;
+    var outsideBgOpacity = coreStyle['outside-texture-bg-opacity'].value;
+    r.fillStyle( context, outsideBgColor[0], outsideBgColor[1], outsideBgColor[2], outsideBgOpacity );
+    context.fillRect( 0, 0, vp.width, vp.height );
+
+    var zoom = cy.zoom();
+
+    setContextTransform( context, false );
+
+    context.clearRect( vp.mpan.x, vp.mpan.y, vp.width/vp.zoom/pixelRatio, vp.height/vp.zoom/pixelRatio );
+    context.drawImage( texture, vp.mpan.x, vp.mpan.y, vp.width/vp.zoom/pixelRatio, vp.height/vp.zoom/pixelRatio );
+
+  } else if( r.textureOnViewport && !forcedContext ){ // clear the cache since we don't need it
+    r.textureCache = null;
+  }
+
+  var vpManip = (r.pinching || r.hoverData.dragging || r.swipePanning || r.data.wheelZooming || r.hoverData.draggingEles);
+  var hideEdges = r.hideEdgesOnViewport && vpManip;
+  var hideLabels = r.hideLabelsOnViewport && vpManip;
+
+  if (needDraw[r.DRAG] || needDraw[r.NODE] || drawAllLayers || drawOnlyNodeLayer) {
+    if( hideEdges ){
+    } else {
+      r.findEdgeControlPoints(edges);
+    }
+
+    var zEles = r.getCachedZSortedEles();
+    var extent = cy.extent();
+
+    for (var i = 0; i < zEles.length; i++) {
+      var ele = zEles[i];
+      var list;
+      var bb = forcedContext ? null : ele.boundingBox();
+      var insideExtent = forcedContext ? true : math.boundingBoxesIntersect( extent, bb );
+
+      if( !insideExtent ){ continue; } // no need to render
+
+      if ( ele._private.rscratch.inDragLayer ) {
+        list = eles.drag;
+      } else {
+        list = eles.nondrag;
+      }
+
+      list.eles.push( ele );
+    }
+
+  }
+
+
+  function drawElements( list, context ){
+    var eles = list.eles;
+
+    for( var i = 0; i < eles.length; i++ ){
+      var ele = eles[i];
+
+      if( ele.isNode() ){
+        r.drawNode(context, ele);
+
+        if( !hideLabels ){
+          r.drawNodeText(context, ele);
+        }
+
+        r.drawNode(context, ele, true);
+      } else if( !hideEdges ) {
+        r.drawEdge(context, ele);
+
+        if( !hideLabels ){
+          r.drawEdgeText(context, ele);
+        }
+
+        r.drawEdge(context, ele, true);
+      }
+
+
+    }
+
+  }
+
+  var needMbClear = [];
+
+  needMbClear[r.NODE] = !needDraw[r.NODE] && motionBlur && !r.clearedForMotionBlur[r.NODE] || r.clearingMotionBlur;
+  if( needMbClear[r.NODE] ){ r.clearedForMotionBlur[r.NODE] = true; }
+
+  needMbClear[r.DRAG] = !needDraw[r.DRAG] && motionBlur && !r.clearedForMotionBlur[r.DRAG] || r.clearingMotionBlur;
+  if( needMbClear[r.DRAG] ){ r.clearedForMotionBlur[r.DRAG] = true; }
+
+  if( needDraw[r.NODE] || drawAllLayers || drawOnlyNodeLayer || needMbClear[r.NODE] ){
+    var useBuffer = motionBlur && !needMbClear[r.NODE] && mbPxRatio !== 1;
+    var context = forcedContext || ( useBuffer ? r.data.bufferContexts[ r.MOTIONBLUR_BUFFER_NODE ] : data.contexts[r.NODE] );
+    var clear = motionBlur && !useBuffer ? 'motionBlur' : undefined;
+
+    setContextTransform( context, clear );
+    drawElements(eles.nondrag, context);
+
+    if( !drawAllLayers && !motionBlur ){
+      needDraw[r.NODE] = false;
+    }
+  }
+
+  if ( !drawOnlyNodeLayer && (needDraw[r.DRAG] || drawAllLayers || needMbClear[r.DRAG]) ) {
+    var useBuffer = motionBlur && !needMbClear[r.DRAG] && mbPxRatio !== 1;
+    var context = forcedContext || ( useBuffer ? r.data.bufferContexts[ r.MOTIONBLUR_BUFFER_DRAG ] : data.contexts[r.DRAG] );
+
+    setContextTransform( context, motionBlur && !useBuffer ? 'motionBlur' : undefined );
+    drawElements(eles.drag, context);
+
+    if( !drawAllLayers && !motionBlur ){
+      needDraw[r.DRAG] = false;
+    }
+  }
+
+  if( r.showFps || (!drawOnlyNodeLayer && (needDraw[r.SELECT_BOX] && !drawAllLayers)) ) {
+    var context = forcedContext || data.contexts[r.SELECT_BOX];
+
+    setContextTransform( context );
+
+    if( r.selection[4] == 1 && ( r.hoverData.selecting || r.touchData.selecting ) ){
+      var zoom = r.cy.zoom();
+      var borderWidth = coreStyle['selection-box-border-width'].value / zoom;
+
+      context.lineWidth = borderWidth;
+      context.fillStyle = "rgba("
+        + coreStyle['selection-box-color'].value[0] + ","
+        + coreStyle['selection-box-color'].value[1] + ","
+        + coreStyle['selection-box-color'].value[2] + ","
+        + coreStyle['selection-box-opacity'].value + ")";
+
+      context.fillRect(
+        r.selection[0],
+        r.selection[1],
+        r.selection[2] - r.selection[0],
+        r.selection[3] - r.selection[1]);
+
+      if (borderWidth > 0) {
+        context.strokeStyle = "rgba("
+          + coreStyle['selection-box-border-color'].value[0] + ","
+          + coreStyle['selection-box-border-color'].value[1] + ","
+          + coreStyle['selection-box-border-color'].value[2] + ","
+          + coreStyle['selection-box-opacity'].value + ")";
+
+        context.strokeRect(
+          r.selection[0],
+          r.selection[1],
+          r.selection[2] - r.selection[0],
+          r.selection[3] - r.selection[1]);
+      }
+    }
+
+    if( data.bgActivePosistion && !r.hoverData.selecting ){
+      var zoom = r.cy.zoom();
+      var pos = data.bgActivePosistion;
+
+      context.fillStyle = "rgba("
+        + coreStyle['active-bg-color'].value[0] + ","
+        + coreStyle['active-bg-color'].value[1] + ","
+        + coreStyle['active-bg-color'].value[2] + ","
+        + coreStyle['active-bg-opacity'].value + ")";
+
+      context.beginPath();
+      context.arc(pos.x, pos.y, coreStyle['active-bg-size'].pfValue / zoom, 0, 2 * Math.PI);
+      context.fill();
+    }
+
+    var timeToRender = r.lastRedrawTime;
+    if( r.showFps && timeToRender ){
+      timeToRender = Math.round( timeToRender );
+      var fps = Math.round(1000/timeToRender);
+
+      context.setTransform(1, 0, 0, 1, 0, 0);
+
+      context.fillStyle = 'rgba(255, 0, 0, 0.75)';
+      context.strokeStyle = 'rgba(255, 0, 0, 0.75)';
+      context.lineWidth = 1;
+      context.fillText( '1 frame = ' + timeToRender + ' ms = ' + fps + ' fps', 0, 20);
+
+      var maxFps = 60;
+      context.strokeRect(0, 30, 250, 20);
+      context.fillRect(0, 30, 250 * Math.min(fps/maxFps, 1), 20);
+    }
+
+    if( !drawAllLayers ){
+      needDraw[r.SELECT_BOX] = false;
+    }
+  }
+
+  // motionblur: blit rendered blurry frames
+  if( motionBlur && mbPxRatio !== 1 ){
+    var cxtNode = data.contexts[r.NODE];
+    var txtNode = r.data.bufferCanvases[ r.MOTIONBLUR_BUFFER_NODE ];
+
+    var cxtDrag = data.contexts[r.DRAG];
+    var txtDrag = r.data.bufferCanvases[ r.MOTIONBLUR_BUFFER_DRAG ];
+
+    var drawMotionBlur = function( cxt, txt, needClear ){
+      cxt.setTransform(1, 0, 0, 1, 0, 0);
+
+      if( needClear || !motionBlurFadeEffect ){
+        cxt.clearRect( 0, 0, r.canvasWidth, r.canvasHeight );
+      } else {
+        mbclear( cxt, 0, 0, r.canvasWidth, r.canvasHeight );
+      }
+
+      var pxr = mbPxRatio;
+
+      cxt.drawImage(
+        txt, // img
+        0, 0, // sx, sy
+        r.canvasWidth * pxr, r.canvasHeight * pxr, // sw, sh
+        0, 0, // x, y
+        r.canvasWidth, r.canvasHeight // w, h
+      );
+    };
+
+    if( needDraw[r.NODE] || needMbClear[r.NODE] ){
+      drawMotionBlur( cxtNode, txtNode, needMbClear[r.NODE] );
+      needDraw[r.NODE] = false;
+    }
+
+    if( needDraw[r.DRAG] || needMbClear[r.DRAG] ){
+      drawMotionBlur( cxtDrag, txtDrag, needMbClear[r.DRAG] );
+      needDraw[r.DRAG] = false;
+    }
+  }
+
+  r.currentlyDrawing = false;
+
+  r.prevViewport = vp;
+
+  if( r.clearingMotionBlur ){
+    r.clearingMotionBlur = false;
+    r.motionBlurCleared = true;
+    r.motionBlur = true;
+  }
+
+  if( motionBlur ){
+    r.motionBlurTimeout = setTimeout(function(){
+      r.motionBlurTimeout = null;
+
+      r.clearedForMotionBlur[r.NODE] = false;
+      r.clearedForMotionBlur[r.DRAG] = false;
+      r.motionBlur = false;
+      r.clearingMotionBlur = !textureDraw;
+      r.mbFrames = 0;
+
+      needDraw[r.NODE] = true;
+      needDraw[r.DRAG] = true;
+
+      r.redraw();
+    }, motionBlurDelay);
+  }
+
+  r.drawingImage = false;
+
+
+  if( !forcedContext && !r.initrender ){
+    r.initrender = true;
+    cy.trigger('initrender');
+  }
+
+  if( !forcedContext ){
+    cy.triggerOnRender();
+  }
+
+};
+
+module.exports = CRp;
+
+},{"../../../math":79,"../../../util":94}],68:[function(_dereq_,module,exports){
+'use strict';
+
+  var math = _dereq_('../../../math');
+
+  var CRp = {};
+
+  // @O Polygon drawing
+  CRp.drawPolygonPath = function(
+    context, x, y, width, height, points) {
+
+    var halfW = width / 2;
+    var halfH = height / 2;
+
+    if( context.beginPath ){ context.beginPath(); }
+
+    context.moveTo( x + halfW * points[0], y + halfH * points[1] );
+
+    for (var i = 1; i < points.length / 2; i++) {
+      context.lineTo( x + halfW * points[i * 2], y + halfH * points[i * 2 + 1] );
+    }
+
+    context.closePath();
+  };
+
+  // Round rectangle drawing
+  CRp.drawRoundRectanglePath = function(
+    context, x, y, width, height, radius) {
+
+    var halfWidth = width / 2;
+    var halfHeight = height / 2;
+    var cornerRadius = math.getRoundRectangleRadius(width, height);
+
+    if( context.beginPath ){ context.beginPath(); }
+
+    // Start at top middle
+    context.moveTo(x, y - halfHeight);
+    // Arc from middle top to right side
+    context.arcTo(x + halfWidth, y - halfHeight, x + halfWidth, y, cornerRadius);
+    // Arc from right side to bottom
+    context.arcTo(x + halfWidth, y + halfHeight, x, y + halfHeight, cornerRadius);
+    // Arc from bottom to left side
+    context.arcTo(x - halfWidth, y + halfHeight, x - halfWidth, y, cornerRadius);
+    // Arc from left side to topBorder
+    context.arcTo(x - halfWidth, y - halfHeight, x, y - halfHeight, cornerRadius);
+    // Join line
+    context.lineTo(x, y - halfHeight);
+
+
+    context.closePath();
+  };
+
+  var sin0 = Math.sin(0);
+  var cos0 = Math.cos(0);
+
+  var sin = {};
+  var cos = {};
+
+  var ellipseStepSize = Math.PI / 40;
+
+  for (var i = 0 * Math.PI; i < 2 * Math.PI; i += ellipseStepSize ) {
+    sin[i] = Math.sin(i);
+    cos[i] = Math.cos(i);
+  }
+
+  CRp.drawEllipsePath = function(context, centerX, centerY, width, height){
+    if( context.beginPath ){ context.beginPath(); }
+
+    if( context.ellipse ){
+      context.ellipse( centerX, centerY, width/2, height/2, 0, 0, 2*Math.PI );
+    } else {
+      var xPos, yPos;
+      var rw = width/2;
+      var rh = height/2;
+      for (var i = 0 * Math.PI; i < 2 * Math.PI; i += ellipseStepSize ) {
+        xPos = centerX - (rw * sin[i]) * sin0 + (rw * cos[i]) * cos0;
+        yPos = centerY + (rh * cos[i]) * sin0 + (rh * sin[i]) * cos0;
+
+        if (i === 0) {
+          context.moveTo(xPos, yPos);
+        } else {
+          context.lineTo(xPos, yPos);
+        }
+      }
+    }
+
+    context.closePath();
+  };
+
+module.exports = CRp;
+
+},{"../../../math":79}],69:[function(_dereq_,module,exports){
+'use strict';
+
+var is = _dereq_('../../../is');
+
+var CRp = {};
+
+CRp.createBuffer = function(w, h) {
+  var buffer = document.createElement('canvas');
+  buffer.width = w;
+  buffer.height = h;
+
+  return [buffer, buffer.getContext('2d')];
+};
+
+CRp.bufferCanvasImage = function( options ){
+  var cy = this.cy;
+  var bb = cy.elements().boundingBox();
+  var width = options.full ? Math.ceil(bb.w) : this.container.clientWidth;
+  var height = options.full ? Math.ceil(bb.h) : this.container.clientHeight;
+  var scale = 1;
+
+  if( options.scale !== undefined ){
+    width *= options.scale;
+    height *= options.scale;
+
+    scale = options.scale;
+  } else if( is.number(options.maxWidth) || is.number(options.maxHeight) ){
+    var maxScaleW = Infinity;
+    var maxScaleH = Infinity;
+
+    if( is.number(options.maxWidth) ){
+      maxScaleW = scale * options.maxWidth / width;
+    }
+
+    if( is.number(options.maxHeight) ){
+      maxScaleH = scale * options.maxHeight / height;
+    }
+
+    scale = Math.min( maxScaleW, maxScaleH );
+
+    width *= scale;
+    height *= scale;
+  }
+
+  var buffCanvas = document.createElement('canvas');
+
+  buffCanvas.width = width;
+  buffCanvas.height = height;
+
+  buffCanvas.style.width = width + 'px';
+  buffCanvas.style.height = height + 'px';
+
+  var buffCxt = buffCanvas.getContext('2d');
+
+  // Rasterize the layers, but only if container has nonzero size
+  if (width > 0 && height > 0) {
+
+    buffCxt.clearRect( 0, 0, width, height );
+
+    if( options.bg ){
+      buffCxt.fillStyle = options.bg;
+      buffCxt.rect( 0, 0, width, height );
+      buffCxt.fill();
+    }
+
+    buffCxt.globalCompositeOperation = 'source-over';
+
+    if( options.full ){ // draw the full bounds of the graph
+      this.render({
+        forcedContext: buffCxt,
+        drawAllLayers: true,
+        forcedZoom: scale,
+        forcedPan: { x: -bb.x1*scale, y: -bb.y1*scale },
+        forcedPxRatio: 1
+      });
+    } else { // draw the current view
+      var cyPan = cy.pan();
+      var pan = {
+        x: cyPan.x * scale,
+        y: cyPan.y * scale
+      };
+      var zoom = cy.zoom() * scale;
+
+      this.render({
+        forcedContext: buffCxt,
+        drawAllLayers: true,
+        forcedZoom: zoom,
+        forcedPan: pan,
+        forcedPxRatio: 1
+      });
+    }
+  }
+
+  return buffCanvas;
+};
+
+CRp.png = function( options ){
+  return this.bufferCanvasImage( options ).toDataURL('image/png');
+};
+
+CRp.jpg = function( options ){
+  return this.bufferCanvasImage( options ).toDataURL('image/jpeg');
+};
+
+module.exports = CRp;
+
+},{"../../../is":77}],70:[function(_dereq_,module,exports){
+/*
+The canvas renderer was written by Yue Dong.
+
+Modifications tracked on Github.
+*/
+
+'use strict';
+
+var util = _dereq_('../../../util');
+var is = _dereq_('../../../is');
+
+var CR = CanvasRenderer;
+var CRp = CanvasRenderer.prototype;
+
+CRp.CANVAS_LAYERS = 3;
+//
+CRp.SELECT_BOX = 0;
+CRp.DRAG = 1;
+CRp.NODE = 2;
+
+CRp.BUFFER_COUNT = 3;
+//
+CRp.TEXTURE_BUFFER = 0;
+CRp.MOTIONBLUR_BUFFER_NODE = 1;
+CRp.MOTIONBLUR_BUFFER_DRAG = 2;
+
+function CanvasRenderer(options) {
+  var r = this;
+
+  r.data = {
+    canvases: new Array(CRp.CANVAS_LAYERS),
+    contexts: new Array(CRp.CANVAS_LAYERS),
+    canvasNeedsRedraw: new Array(CRp.CANVAS_LAYERS),
+
+    bufferCanvases: new Array(CRp.BUFFER_COUNT),
+    bufferContexts: new Array(CRp.CANVAS_LAYERS)
+  };
+
+  r.data.canvasContainer = document.createElement('div');
+  var containerStyle = r.data.canvasContainer.style;
+  r.data.canvasContainer.setAttribute('style', '-webkit-tap-highlight-color: rgba(0,0,0,0);');
+  containerStyle.position = 'relative';
+  containerStyle.zIndex = '0';
+  containerStyle.overflow = 'hidden';
+
+  var container = options.cy.container();
+  container.appendChild( r.data.canvasContainer );
+  container.setAttribute('style', ( container.getAttribute('style') || '' ) + '-webkit-tap-highlight-color: rgba(0,0,0,0);');
+
+  for (var i = 0; i < CRp.CANVAS_LAYERS; i++) {
+    var canvas = r.data.canvases[i] = document.createElement('canvas');
+    r.data.contexts[i] = canvas.getContext('2d');
+    canvas.setAttribute( 'style', '-webkit-user-select: none; -moz-user-select: -moz-none; user-select: none; -webkit-tap-highlight-color: rgba(0,0,0,0); outline-style: none;' + ( is.ms() ? ' -ms-touch-action: none; touch-action: none; ' : '' ) );
+    canvas.style.position = 'absolute';
+    canvas.setAttribute('data-id', 'layer' + i);
+    canvas.style.zIndex = String(CRp.CANVAS_LAYERS - i);
+    r.data.canvasContainer.appendChild(canvas);
+
+    r.data.canvasNeedsRedraw[i] = false;
+  }
+  r.data.topCanvas = r.data.canvases[0];
+
+  r.data.canvases[CRp.NODE].setAttribute('data-id', 'layer' + CRp.NODE + '-node');
+  r.data.canvases[CRp.SELECT_BOX].setAttribute('data-id', 'layer' + CRp.SELECT_BOX + '-selectbox');
+  r.data.canvases[CRp.DRAG].setAttribute('data-id', 'layer' + CRp.DRAG + '-drag');
+
+  for (var i = 0; i < CRp.BUFFER_COUNT; i++) {
+    r.data.bufferCanvases[i] = document.createElement('canvas');
+    r.data.bufferContexts[i] = r.data.bufferCanvases[i].getContext('2d');
+    r.data.bufferCanvases[i].style.position = 'absolute';
+    r.data.bufferCanvases[i].setAttribute('data-id', 'buffer' + i);
+    r.data.bufferCanvases[i].style.zIndex = String(-i - 1);
+    r.data.bufferCanvases[i].style.visibility = 'hidden';
+    //r.data.canvasContainer.appendChild(r.data.bufferCanvases[i]);
+  }
+
+  r.pathsEnabled = true;
+}
+
+CRp.redrawHint = function( group, bool ){
+  var r = this;
+
+  switch( group ){
+    case 'eles':
+      r.data.canvasNeedsRedraw[ CRp.NODE ] = bool;
+      break;
+    case 'drag':
+      r.data.canvasNeedsRedraw[ CRp.DRAG ] = bool;
+      break;
+    case 'select':
+      r.data.canvasNeedsRedraw[ CRp.SELECT_BOX ] = bool;
+      break;
+  }
+};
+
+// whether to use Path2D caching for drawing
+var pathsImpld = typeof Path2D !== 'undefined';
+
+CRp.path2dEnabled = function( on ){
+  if( on === undefined ){
+    return this.pathsEnabled;
+  }
+
+  this.pathsEnabled = on ? true : false;
+};
+
+CRp.usePaths = function(){
+  return pathsImpld && this.pathsEnabled;
+};
+
+[
+  _dereq_('./arrow-shapes'),
+  _dereq_('./drawing-edges'),
+  _dereq_('./drawing-images'),
+  _dereq_('./drawing-label-text'),
+  _dereq_('./drawing-nodes'),
+  _dereq_('./drawing-redraw'),
+  _dereq_('./drawing-shapes'),
+  _dereq_('./export-image'),
+  _dereq_('./node-shapes')
+].forEach(function( props ){
+  util.extend( CRp, props );
+});
+
+module.exports = CR;
+
+},{"../../../is":77,"../../../util":94,"./arrow-shapes":62,"./drawing-edges":63,"./drawing-images":64,"./drawing-label-text":65,"./drawing-nodes":66,"./drawing-redraw":67,"./drawing-shapes":68,"./export-image":69,"./node-shapes":71}],71:[function(_dereq_,module,exports){
+'use strict';
+
+var CRp = {};
+
+var impl;
+
+CRp.nodeShapeImpl = function( name ){
+  var self = this;
+
+  return ( impl || (impl = {
+    'ellipse': function( context, centerX, centerY, width, height ){
+      self.drawEllipsePath( context, centerX, centerY, width, height );
+    },
+
+    'polygon': function( context, centerX, centerY, width, height, points ){
+      self.drawPolygonPath( context, centerX, centerY, width, height, points );
+    },
+
+    'roundrectangle': function( context, centerX, centerY, width, height ){
+      self.drawRoundRectanglePath( context, centerX, centerY, width, height, 10 );
+    }
+  }) )[ name ];
+};
+
+module.exports = CRp;
+
+},{}],72:[function(_dereq_,module,exports){
+'use strict';
+
+module.exports = [
+  { name: 'null', impl: _dereq_('./null') },
+  { name: 'base', impl: _dereq_('./base') },
+  { name: 'canvas', impl: _dereq_('./canvas') }
+];
+
+},{"./base":58,"./canvas":70,"./null":73}],73:[function(_dereq_,module,exports){
+'use strict';
+
+function NullRenderer(options){
+  this.options = options;
+  this.notifications = 0; // for testing
+}
+
+var noop = function(){};
+
+NullRenderer.prototype = {
+  recalculateRenderedStyle: noop,
+  notify: function(){ this.notifications++; },
+  init: noop
+};
+
+module.exports = NullRenderer;
+
+},{}],74:[function(_dereq_,module,exports){
+/*! Weaver licensed under MIT (https://tldrlegal.com/license/mit-license), copyright Max Franz */
+
+'use strict';
+
+var is = _dereq_('./is');
+var util = _dereq_('./util');
+var Thread = _dereq_('./thread');
+var Promise = _dereq_('./promise');
+var define = _dereq_('./define');
+
+var Fabric = function( N ){
+  if( !(this instanceof Fabric) ){
+    return new Fabric( N );
+  }
+
+  this._private = {
+    pass: []
+  };
+
+  var defN = 4;
+
+  if( is.number(N) ){
+    // then use the specified number of threads
+  } if( typeof navigator !== 'undefined' && navigator.hardwareConcurrency != null ){
+    N = navigator.hardwareConcurrency;
+  } else {
+    try{
+      N = _dereq_('os').cpus().length;
+    } catch( err ){
+      N = defN;
+    }
+  } // TODO could use an estimation here but would the additional expense be worth it?
+
+  for( var i = 0; i < N; i++ ){
+    this[i] = new Thread();
+  }
+
+  this.length = N;
+};
+
+var fabfn = Fabric.prototype; // short alias
+
+util.extend(fabfn, {
+
+  instanceString: function(){ return 'fabric'; },
+
+  // require fn in all threads
+  require: function( fn, as ){
+    for( var i = 0; i < this.length; i++ ){
+      var thread = this[i];
+
+      thread.require( fn, as );
+    }
+
+    return this;
+  },
+
+  // get a random thread
+  random: function(){
+    var i = Math.round( (this.length - 1) * Math.random() );
+    var thread = this[i];
+
+    return thread;
+  },
+
+  // run on random thread
+  run: function( fn ){
+    var pass = this._private.pass.shift();
+
+    return this.random().pass( pass ).run( fn );
+  },
+
+  // sends a random thread a message
+  message: function( m ){
+    return this.random().message( m );
+  },
+
+  // send all threads a message
+  broadcast: function( m ){
+    for( var i = 0; i < this.length; i++ ){
+      var thread = this[i];
+
+      thread.message( m );
+    }
+
+    return this; // chaining
+  },
+
+  // stop all threads
+  stop: function(){
+    for( var i = 0; i < this.length; i++ ){
+      var thread = this[i];
+
+      thread.stop();
+    }
+
+    return this; // chaining
+  },
+
+  // pass data to be used with .spread() etc.
+  pass: function( data ){
+    var pass = this._private.pass;
+
+    if( is.array(data) ){
+      pass.push( data );
+    } else {
+      throw 'Only arrays may be used with fabric.pass()';
+    }
+
+    return this; // chaining
+  },
+
+  spreadSize: function(){
+    var subsize =  Math.ceil( this._private.pass[0].length / this.length );
+
+    subsize = Math.max( 1, subsize ); // don't pass less than one ele to each thread
+
+    return subsize;
+  },
+
+  // split the data into slices to spread the data equally among threads
+  spread: function( fn ){
+    var self = this;
+    var _p = self._private;
+    var subsize = self.spreadSize(); // number of pass eles to handle in each thread
+    var pass = _p.pass.shift().concat([]); // keep a copy
+    var runPs = [];
+
+    for( var i = 0; i < this.length; i++ ){
+      var thread = this[i];
+      var slice = pass.splice( 0, subsize );
+
+      var runP = thread.pass( slice ).run( fn );
+
+      runPs.push( runP );
+
+      var doneEarly = pass.length === 0;
+      if( doneEarly ){ break; }
+    }
+
+    return Promise.all( runPs ).then(function( thens ){
+      var postpass = [];
+      var p = 0;
+
+      // fill postpass with the total result joined from all threads
+      for( var i = 0; i < thens.length; i++ ){
+        var then = thens[i]; // array result from thread i
+
+        for( var j = 0; j < then.length; j++ ){
+          var t = then[j]; // array element
+
+          postpass[ p++ ] = t;
+        }
+      }
+
+      return postpass;
+    });
+  },
+
+  // parallel version of array.map()
+  map: function( fn ){
+    var self = this;
+
+    self.require( fn, '_$_$_fabmap' );
+
+    return self.spread(function( split ){
+      var mapped = [];
+      var origResolve = resolve; // jshint ignore:line
+
+      resolve = function( val ){ // jshint ignore:line
+        mapped.push( val );
+      };
+
+      for( var i = 0; i < split.length; i++ ){
+        var oldLen = mapped.length;
+        var ret = _$_$_fabmap( split[i] ); // jshint ignore:line
+        var nothingInsdByResolve = oldLen === mapped.length;
+
+        if( nothingInsdByResolve ){
+          mapped.push( ret );
+        }
+      }
+
+      resolve = origResolve; // jshint ignore:line
+
+      return mapped;
+    });
+
+  },
+
+  // parallel version of array.filter()
+  filter: function( fn ){
+    var _p = this._private;
+    var pass = _p.pass[0];
+
+    return this.map( fn ).then(function( include ){
+      var ret = [];
+
+      for( var i = 0; i < pass.length; i++ ){
+        var datum = pass[i];
+        var incDatum = include[i];
+
+        if( incDatum ){
+          ret.push( datum );
+        }
+      }
+
+      return ret;
+    });
+  },
+
+  // sorts the passed array using a divide and conquer strategy
+  sort: function( cmp ){
+    var self = this;
+    var P = this._private.pass[0].length;
+    var subsize = this.spreadSize();
+
+    cmp = cmp || function( a, b ){ // default comparison function
+      if( a < b ){
+        return -1;
+      } else if( a > b ){
+        return 1;
+      }
+
+      return 0;
+    };
+
+    self.require( cmp, '_$_$_cmp' );
+
+    return self.spread(function( split ){ // sort each split normally
+      var sortedSplit = split.sort( _$_$_cmp ); // jshint ignore:line
+      resolve( sortedSplit ); // jshint ignore:line
+
+    }).then(function( joined ){
+      // do all the merging in the main thread to minimise data transfer
+
+      // TODO could do merging in separate threads but would incur add'l cost of data transfer
+      // for each level of the merge
+
+      var merge = function( i, j, max ){
+        // don't overflow array
+        j = Math.min( j, P );
+        max = Math.min( max, P );
+
+        // left and right sides of merge
+        var l = i;
+        var r = j;
+
+        var sorted = [];
+
+        for( var k = l; k < max; k++ ){
+
+          var eleI = joined[i];
+          var eleJ = joined[j];
+
+          if( i < r && ( j >= max || cmp(eleI, eleJ) <= 0 ) ){
+            sorted.push( eleI );
+            i++;
+          } else {
+            sorted.push( eleJ );
+            j++;
+          }
+
+        }
+
+        // in the array proper, put the sorted values
+        for( var k = 0; k < sorted.length; k++ ){ // kth sorted item
+          var index = l + k;
+
+          joined[ index ] = sorted[k];
+        }
+      };
+
+      for( var splitL = subsize; splitL < P; splitL *= 2 ){ // merge until array is "split" as 1
+
+        for( var i = 0; i < P; i += 2*splitL ){
+          merge( i, i + splitL, i + 2*splitL );
+        }
+
+      }
+
+      return joined;
+    });
+  }
+
+
+});
+
+var defineRandomPasser = function( opts ){
+  opts = opts || {};
+
+  return function( fn, arg1 ){
+    var pass = this._private.pass.shift();
+
+    return this.random().pass( pass )[ opts.threadFn ]( fn, arg1 );
+  };
+};
+
+util.extend(fabfn, {
+  randomMap: defineRandomPasser({ threadFn: 'map' }),
+
+  reduce: defineRandomPasser({ threadFn: 'reduce' }),
+
+  reduceRight: defineRandomPasser({ threadFn: 'reduceRight' })
+});
+
+// aliases
+var fn = fabfn;
+fn.promise = fn.run;
+fn.terminate = fn.halt = fn.stop;
+fn.include = fn.require;
+
+// pull in event apis
+util.extend(fabfn, {
+  on: define.on(),
+  one: define.on({ unbindSelfOnTrigger: true }),
+  off: define.off(),
+  trigger: define.trigger()
+});
+
+define.eventAliasesOn( fabfn );
+
+module.exports = Fabric;
+
+},{"./define":41,"./is":77,"./promise":80,"./thread":92,"./util":94,"os":undefined}],75:[function(_dereq_,module,exports){
+/*!
+Ported by Xueqiao Xu <xueqiaoxu@gmail.com>;
+
+PSF LICENSE AGREEMENT FOR PYTHON 2.7.2
+
+1. This LICENSE AGREEMENT is between the Python Software Foundation (“PSF”), and the Individual or Organization (“Licensee”) accessing and otherwise using Python 2.7.2 software in source or binary form and its associated documentation.
+2. Subject to the terms and conditions of this License Agreement, PSF hereby grants Licensee a nonexclusive, royalty-free, world-wide license to reproduce, analyze, test, perform and/or display publicly, prepare derivative works, distribute, and otherwise use Python 2.7.2 alone or in any derivative version, provided, however, that PSF’s License Agreement and PSF’s notice of copyright, i.e., “Copyright © 2001-2012 Python Software Foundation; All Rights Reserved” are retained in Python 2.7.2 alone or in any derivative version prepared by Licensee.
+3. In the event Licensee prepares a derivative work that is based on or incorporates Python 2.7.2 or any part thereof, and wants to make the derivative work available to others as provided herein, then Licensee hereby agrees to include in any such work a brief summary of the changes made to Python 2.7.2.
+4. PSF is making Python 2.7.2 available to Licensee on an “AS IS” basis. PSF MAKES NO REPRESENTATIONS OR WARRANTIES, EXPRESS OR IMPLIED. BY WAY OF EXAMPLE, BUT NOT LIMITATION, PSF MAKES NO AND DISCLAIMS ANY REPRESENTATION OR WARRANTY OF MERCHANTABILITY OR FITNESS FOR ANY PARTICULAR PURPOSE OR THAT THE USE OF PYTHON 2.7.2 WILL NOT INFRINGE ANY THIRD PARTY RIGHTS.
+5. PSF SHALL NOT BE LIABLE TO LICENSEE OR ANY OTHER USERS OF PYTHON 2.7.2 FOR ANY INCIDENTAL, SPECIAL, OR CONSEQUENTIAL DAMAGES OR LOSS AS A RESULT OF MODIFYING, DISTRIBUTING, OR OTHERWISE USING PYTHON 2.7.2, OR ANY DERIVATIVE THEREOF, EVEN IF ADVISED OF THE POSSIBILITY THEREOF.
+6. This License Agreement will automatically terminate upon a material breach of its terms and conditions.
+7. Nothing in this License Agreement shall be deemed to create any relationship of agency, partnership, or joint venture between PSF and Licensee. This License Agreement does not grant permission to use PSF trademarks or trade name in a trademark sense to endorse or promote products or services of Licensee, or any third party.
+8. By copying, installing or otherwise using Python 2.7.2, Licensee agrees to be bound by the terms and conditions of this License Agreement.
+*/
+
+'use strict';
+/* jshint ignore:start */
+
+// Generated by CoffeeScript 1.8.0
+(function() {
+  var Heap, defaultCmp, floor, heapify, heappop, heappush, heappushpop, heapreplace, insort, min, nlargest, nsmallest, updateItem, _siftdown, _siftup;
+
+  floor = Math.floor, min = Math.min;
+
+
+  /*
+  Default comparison function to be used
+   */
+
+  defaultCmp = function(x, y) {
+    if (x < y) {
+      return -1;
+    }
+    if (x > y) {
+      return 1;
+    }
+    return 0;
+  };
+
+
+  /*
+  Insert item x in list a, and keep it sorted assuming a is sorted.
+
+  If x is already in a, insert it to the right of the rightmost x.
+
+  Optional args lo (default 0) and hi (default a.length) bound the slice
+  of a to be searched.
+   */
+
+  insort = function(a, x, lo, hi, cmp) {
+    var mid;
+    if (lo == null) {
+      lo = 0;
+    }
+    if (cmp == null) {
+      cmp = defaultCmp;
+    }
+    if (lo < 0) {
+      throw new Error('lo must be non-negative');
+    }
+    if (hi == null) {
+      hi = a.length;
+    }
+    while (lo < hi) {
+      mid = floor((lo + hi) / 2);
+      if (cmp(x, a[mid]) < 0) {
+        hi = mid;
+      } else {
+        lo = mid + 1;
+      }
+    }
+    return ([].splice.apply(a, [lo, lo - lo].concat(x)), x);
+  };
+
+
+  /*
+  Push item onto heap, maintaining the heap invariant.
+   */
+
+  heappush = function(array, item, cmp) {
+    if (cmp == null) {
+      cmp = defaultCmp;
+    }
+    array.push(item);
+    return _siftdown(array, 0, array.length - 1, cmp);
+  };
+
+
+  /*
+  Pop the smallest item off the heap, maintaining the heap invariant.
+   */
+
+  heappop = function(array, cmp) {
+    var lastelt, returnitem;
+    if (cmp == null) {
+      cmp = defaultCmp;
+    }
+    lastelt = array.pop();
+    if (array.length) {
+      returnitem = array[0];
+      array[0] = lastelt;
+      _siftup(array, 0, cmp);
+    } else {
+      returnitem = lastelt;
+    }
+    return returnitem;
+  };
+
+
+  /*
+  Pop and return the current smallest value, and add the new item.
+
+  This is more efficient than heappop() followed by heappush(), and can be
+  more appropriate when using a fixed size heap. Note that the value
+  returned may be larger than item! That constrains reasonable use of
+  this routine unless written as part of a conditional replacement:
+      if item > array[0]
+        item = heapreplace(array, item)
+   */
+
+  heapreplace = function(array, item, cmp) {
+    var returnitem;
+    if (cmp == null) {
+      cmp = defaultCmp;
+    }
+    returnitem = array[0];
+    array[0] = item;
+    _siftup(array, 0, cmp);
+    return returnitem;
+  };
+
+
+  /*
+  Fast version of a heappush followed by a heappop.
+   */
+
+  heappushpop = function(array, item, cmp) {
+    var _ref;
+    if (cmp == null) {
+      cmp = defaultCmp;
+    }
+    if (array.length && cmp(array[0], item) < 0) {
+      _ref = [array[0], item], item = _ref[0], array[0] = _ref[1];
+      _siftup(array, 0, cmp);
+    }
+    return item;
+  };
+
+
+  /*
+  Transform list into a heap, in-place, in O(array.length) time.
+   */
+
+  heapify = function(array, cmp) {
+    var i, _i, _j, _len, _ref, _ref1, _results, _results1;
+    if (cmp == null) {
+      cmp = defaultCmp;
+    }
+    _ref1 = (function() {
+      _results1 = [];
+      for (var _j = 0, _ref = floor(array.length / 2); 0 <= _ref ? _j < _ref : _j > _ref; 0 <= _ref ? _j++ : _j--){ _results1.push(_j); }
+      return _results1;
+    }).apply(this).reverse();
+    _results = [];
+    for (_i = 0, _len = _ref1.length; _i < _len; _i++) {
+      i = _ref1[_i];
+      _results.push(_siftup(array, i, cmp));
+    }
+    return _results;
+  };
+
+
+  /*
+  Update the position of the given item in the heap.
+  This function should be called every time the item is being modified.
+   */
+
+  updateItem = function(array, item, cmp) {
+    var pos;
+    if (cmp == null) {
+      cmp = defaultCmp;
+    }
+    pos = array.indexOf(item);
+    if (pos === -1) {
+      return;
+    }
+    _siftdown(array, 0, pos, cmp);
+    return _siftup(array, pos, cmp);
+  };
+
+
+  /*
+  Find the n largest elements in a dataset.
+   */
+
+  nlargest = function(array, n, cmp) {
+    var elem, result, _i, _len, _ref;
+    if (cmp == null) {
+      cmp = defaultCmp;
+    }
+    result = array.slice(0, n);
+    if (!result.length) {
+      return result;
+    }
+    heapify(result, cmp);
+    _ref = array.slice(n);
+    for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+      elem = _ref[_i];
+      heappushpop(result, elem, cmp);
+    }
+    return result.sort(cmp).reverse();
+  };
+
+
+  /*
+  Find the n smallest elements in a dataset.
+   */
+
+  nsmallest = function(array, n, cmp) {
+    var elem, i, los, result, _i, _j, _len, _ref, _ref1, _results;
+    if (cmp == null) {
+      cmp = defaultCmp;
+    }
+    if (n * 10 <= array.length) {
+      result = array.slice(0, n).sort(cmp);
+      if (!result.length) {
+        return result;
+      }
+      los = result[result.length - 1];
+      _ref = array.slice(n);
+      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+        elem = _ref[_i];
+        if (cmp(elem, los) < 0) {
+          insort(result, elem, 0, null, cmp);
+          result.pop();
+          los = result[result.length - 1];
+        }
+      }
+      return result;
+    }
+    heapify(array, cmp);
+    _results = [];
+    for (i = _j = 0, _ref1 = min(n, array.length); 0 <= _ref1 ? _j < _ref1 : _j > _ref1; i = 0 <= _ref1 ? ++_j : --_j) {
+      _results.push(heappop(array, cmp));
+    }
+    return _results;
+  };
+
+  _siftdown = function(array, startpos, pos, cmp) {
+    var newitem, parent, parentpos;
+    if (cmp == null) {
+      cmp = defaultCmp;
+    }
+    newitem = array[pos];
+    while (pos > startpos) {
+      parentpos = (pos - 1) >> 1;
+      parent = array[parentpos];
+      if (cmp(newitem, parent) < 0) {
+        array[pos] = parent;
+        pos = parentpos;
+        continue;
+      }
+      break;
+    }
+    return array[pos] = newitem;
+  };
+
+  _siftup = function(array, pos, cmp) {
+    var childpos, endpos, newitem, rightpos, startpos;
+    if (cmp == null) {
+      cmp = defaultCmp;
+    }
+    endpos = array.length;
+    startpos = pos;
+    newitem = array[pos];
+    childpos = 2 * pos + 1;
+    while (childpos < endpos) {
+      rightpos = childpos + 1;
+      if (rightpos < endpos && !(cmp(array[childpos], array[rightpos]) < 0)) {
+        childpos = rightpos;
+      }
+      array[pos] = array[childpos];
+      pos = childpos;
+      childpos = 2 * pos + 1;
+    }
+    array[pos] = newitem;
+    return _siftdown(array, startpos, pos, cmp);
+  };
+
+  Heap = (function() {
+    Heap.push = heappush;
+
+    Heap.pop = heappop;
+
+    Heap.replace = heapreplace;
+
+    Heap.pushpop = heappushpop;
+
+    Heap.heapify = heapify;
+
+    Heap.updateItem = updateItem;
+
+    Heap.nlargest = nlargest;
+
+    Heap.nsmallest = nsmallest;
+
+    function Heap(cmp) {
+      this.cmp = cmp != null ? cmp : defaultCmp;
+      this.nodes = [];
+    }
+
+    Heap.prototype.push = function(x) {
+      return heappush(this.nodes, x, this.cmp);
+    };
+
+    Heap.prototype.pop = function() {
+      return heappop(this.nodes, this.cmp);
+    };
+
+    Heap.prototype.peek = function() {
+      return this.nodes[0];
+    };
+
+    Heap.prototype.contains = function(x) {
+      return this.nodes.indexOf(x) !== -1;
+    };
+
+    Heap.prototype.replace = function(x) {
+      return heapreplace(this.nodes, x, this.cmp);
+    };
+
+    Heap.prototype.pushpop = function(x) {
+      return heappushpop(this.nodes, x, this.cmp);
+    };
+
+    Heap.prototype.heapify = function() {
+      return heapify(this.nodes, this.cmp);
+    };
+
+    Heap.prototype.updateItem = function(x) {
+      return updateItem(this.nodes, x, this.cmp);
+    };
+
+    Heap.prototype.clear = function() {
+      return this.nodes = [];
+    };
+
+    Heap.prototype.empty = function() {
+      return this.nodes.length === 0;
+    };
+
+    Heap.prototype.size = function() {
+      return this.nodes.length;
+    };
+
+    Heap.prototype.clone = function() {
+      var heap;
+      heap = new Heap();
+      heap.nodes = this.nodes.slice(0);
+      return heap;
+    };
+
+    Heap.prototype.toArray = function() {
+      return this.nodes.slice(0);
+    };
+
+    Heap.prototype.insert = Heap.prototype.push;
+
+    Heap.prototype.top = Heap.prototype.peek;
+
+    Heap.prototype.front = Heap.prototype.peek;
+
+    Heap.prototype.has = Heap.prototype.contains;
+
+    Heap.prototype.copy = Heap.prototype.clone;
+
+    return Heap;
+
+  })();
+
+  (function(root, factory) {
+    if (typeof define === 'function' && define.amd) {
+      return define([], factory);
+    } else if (typeof exports === 'object') {
+      return module.exports = factory();
+    } else {
+      return root.Heap = factory();
+    }
+  })(this, function() {
+    return Heap;
+  });
+
+}).call(this);
+
+/* jshint ignore:end */
+
+},{}],76:[function(_dereq_,module,exports){
+'use strict';
+
+var window = _dereq_('./window');
+var is = _dereq_('./is');
+var Core = _dereq_('./core');
+var extension = _dereq_('./extension');
+var registerJquery = _dereq_('./jquery-plugin');
+var Stylesheet = _dereq_('./stylesheet');
+var Thread = _dereq_('./thread');
+var Fabric = _dereq_('./fabric');
+
+var cytoscape = function( options ){ // jshint ignore:line
+  // if no options specified, use default
+  if( options === undefined ){
+    options = {};
+  }
+
+  // create instance
+  if( is.plainObject( options ) ){
+    return new Core( options );
+  }
+
+  // allow for registration of extensions
+  else if( is.string( options ) ) {
+    return extension.apply(extension, arguments);
+  }
+};
+
+// replaced by build system
+cytoscape.version = '2.6.1';
+
+// try to register w/ jquery
+if( window && window.jQuery ){
+  registerJquery( window.jQuery, cytoscape );
+}
+
+// expose register api
+cytoscape.registerJquery = function( jQuery ){
+  registerJquery( jQuery, cytoscape );
+};
+
+// expose public apis (mostly for extensions)
+cytoscape.stylesheet = cytoscape.Stylesheet = Stylesheet;
+cytoscape.thread = cytoscape.Thread = Thread;
+cytoscape.fabric = cytoscape.Fabric = Fabric;
+
+module.exports = cytoscape;
+
+},{"./core":34,"./extension":43,"./fabric":74,"./is":77,"./jquery-plugin":78,"./stylesheet":91,"./thread":92,"./window":100}],77:[function(_dereq_,module,exports){
+'use strict';
+
+var window = _dereq_('./window');
+var navigator = window ? window.navigator : null;
+
+var typeofstr = typeof '';
+var typeofobj = typeof {};
+var typeoffn = typeof function(){};
+var typeofhtmlele = typeof HTMLElement;
+
+var instanceStr = function( obj ){
+  return obj && obj.instanceString && is.fn( obj.instanceString ) ? obj.instanceString() : null;
+};
+
+var is = {
+  defined: function(obj){
+    return obj != null; // not undefined or null
+  },
+
+  string: function(obj){
+    return obj != null && typeof obj == typeofstr;
+  },
+
+  fn: function(obj){
+    return obj != null && typeof obj === typeoffn;
+  },
+
+  array: function(obj){
+    return Array.isArray ? Array.isArray(obj) : obj != null && obj instanceof Array;
+  },
+
+  plainObject: function(obj){
+    return obj != null && typeof obj === typeofobj && !is.array(obj) && obj.constructor === Object;
+  },
+
+  object: function(obj){
+    return obj != null && typeof obj === typeofobj;
+  },
+
+  number: function(obj){
+    return obj != null && typeof obj === typeof 1 && !isNaN(obj);
+  },
+
+  integer: function( obj ){
+    return is.number(obj) && Math.floor(obj) === obj;
+  },
+
+  bool: function(obj){
+    return obj != null && typeof obj === typeof true;
+  },
+
+  htmlElement: function(obj){
+    if( 'undefined' === typeofhtmlele ){
+      return undefined;
+    } else {
+      return null != obj && obj instanceof HTMLElement;
+    }
+  },
+
+  elementOrCollection: function(obj){
+    return is.element(obj) || is.collection(obj);
+  },
+
+  element: function(obj){
+    return instanceStr(obj) === 'collection' && obj._private.single;
+  },
+
+  collection: function(obj){
+    return instanceStr(obj) === 'collection' && !obj._private.single;
+  },
+
+  core: function(obj){
+    return instanceStr(obj) === 'core';
+  },
+
+  style: function(obj){
+    return instanceStr(obj) === 'style';
+  },
+
+  stylesheet: function(obj){
+    return instanceStr(obj) === 'stylesheet';
+  },
+
+  event: function(obj){
+    return instanceStr(obj) === 'event';
+  },
+
+  thread: function(obj){
+    return instanceStr(obj) === 'thread';
+  },
+
+  fabric: function(obj){
+    return instanceStr(obj) === 'fabric';
+  },
+
+  emptyString: function(obj){
+    if( !obj ){ // null is empty
+      return true;
+    } else if( is.string(obj) ){
+      if( obj === '' || obj.match(/^\s+$/) ){
+        return true; // empty string is empty
+      }
+    }
+
+    return false; // otherwise, we don't know what we've got
+  },
+
+  nonemptyString: function(obj){
+    if( obj && is.string(obj) && obj !== '' && !obj.match(/^\s+$/) ){
+      return true;
+    }
+
+    return false;
+  },
+
+  domElement: function(obj){
+    if( typeof HTMLElement === 'undefined' ){
+      return false; // we're not in a browser so it doesn't matter
+    } else {
+      return obj instanceof HTMLElement;
+    }
+  },
+
+  boundingBox: function(obj){
+    return is.plainObject(obj) &&
+      is.number(obj.x1) && is.number(obj.x2) &&
+      is.number(obj.y1) && is.number(obj.y2)
+    ;
+  },
+
+  promise: function(obj){
+    return is.object(obj) && is.fn(obj.then);
+  },
+
+  touch: function(){
+    return window && ( ('ontouchstart' in window) || window.DocumentTouch && document instanceof DocumentTouch );
+  },
+
+  gecko: function(){
+    return typeof InstallTrigger !== 'undefined' || ('MozAppearance' in document.documentElement.style);
+  },
+
+  webkit: function(){
+    return typeof webkitURL !== 'undefined' || ('WebkitAppearance' in document.documentElement.style);
+  },
+
+  chromium: function(){
+    return typeof chrome !== 'undefined';
+  },
+
+  khtml: function(){
+    return navigator && navigator.vendor.match(/kde/i); // probably a better way to detect this...
+  },
+
+  khtmlEtc: function(){
+    return is.khtml() || is.webkit() || is.chromium();
+  },
+
+  ms: function(){
+     return navigator && navigator.userAgent.match(/msie|trident|edge/i); // probably a better way to detect this...
+  },
+
+  windows: function(){
+    return navigator && navigator.appVersion.match(/Win/i);
+  },
+
+  mac: function(){
+    return navigator && navigator.appVersion.match(/Mac/i);
+  },
+
+  linux: function(){
+    return navigator && navigator.appVersion.match(/Linux/i);
+  },
+
+  unix: function(){
+    return navigator && navigator.appVersion.match(/X11/i);
+  }
+};
+
+module.exports = is;
+
+},{"./window":100}],78:[function(_dereq_,module,exports){
+'use strict';
+
+var is = _dereq_('./is');
+
+var cyReg = function( $ele ){
+  var d = $ele[0]._cyreg = $ele[0]._cyreg || {};
+
+  return d;
+};
+
+var registerJquery = function( $, cytoscape ){
+  if( !$ ){ return; } // no jquery => don't need this
+
+  if( $.fn.cytoscape ){ return; } // already registered
+
+  // allow calls on a jQuery selector by proxying calls to $.cytoscape
+  // e.g. $("#foo").cytoscape(options) => $.cytoscape(options) on #foo
+  $.fn.cytoscape = function(opts){
+    var $this = $(this);
+
+    // get object
+    if( opts === 'get' ){
+      return cyReg( $this ).cy;
+    }
+
+    // bind to ready
+    else if( is.fn(opts) ){
+
+      var ready = opts;
+      var cy = cyReg( $this ).cy;
+
+      if( cy && cy.isReady() ){ // already ready so just trigger now
+        cy.trigger('ready', [], ready);
+
+      } else { // not yet ready, so add to readies list
+        var data = cyReg( $this );
+        var readies = data.readies = data.readies || [];
+
+        readies.push( ready );
+      }
+
+    }
+
+    // proxy to create instance
+    else if( is.plainObject(opts) ){
+      return $this.each(function(){
+        var options = $.extend({}, opts, {
+          container: $(this)[0]
+        });
+
+        cytoscape(options);
+      });
+    }
+  };
+
+  // allow access to the global cytoscape object under jquery for legacy reasons
+  $.cytoscape = cytoscape;
+
+  // use short alias (cy) if not already defined
+  if( $.fn.cy == null && $.cy == null ){
+    $.fn.cy = $.fn.cytoscape;
+    $.cy = $.cytoscape;
+  }
+};
+
+module.exports = registerJquery;
+
+},{"./is":77}],79:[function(_dereq_,module,exports){
+'use strict';
+
+var math = {};
+
+math.signum = function(x){
+  if( x > 0 ){
+    return 1;
+  } else if( x < 0 ){
+    return -1;
+  } else {
+    return 0;
+  }
+};
+
+math.distance = function( p1, p2 ){
+  return Math.sqrt( math.sqDistance(p1, p2) );
+};
+
+math.sqDistance = function( p1, p2 ){
+  var dx = p2.x - p1.x;
+  var dy = p2.y - p1.y;
+
+  return dx*dx + dy*dy;
+};
+
+// from http://en.wikipedia.org/wiki/Bézier_curve#Quadratic_curves
+math.qbezierAt = function(p0, p1, p2, t){
+  return (1 - t)*(1 - t)*p0 + 2*(1 - t)*t*p1 + t*t*p2;
+};
+
+math.qbezierPtAt = function(p0, p1, p2, t){
+  return {
+    x: math.qbezierAt( p0.x, p1.x, p2.x, t ),
+    y: math.qbezierAt( p0.y, p1.y, p2.y, t )
+  };
+};
+
+// makes a full bb (x1, y1, x2, y2, w, h) from implicit params
+math.makeBoundingBox = function( bb ){
+  if( bb.x1 != null && bb.y1 != null ){
+    if( bb.x2 != null && bb.y2 != null && bb.x2 >= bb.x1 && bb.y2 >= bb.y1 ){
+      return {
+        x1: bb.x1,
+        y1: bb.y1,
+        x2: bb.x2,
+        y2: bb.y2,
+        w: bb.x2 - bb.x1,
+        h: bb.y2 - bb.y1
+      };
+    } else if( bb.w != null && bb.h != null && bb.w >= 0 && bb.h >= 0 ){
+      return {
+        x1: bb.x1,
+        y1: bb.y1,
+        x2: bb.x1 + bb.w,
+        y2: bb.y1 + bb.h,
+        w: bb.w,
+        h: bb.h
+      };
+    }
+  }
+};
+
+math.boundingBoxesIntersect = function( bb1, bb2 ){
+  // case: one bb to right of other
+  if( bb1.x1 > bb2.x2 ){ return false; }
+  if( bb2.x1 > bb1.x2 ){ return false; }
+
+  // case: one bb to left of other
+  if( bb1.x2 < bb2.x1 ){ return false; }
+  if( bb2.x2 < bb1.x1 ){ return false; }
+
+  // case: one bb above other
+  if( bb1.y2 < bb2.y1 ){ return false; }
+  if( bb2.y2 < bb1.y1 ){ return false; }
+
+  // case: one bb below other
+  if( bb1.y1 > bb2.y2 ){ return false; }
+  if( bb2.y1 > bb1.y2 ){ return false; }
+
+  // otherwise, must have some overlap
+  return true;
+};
+
+math.inBoundingBox = function( bb, x, y ){
+  return bb.x1 <= x && x <= bb.x2 && bb.y1 <= y && y <= bb.y2;
+};
+
+math.pointInBoundingBox = function( bb, pt ){
+  return this.inBoundingBox( bb, pt.x, pt.y );
+};
+
+math.roundRectangleIntersectLine = function(
+  x, y, nodeX, nodeY, width, height, padding) {
+
+  var cornerRadius = this.getRoundRectangleRadius(width, height);
+
+  var halfWidth = width / 2;
+  var halfHeight = height / 2;
+
+  // Check intersections with straight line segments
+  var straightLineIntersections;
+
+  // Top segment, left to right
+  {
+    var topStartX = nodeX - halfWidth + cornerRadius - padding;
+    var topStartY = nodeY - halfHeight - padding;
+    var topEndX = nodeX + halfWidth - cornerRadius + padding;
+    var topEndY = topStartY;
+
+    straightLineIntersections = this.finiteLinesIntersect(
+      x, y, nodeX, nodeY, topStartX, topStartY, topEndX, topEndY, false);
+
+    if (straightLineIntersections.length > 0) {
+      return straightLineIntersections;
+    }
+  }
+
+  // Right segment, top to bottom
+  {
+    var rightStartX = nodeX + halfWidth + padding;
+    var rightStartY = nodeY - halfHeight + cornerRadius - padding;
+    var rightEndX = rightStartX;
+    var rightEndY = nodeY + halfHeight - cornerRadius + padding;
+
+    straightLineIntersections = this.finiteLinesIntersect(
+      x, y, nodeX, nodeY, rightStartX, rightStartY, rightEndX, rightEndY, false);
+
+    if (straightLineIntersections.length > 0) {
+      return straightLineIntersections;
+    }
+  }
+
+  // Bottom segment, left to right
+  {
+    var bottomStartX = nodeX - halfWidth + cornerRadius - padding;
+    var bottomStartY = nodeY + halfHeight + padding;
+    var bottomEndX = nodeX + halfWidth - cornerRadius + padding;
+    var bottomEndY = bottomStartY;
+
+    straightLineIntersections = this.finiteLinesIntersect(
+      x, y, nodeX, nodeY, bottomStartX, bottomStartY, bottomEndX, bottomEndY, false);
+
+    if (straightLineIntersections.length > 0) {
+      return straightLineIntersections;
+    }
+  }
+
+  // Left segment, top to bottom
+  {
+    var leftStartX = nodeX - halfWidth - padding;
+    var leftStartY = nodeY - halfHeight + cornerRadius - padding;
+    var leftEndX = leftStartX;
+    var leftEndY = nodeY + halfHeight - cornerRadius + padding;
+
+    straightLineIntersections = this.finiteLinesIntersect(
+      x, y, nodeX, nodeY, leftStartX, leftStartY, leftEndX, leftEndY, false);
+
+    if (straightLineIntersections.length > 0) {
+      return straightLineIntersections;
+    }
+  }
+
+  // Check intersections with arc segments
+  var arcIntersections;
+
+  // Top Left
+  {
+    var topLeftCenterX = nodeX - halfWidth + cornerRadius;
+    var topLeftCenterY = nodeY - halfHeight + cornerRadius;
+    arcIntersections = this.intersectLineCircle(
+      x, y, nodeX, nodeY,
+      topLeftCenterX, topLeftCenterY, cornerRadius + padding);
+
+    // Ensure the intersection is on the desired quarter of the circle
+    if (arcIntersections.length > 0
+      && arcIntersections[0] <= topLeftCenterX
+      && arcIntersections[1] <= topLeftCenterY) {
+      return [arcIntersections[0], arcIntersections[1]];
+    }
+  }
+
+  // Top Right
+  {
+    var topRightCenterX = nodeX + halfWidth - cornerRadius;
+    var topRightCenterY = nodeY - halfHeight + cornerRadius;
+    arcIntersections = this.intersectLineCircle(
+      x, y, nodeX, nodeY,
+      topRightCenterX, topRightCenterY, cornerRadius + padding);
+
+    // Ensure the intersection is on the desired quarter of the circle
+    if (arcIntersections.length > 0
+      && arcIntersections[0] >= topRightCenterX
+      && arcIntersections[1] <= topRightCenterY) {
+      return [arcIntersections[0], arcIntersections[1]];
+    }
+  }
+
+  // Bottom Right
+  {
+    var bottomRightCenterX = nodeX + halfWidth - cornerRadius;
+    var bottomRightCenterY = nodeY + halfHeight - cornerRadius;
+    arcIntersections = this.intersectLineCircle(
+      x, y, nodeX, nodeY,
+      bottomRightCenterX, bottomRightCenterY, cornerRadius + padding);
+
+    // Ensure the intersection is on the desired quarter of the circle
+    if (arcIntersections.length > 0
+      && arcIntersections[0] >= bottomRightCenterX
+      && arcIntersections[1] >= bottomRightCenterY) {
+      return [arcIntersections[0], arcIntersections[1]];
+    }
+  }
+
+  // Bottom Left
+  {
+    var bottomLeftCenterX = nodeX - halfWidth + cornerRadius;
+    var bottomLeftCenterY = nodeY + halfHeight - cornerRadius;
+    arcIntersections = this.intersectLineCircle(
+      x, y, nodeX, nodeY,
+      bottomLeftCenterX, bottomLeftCenterY, cornerRadius + padding);
+
+    // Ensure the intersection is on the desired quarter of the circle
+    if (arcIntersections.length > 0
+      && arcIntersections[0] <= bottomLeftCenterX
+      && arcIntersections[1] >= bottomLeftCenterY) {
+      return [arcIntersections[0], arcIntersections[1]];
+    }
+  }
+
+  return []; // if nothing
+};
+
+math.inLineVicinity = function(x, y, lx1, ly1, lx2, ly2, tolerance){
+  var t = tolerance;
+
+  var x1 = Math.min(lx1, lx2);
+  var x2 = Math.max(lx1, lx2);
+  var y1 = Math.min(ly1, ly2);
+  var y2 = Math.max(ly1, ly2);
+
+  return x1 - t <= x && x <= x2 + t
+    && y1 - t <= y && y <= y2 + t;
+};
+
+math.inBezierVicinity = function(
+  x, y, x1, y1, x2, y2, x3, y3, tolerance) {
+
+  var bb = {
+    x1: Math.min( x1, x3, x2 ) - tolerance,
+    x2: Math.max( x1, x3, x2 ) + tolerance,
+    y1: Math.min( y1, y3, y2 ) - tolerance,
+    y2: Math.max( y1, y3, y2 ) + tolerance
+  };
+
+  // if outside the rough bounding box for the bezier, then it can't be a hit
+  if( x < bb.x1 || x > bb.x2 || y < bb.y1 || y > bb.y2 ){
+    // console.log('bezier out of rough bb')
+    return false;
+  } else {
+    // console.log('do more expensive check');
+    return true;
+  }
+
+};
+
+math.solveCubic = function(a, b, c, d, result) {
+
+  // Solves a cubic function, returns root in form [r1, i1, r2, i2, r3, i3], where
+  // r is the real component, i is the imaginary component
+
+  // An implementation of the Cardano method from the year 1545
+  // http://en.wikipedia.org/wiki/Cubic_function#The_nature_of_the_roots
+
+  b /= a;
+  c /= a;
+  d /= a;
+
+  var discriminant, q, r, dum1, s, t, term1, r13;
+
+  q = (3.0 * c - (b * b)) / 9.0;
+  r = -(27.0 * d) + b * (9.0 * c - 2.0 * (b * b));
+  r /= 54.0;
+
+  discriminant = q * q * q + r * r;
+  result[1] = 0;
+  term1 = (b / 3.0);
+
+  if (discriminant > 0) {
+    s = r + Math.sqrt(discriminant);
+    s = ((s < 0) ? -Math.pow(-s, (1.0 / 3.0)) : Math.pow(s, (1.0 / 3.0)));
+    t = r - Math.sqrt(discriminant);
+    t = ((t < 0) ? -Math.pow(-t, (1.0 / 3.0)) : Math.pow(t, (1.0 / 3.0)));
+    result[0] = -term1 + s + t;
+    term1 += (s + t) / 2.0;
+    result[4] = result[2] = -term1;
+    term1 = Math.sqrt(3.0) * (-t + s) / 2;
+    result[3] = term1;
+    result[5] = -term1;
+    return;
+  }
+
+  result[5] = result[3] = 0;
+
+  if (discriminant === 0) {
+    r13 = ((r < 0) ? -Math.pow(-r, (1.0 / 3.0)) : Math.pow(r, (1.0 / 3.0)));
+    result[0] = -term1 + 2.0 * r13;
+    result[4] = result[2] = -(r13 + term1);
+    return;
+  }
+
+  q = -q;
+  dum1 = q * q * q;
+  dum1 = Math.acos(r / Math.sqrt(dum1));
+  r13 = 2.0 * Math.sqrt(q);
+  result[0] = -term1 + r13 * Math.cos(dum1 / 3.0);
+  result[2] = -term1 + r13 * Math.cos((dum1 + 2.0 * Math.PI) / 3.0);
+  result[4] = -term1 + r13 * Math.cos((dum1 + 4.0 * Math.PI) / 3.0);
+
+  return;
+};
+
+math.sqDistanceToQuadraticBezier = function(
+  x, y, x1, y1, x2, y2, x3, y3) {
+
+  // Find minimum distance by using the minimum of the distance
+  // function between the given point and the curve
+
+  // This gives the coefficients of the resulting cubic equation
+  // whose roots tell us where a possible minimum is
+  // (Coefficients are divided by 4)
+
+  var a = 1.0 * x1*x1 - 4*x1*x2 + 2*x1*x3 + 4*x2*x2 - 4*x2*x3 + x3*x3
+    + y1*y1 - 4*y1*y2 + 2*y1*y3 + 4*y2*y2 - 4*y2*y3 + y3*y3;
+
+  var b = 1.0 * 9*x1*x2 - 3*x1*x1 - 3*x1*x3 - 6*x2*x2 + 3*x2*x3
+    + 9*y1*y2 - 3*y1*y1 - 3*y1*y3 - 6*y2*y2 + 3*y2*y3;
+
+  var c = 1.0 * 3*x1*x1 - 6*x1*x2 + x1*x3 - x1*x + 2*x2*x2 + 2*x2*x - x3*x
+    + 3*y1*y1 - 6*y1*y2 + y1*y3 - y1*y + 2*y2*y2 + 2*y2*y - y3*y;
+
+  var d = 1.0 * x1*x2 - x1*x1 + x1*x - x2*x
+    + y1*y2 - y1*y1 + y1*y - y2*y;
+
+  // debug("coefficients: " + a / a + ", " + b / a + ", " + c / a + ", " + d / a);
+
+  var roots = [];
+
+  // Use the cubic solving algorithm
+  this.solveCubic(a, b, c, d, roots);
+
+  var zeroThreshold = 0.0000001;
+
+  var params = [];
+
+  for (var index = 0; index < 6; index += 2) {
+    if (Math.abs(roots[index + 1]) < zeroThreshold
+        && roots[index] >= 0
+        && roots[index] <= 1.0) {
+      params.push(roots[index]);
+    }
+  }
+
+  params.push(1.0);
+  params.push(0.0);
+
+  var minDistanceSquared = -1;
+  var closestParam;
+
+  var curX, curY, distSquared;
+  for (var i = 0; i < params.length; i++) {
+    curX = Math.pow(1.0 - params[i], 2.0) * x1
+      + 2.0 * (1 - params[i]) * params[i] * x2
+      + params[i] * params[i] * x3;
+
+    curY = Math.pow(1 - params[i], 2.0) * y1
+      + 2 * (1.0 - params[i]) * params[i] * y2
+      + params[i] * params[i] * y3;
+
+    distSquared = Math.pow(curX - x, 2) + Math.pow(curY - y, 2);
+    // debug('distance for param ' + params[i] + ": " + Math.sqrt(distSquared));
+    if (minDistanceSquared >= 0) {
+      if (distSquared < minDistanceSquared) {
+        minDistanceSquared = distSquared;
+        closestParam = params[i];
+      }
+    } else {
+      minDistanceSquared = distSquared;
+      closestParam = params[i];
+    }
+  }
+
+  return minDistanceSquared;
+};
+
+math.sqDistanceToFiniteLine = function(x, y, x1, y1, x2, y2) {
+  var offset = [x - x1, y - y1];
+  var line = [x2 - x1, y2 - y1];
+
+  var lineSq = line[0] * line[0] + line[1] * line[1];
+  var hypSq = offset[0] * offset[0] + offset[1] * offset[1];
+
+  var dotProduct = offset[0] * line[0] + offset[1] * line[1];
+  var adjSq = dotProduct * dotProduct / lineSq;
+
+  if (dotProduct < 0) {
+    return hypSq;
+  }
+
+  if (adjSq > lineSq) {
+    return (x - x2) * (x - x2) + (y - y2) * (y - y2);
+  }
+
+  return hypSq - adjSq;
+};
+
+math.pointInsidePolygonPoints = function(x, y, points){
+  var x1, y1, x2, y2;
+  var y3;
+
+  // Intersect with vertical line through (x, y)
+  var up = 0;
+  var down = 0;
+  for (var i = 0; i < points.length / 2; i++) {
+
+    x1 = points[i * 2];
+    y1 = points[i * 2 + 1];
+
+    if (i + 1 < points.length / 2) {
+      x2 = points[(i + 1) * 2];
+      y2 = points[(i + 1) * 2 + 1];
+    } else {
+      x2 = points[(i + 1 - points.length / 2) * 2];
+      y2 = points[(i + 1 - points.length / 2) * 2 + 1];
+    }
+
+    if (x1 == x && x2 == x) {
+
+    } else if ((x1 >= x && x >= x2)
+      || (x1 <= x && x <= x2)) {
+
+      y3 = (x - x1) / (x2 - x1) * (y2 - y1) + y1;
+
+      if (y3 > y) {
+        up++;
+      }
+
+      if (y3 < y) {
+        down++;
+      }
+
+    } else {
+      continue;
+    }
+
+  }
+
+  if (up % 2 === 0) {
+    return false;
+  } else {
+    return true;
+  }
+};
+
+math.pointInsidePolygon = function(
+  x, y, basePoints, centerX, centerY, width, height, direction, padding) {
+
+  //var direction = arguments[6];
+  var transformedPoints = new Array(basePoints.length);
+
+  // Gives negative angle
+  var angle;
+
+  if( direction[0] != null ){
+    angle = Math.atan(direction[1] / direction[0]);
+
+    if (direction[0] < 0) {
+      angle = angle + Math.PI / 2;
+    } else {
+      angle = -angle - Math.PI / 2;
+    }
+  } else {
+    angle = direction;
+  }
+
+  var cos = Math.cos(-angle);
+  var sin = Math.sin(-angle);
+
+  //    console.log("base: " + basePoints);
+  for (var i = 0; i < transformedPoints.length / 2; i++) {
+    transformedPoints[i * 2] =
+      width / 2 * (basePoints[i * 2] * cos
+        - basePoints[i * 2 + 1] * sin);
+
+    transformedPoints[i * 2 + 1] =
+      height / 2 * (basePoints[i * 2 + 1] * cos
+        + basePoints[i * 2] * sin);
+
+    transformedPoints[i * 2] += centerX;
+    transformedPoints[i * 2 + 1] += centerY;
+  }
+
+  var points;
+
+  if (padding > 0) {
+    var expandedLineSet = this.expandPolygon(
+      transformedPoints,
+      -padding);
+
+    points = this.joinLines(expandedLineSet);
+  } else {
+    points = transformedPoints;
+  }
+
+  return math.pointInsidePolygonPoints( x, y, points );
+};
+
+math.joinLines = function(lineSet) {
+
+  var vertices = new Array(lineSet.length / 2);
+
+  var currentLineStartX, currentLineStartY, currentLineEndX, currentLineEndY;
+  var nextLineStartX, nextLineStartY, nextLineEndX, nextLineEndY;
+
+  for (var i = 0; i < lineSet.length / 4; i++) {
+    currentLineStartX = lineSet[i * 4];
+    currentLineStartY = lineSet[i * 4 + 1];
+    currentLineEndX = lineSet[i * 4 + 2];
+    currentLineEndY = lineSet[i * 4 + 3];
+
+    if (i < lineSet.length / 4 - 1) {
+      nextLineStartX = lineSet[(i + 1) * 4];
+      nextLineStartY = lineSet[(i + 1) * 4 + 1];
+      nextLineEndX = lineSet[(i + 1) * 4 + 2];
+      nextLineEndY = lineSet[(i + 1) * 4 + 3];
+    } else {
+      nextLineStartX = lineSet[0];
+      nextLineStartY = lineSet[1];
+      nextLineEndX = lineSet[2];
+      nextLineEndY = lineSet[3];
+    }
+
+    var intersection = this.finiteLinesIntersect(
+      currentLineStartX, currentLineStartY,
+      currentLineEndX, currentLineEndY,
+      nextLineStartX, nextLineStartY,
+      nextLineEndX, nextLineEndY,
+      true);
+
+    vertices[i * 2] = intersection[0];
+    vertices[i * 2 + 1] = intersection[1];
+  }
+
+  return vertices;
+};
+
+math.expandPolygon = function(points, pad) {
+
+  var expandedLineSet = new Array(points.length * 2);
+
+  var currentPointX, currentPointY, nextPointX, nextPointY;
+
+  for (var i = 0; i < points.length / 2; i++) {
+    currentPointX = points[i * 2];
+    currentPointY = points[i * 2 + 1];
+
+    if (i < points.length / 2 - 1) {
+      nextPointX = points[(i + 1) * 2];
+      nextPointY = points[(i + 1) * 2 + 1];
+    } else {
+      nextPointX = points[0];
+      nextPointY = points[1];
+    }
+
+    // Current line: [currentPointX, currentPointY] to [nextPointX, nextPointY]
+
+    // Assume CCW polygon winding
+
+    var offsetX = (nextPointY - currentPointY);
+    var offsetY = -(nextPointX - currentPointX);
+
+    // Normalize
+    var offsetLength = Math.sqrt(offsetX * offsetX + offsetY * offsetY);
+    var normalizedOffsetX = offsetX / offsetLength;
+    var normalizedOffsetY = offsetY / offsetLength;
+
+    expandedLineSet[i * 4] = currentPointX + normalizedOffsetX * pad;
+    expandedLineSet[i * 4 + 1] = currentPointY + normalizedOffsetY * pad;
+    expandedLineSet[i * 4 + 2] = nextPointX + normalizedOffsetX * pad;
+    expandedLineSet[i * 4 + 3] = nextPointY + normalizedOffsetY * pad;
+  }
+
+  return expandedLineSet;
+};
+
+math.intersectLineEllipse = function(
+  x, y, centerX, centerY, ellipseWradius, ellipseHradius) {
+
+  var dispX = centerX - x;
+  var dispY = centerY - y;
+
+  dispX /= ellipseWradius;
+  dispY /= ellipseHradius;
+
+  var len = Math.sqrt(dispX * dispX + dispY * dispY);
+
+  var newLength = len - 1;
+
+  if (newLength < 0) {
+    return [];
+  }
+
+  var lenProportion = newLength / len;
+
+  return [(centerX - x) * lenProportion + x, (centerY - y) * lenProportion + y];
+};
+
+// Returns intersections of increasing distance from line's start point
+math.intersectLineCircle = function(
+  x1, y1, x2, y2, centerX, centerY, radius) {
+
+  // Calculate d, direction vector of line
+  var d = [x2 - x1, y2 - y1]; // Direction vector of line
+  var c = [centerX, centerY]; // Center of circle
+  var f = [x1 - centerX, y1 - centerY];
+
+  var a = d[0] * d[0] + d[1] * d[1];
+  var b = 2 * (f[0] * d[0] + f[1] * d[1]);
+  var c = (f[0] * f[0] + f[1] * f[1]) - radius * radius ;
+
+  var discriminant = b*b-4*a*c;
+
+  if (discriminant < 0) {
+    return [];
+  }
+
+  var t1 = (-b + Math.sqrt(discriminant)) / (2 * a);
+  var t2 = (-b - Math.sqrt(discriminant)) / (2 * a);
+
+  var tMin = Math.min(t1, t2);
+  var tMax = Math.max(t1, t2);
+  var inRangeParams = [];
+
+  if (tMin >= 0 && tMin <= 1) {
+    inRangeParams.push(tMin);
+  }
+
+  if (tMax >= 0 && tMax <= 1) {
+    inRangeParams.push(tMax);
+  }
+
+  if (inRangeParams.length === 0) {
+    return [];
+  }
+
+  var nearIntersectionX = inRangeParams[0] * d[0] + x1;
+  var nearIntersectionY = inRangeParams[0] * d[1] + y1;
+
+  if (inRangeParams.length > 1) {
+
+    if (inRangeParams[0] == inRangeParams[1]) {
+      return [nearIntersectionX, nearIntersectionY];
+    } else {
+
+      var farIntersectionX = inRangeParams[1] * d[0] + x1;
+      var farIntersectionY = inRangeParams[1] * d[1] + y1;
+
+      return [nearIntersectionX, nearIntersectionY, farIntersectionX, farIntersectionY];
+    }
+
+  } else {
+    return [nearIntersectionX, nearIntersectionY];
+  }
+
+};
+
+math.findCircleNearPoint = function(centerX, centerY,
+  radius, farX, farY) {
+
+  var displacementX = farX - centerX;
+  var displacementY = farY - centerY;
+  var distance = Math.sqrt(displacementX * displacementX
+    + displacementY * displacementY);
+
+  var unitDisplacementX = displacementX / distance;
+  var unitDisplacementY = displacementY / distance;
+
+  return [centerX + unitDisplacementX * radius,
+    centerY + unitDisplacementY * radius];
+};
+
+math.findMaxSqDistanceToOrigin = function(points) {
+  var maxSqDistance = 0.000001;
+  var sqDistance;
+
+  for (var i = 0; i < points.length / 2; i++) {
+
+    sqDistance = points[i * 2] * points[i * 2]
+      + points[i * 2 + 1] * points[i * 2 + 1];
+
+    if (sqDistance > maxSqDistance) {
+      maxSqDistance = sqDistance;
+    }
+  }
+
+  return maxSqDistance;
+};
+
+math.finiteLinesIntersect = function(
+  x1, y1, x2, y2, x3, y3, x4, y4, infiniteLines) {
+
+  var ua_t = (x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3);
+  var ub_t = (x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3);
+  var u_b = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1);
+
+  if (u_b !== 0) {
+    var ua = ua_t / u_b;
+    var ub = ub_t / u_b;
+
+    if (0 <= ua && ua <= 1 && 0 <= ub && ub <= 1) {
+      return [x1 + ua * (x2 - x1), y1 + ua * (y2 - y1)];
+
+    } else {
+      if (!infiniteLines) {
+        return [];
+      } else {
+        return [x1 + ua * (x2 - x1), y1 + ua * (y2 - y1)];
+      }
+    }
+  } else {
+    if (ua_t === 0 || ub_t === 0) {
+
+      // Parallel, coincident lines. Check if overlap
+
+      // Check endpoint of second line
+      if ([x1, x2, x4].sort()[1] === x4) {
+        return [x4, y4];
+      }
+
+      // Check start point of second line
+      if ([x1, x2, x3].sort()[1] === x3) {
+        return [x3, y3];
+      }
+
+      // Endpoint of first line
+      if ([x3, x4, x2].sort()[1] === x2) {
+        return [x2, y2];
+      }
+
+      return [];
+    } else {
+
+      // Parallel, non-coincident
+      return [];
+    }
+  }
+};
+
+math.polygonIntersectLine = function(
+  x, y, basePoints, centerX, centerY, width, height, padding) {
+
+  var intersections = [];
+  var intersection;
+
+  var transformedPoints = new Array(basePoints.length);
+
+  for (var i = 0; i < transformedPoints.length / 2; i++) {
+    transformedPoints[i * 2] = basePoints[i * 2] * width + centerX;
+    transformedPoints[i * 2 + 1] = basePoints[i * 2 + 1] * height + centerY;
+  }
+
+  var points;
+
+  if (padding > 0) {
+    var expandedLineSet = math.expandPolygon(
+      transformedPoints,
+      -padding);
+
+    points = math.joinLines(expandedLineSet);
+  } else {
+    points = transformedPoints;
+  }
+  // var points = transformedPoints;
+
+  var currentX, currentY, nextX, nextY;
+
+  for (var i = 0; i < points.length / 2; i++) {
+
+    currentX = points[i * 2];
+    currentY = points[i * 2 + 1];
+
+    if (i < points.length / 2 - 1) {
+      nextX = points[(i + 1) * 2];
+      nextY = points[(i + 1) * 2 + 1];
+    } else {
+      nextX = points[0];
+      nextY = points[1];
+    }
+
+    intersection = this.finiteLinesIntersect(
+      x, y, centerX, centerY,
+      currentX, currentY,
+      nextX, nextY);
+
+    if (intersection.length !== 0) {
+      intersections.push(intersection[0], intersection[1]);
+    }
+  }
+
+  return intersections;
+};
+
+math.shortenIntersection = function(
+  intersection, offset, amount) {
+
+  var disp = [intersection[0] - offset[0], intersection[1] - offset[1]];
+
+  var length = Math.sqrt(disp[0] * disp[0] + disp[1] * disp[1]);
+
+  var lenRatio = (length - amount) / length;
+
+  if (lenRatio < 0) {
+    lenRatio = 0.00001;
+  }
+
+  return [offset[0] + lenRatio * disp[0], offset[1] + lenRatio * disp[1]];
+};
+
+math.generateUnitNgonPointsFitToSquare = function(sides, rotationRadians) {
+  var points = math.generateUnitNgonPoints(sides, rotationRadians);
+  points = math.fitPolygonToSquare(points);
+
+  return points;
+};
+
+math.fitPolygonToSquare = function(points){
+  var x, y;
+  var sides = points.length/2;
+  var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+  for (var i = 0; i < sides; i++) {
+    x = points[2 * i];
+    y = points[2 * i + 1];
+
+    minX = Math.min( minX, x );
+    maxX = Math.max( maxX, x );
+    minY = Math.min( minY, y );
+    maxY = Math.max( maxY, y );
+  }
+
+  // stretch factors
+  var sx = 2 / (maxX - minX);
+  var sy = 2 / (maxY - minY);
+
+  for (var i = 0; i < sides; i++){
+    x = points[2 * i] = points[2 * i] * sx;
+    y = points[2 * i + 1] = points[2 * i + 1] * sy;
+
+    minX = Math.min( minX, x );
+    maxX = Math.max( maxX, x );
+    minY = Math.min( minY, y );
+    maxY = Math.max( maxY, y );
+  }
+
+  if( minY < -1 ){
+    for (var i = 0; i < sides; i++){
+      y = points[2 * i + 1] = points[2 * i + 1] + (-1 -minY);
+    }
+  }
+
+  return points;
+};
+
+math.generateUnitNgonPoints = function(sides, rotationRadians) {
+
+  var increment = 1.0 / sides * 2 * Math.PI;
+  var startAngle = sides % 2 === 0 ?
+    Math.PI / 2.0 + increment / 2.0 : Math.PI / 2.0;
+    //    console.log(nodeShapes['square']);
+  startAngle += rotationRadians;
+
+  var points = new Array(sides * 2);
+
+  var currentAngle, x, y;
+  for (var i = 0; i < sides; i++) {
+    currentAngle = i * increment + startAngle;
+
+    x = points[2 * i] = Math.cos(currentAngle);// * (1 + i/2);
+    y = points[2 * i + 1] = Math.sin(-currentAngle);//  * (1 + i/2);
+  }
+
+  return points;
+};
+
+math.getRoundRectangleRadius = function(width, height) {
+
+  // Set the default radius, unless half of width or height is smaller than default
+  return Math.min(width / 4, height / 4, 8);
+};
+
+module.exports = math;
+
+},{}],80:[function(_dereq_,module,exports){
+/*!
+Embeddable Minimum Strictly-Compliant Promises/A+ 1.1.1 Thenable
+Copyright (c) 2013-2014 Ralf S. Engelschall (http://engelschall.com)
+Licensed under The MIT License (http://opensource.org/licenses/MIT)
+*/
+
+'use strict';
+
+/*  promise states [Promises/A+ 2.1]  */
+var STATE_PENDING   = 0;                                         /*  [Promises/A+ 2.1.1]  */
+var STATE_FULFILLED = 1;                                         /*  [Promises/A+ 2.1.2]  */
+var STATE_REJECTED  = 2;                                         /*  [Promises/A+ 2.1.3]  */
+
+/*  promise object constructor  */
+var api = function (executor) {
+  /*  optionally support non-constructor/plain-function call  */
+  if (!(this instanceof api))
+    return new api(executor);
+
+  /*  initialize object  */
+  this.id           = "Thenable/1.0.7";
+  this.state        = STATE_PENDING; /*  initial state  */
+  this.fulfillValue = undefined;     /*  initial value  */     /*  [Promises/A+ 1.3, 2.1.2.2]  */
+  this.rejectReason = undefined;     /*  initial reason */     /*  [Promises/A+ 1.5, 2.1.3.2]  */
+  this.onFulfilled  = [];            /*  initial handlers  */
+  this.onRejected   = [];            /*  initial handlers  */
+
+  /*  provide optional information-hiding proxy  */
+  this.proxy = {
+    then: this.then.bind(this)
+  };
+
+  /*  support optional executor function  */
+  if (typeof executor === "function")
+    executor.call(this, this.fulfill.bind(this), this.reject.bind(this));
+};
+
+/*  promise API methods  */
+api.prototype = {
+  /*  promise resolving methods  */
+  fulfill: function (value) { return deliver(this, STATE_FULFILLED, "fulfillValue", value); },
+  reject:  function (value) { return deliver(this, STATE_REJECTED,  "rejectReason", value); },
+
+  /*  "The then Method" [Promises/A+ 1.1, 1.2, 2.2]  */
+  then: function (onFulfilled, onRejected) {
+    var curr = this;
+    var next = new api();                                    /*  [Promises/A+ 2.2.7]  */
+    curr.onFulfilled.push(
+      resolver(onFulfilled, next, "fulfill"));             /*  [Promises/A+ 2.2.2/2.2.6]  */
+    curr.onRejected.push(
+      resolver(onRejected,  next, "reject" ));             /*  [Promises/A+ 2.2.3/2.2.6]  */
+    execute(curr);
+    return next.proxy;                                       /*  [Promises/A+ 2.2.7, 3.3]  */
+  }
+};
+
+/*  deliver an action  */
+var deliver = function (curr, state, name, value) {
+  if (curr.state === STATE_PENDING) {
+    curr.state = state;                                      /*  [Promises/A+ 2.1.2.1, 2.1.3.1]  */
+    curr[name] = value;                                      /*  [Promises/A+ 2.1.2.2, 2.1.3.2]  */
+    execute(curr);
+  }
+  return curr;
+};
+
+/*  execute all handlers  */
+var execute = function (curr) {
+  if (curr.state === STATE_FULFILLED)
+    execute_handlers(curr, "onFulfilled", curr.fulfillValue);
+  else if (curr.state === STATE_REJECTED)
+    execute_handlers(curr, "onRejected",  curr.rejectReason);
+};
+
+/*  execute particular set of handlers  */
+var execute_handlers = function (curr, name, value) {
+  /* global setImmediate: true */
+  /* global setTimeout: true */
+
+  /*  short-circuit processing  */
+  if (curr[name].length === 0)
+    return;
+
+  /*  iterate over all handlers, exactly once  */
+  var handlers = curr[name];
+  curr[name] = [];                                             /*  [Promises/A+ 2.2.2.3, 2.2.3.3]  */
+  var func = function () {
+    for (var i = 0; i < handlers.length; i++)
+      handlers[i](value);                                  /*  [Promises/A+ 2.2.5]  */
+  };
+
+  /*  execute procedure asynchronously  */                     /*  [Promises/A+ 2.2.4, 3.1]  */
+  if (typeof setImmediate === "function")
+    setImmediate(func);
+  else
+    setTimeout(func, 0);
+};
+
+/*  generate a resolver function  */
+var resolver = function (cb, next, method) {
+  return function (value) {
+    if (typeof cb !== "function")                            /*  [Promises/A+ 2.2.1, 2.2.7.3, 2.2.7.4]  */
+      next[method].call(next, value);                      /*  [Promises/A+ 2.2.7.3, 2.2.7.4]  */
+    else {
+      var result;
+      try { result = cb(value); }                          /*  [Promises/A+ 2.2.2.1, 2.2.3.1, 2.2.5, 3.2]  */
+      catch (e) {
+        next.reject(e);                                  /*  [Promises/A+ 2.2.7.2]  */
+        return;
+      }
+      resolve(next, result);                               /*  [Promises/A+ 2.2.7.1]  */
+    }
+  };
+};
+
+/*  "Promise Resolution Procedure"  */                           /*  [Promises/A+ 2.3]  */
+var resolve = function (promise, x) {
+  /*  sanity check arguments  */                               /*  [Promises/A+ 2.3.1]  */
+  if (promise === x || promise.proxy === x) {
+    promise.reject(new TypeError("cannot resolve promise with itself"));
+    return;
+  }
+
+  /*  surgically check for a "then" method
+    (mainly to just call the "getter" of "then" only once)  */
+  var then;
+  if ((typeof x === "object" && x !== null) || typeof x === "function") {
+    try { then = x.then; }                                   /*  [Promises/A+ 2.3.3.1, 3.5]  */
+    catch (e) {
+      promise.reject(e);                                   /*  [Promises/A+ 2.3.3.2]  */
+      return;
+    }
+  }
+
+  /*  handle own Thenables    [Promises/A+ 2.3.2]
+    and similar "thenables" [Promises/A+ 2.3.3]  */
+  if (typeof then === "function") {
+    var resolved = false;
+    try {
+      /*  call retrieved "then" method */                  /*  [Promises/A+ 2.3.3.3]  */
+      then.call(x,
+        /*  resolvePromise  */                           /*  [Promises/A+ 2.3.3.3.1]  */
+        function (y) {
+          if (resolved) return; resolved = true;       /*  [Promises/A+ 2.3.3.3.3]  */
+          if (y === x)                                 /*  [Promises/A+ 3.6]  */
+            promise.reject(new TypeError("circular thenable chain"));
+          else
+            resolve(promise, y);
+        },
+
+        /*  rejectPromise  */                            /*  [Promises/A+ 2.3.3.3.2]  */
+        function (r) {
+          if (resolved) return; resolved = true;       /*  [Promises/A+ 2.3.3.3.3]  */
+          promise.reject(r);
+        }
+      );
+    }
+    catch (e) {
+      if (!resolved)                                       /*  [Promises/A+ 2.3.3.3.3]  */
+        promise.reject(e);                               /*  [Promises/A+ 2.3.3.3.4]  */
+    }
+    return;
+  }
+
+  /*  handle other values  */
+  promise.fulfill(x);                                          /*  [Promises/A+ 2.3.4, 2.3.3.4]  */
+};
+
+// use native promises where possible
+var Promise = typeof Promise === 'undefined' ? api : Promise;
+
+// so we always have Promise.all()
+Promise.all = Promise.all || function( ps ){
+  return new Promise(function( resolveAll, rejectAll ){
+    var vals = new Array( ps.length );
+    var doneCount = 0;
+
+    var fulfill = function( i, val ){
+      vals[i] = val;
+      doneCount++;
+
+      if( doneCount === ps.length ){
+        resolveAll( vals );
+      }
+    };
+
+    for( var i = 0; i < ps.length; i++ ){
+      (function( i ){
+        var p = ps[i];
+        var isPromise = p.then != null;
+
+        if( isPromise ){
+          p.then(function( val ){
+            fulfill( i, val );
+          }, function( err ){
+            rejectAll( err );
+          });
+        } else {
+          var val = p;
+          fulfill( i, val );
+        }
+      })( i );
+    }
+
+  });
+};
+
+module.exports = Promise;
+
+},{}],81:[function(_dereq_,module,exports){
+'use strict';
+
+var is = _dereq_('./is');
+var util = _dereq_('./util');
+
+var Selector = function( onlyThisGroup, selector ){
+
+  if( !(this instanceof Selector) ){
+    return new Selector(onlyThisGroup, selector);
+  }
+
+  if( selector === undefined && onlyThisGroup !== undefined ){
+    selector = onlyThisGroup;
+    onlyThisGroup = undefined;
+  }
+
+  var self = this;
+
+  self._private = {
+    selectorText: null,
+    invalid: true
+  };
+
+  if( !selector || ( is.string(selector) && selector.match(/^\s*$/) ) ){
+
+    if( onlyThisGroup == null ){
+      // ignore
+      self.length = 0;
+    } else {
+      self[0] = newQuery();
+      self[0].group = onlyThisGroup;
+      self.length = 1;
+    }
+
+  } else if( is.elementOrCollection( selector ) ){
+    var collection = selector.collection();
+
+    self[0] = newQuery();
+    self[0].collection = collection;
+    self.length = 1;
+
+  } else if( is.fn( selector ) ) {
+    self[0] = newQuery();
+    self[0].filter = selector;
+    self.length = 1;
+
+  } else if( is.string( selector ) ){
+
+    // the current subject in the query
+    var currentSubject = null;
+
+    // storage for parsed queries
+    var newQuery = function(){
+      return {
+        classes: [],
+        colonSelectors: [],
+        data: [],
+        group: null,
+        ids: [],
+        meta: [],
+
+        // fake selectors
+        collection: null, // a collection to match against
+        filter: null, // filter function
+
+        // these are defined in the upward direction rather than down (e.g. child)
+        // because we need to go up in Selector.filter()
+        parent: null, // parent query obj
+        ancestor: null, // ancestor query obj
+        subject: null, // defines subject in compound query (subject query obj; points to self if subject)
+
+        // use these only when subject has been defined
+        child: null,
+        descendant: null
+      };
+    };
+
+    // tokens in the query language
+    var tokens = {
+      metaChar: '[\\!\\"\\#\\$\\%\\&\\\'\\(\\)\\*\\+\\,\\.\\/\\:\\;\\<\\=\\>\\?\\@\\[\\]\\^\\`\\{\\|\\}\\~]', // chars we need to escape in var names, etc
+      comparatorOp: '=|\\!=|>|>=|<|<=|\\$=|\\^=|\\*=', // binary comparison op (used in data selectors)
+      boolOp: '\\?|\\!|\\^', // boolean (unary) operators (used in data selectors)
+      string: '"(?:\\\\"|[^"])+"' + '|' + "'(?:\\\\'|[^'])+'", // string literals (used in data selectors) -- doublequotes | singlequotes
+      number: util.regex.number, // number literal (used in data selectors) --- e.g. 0.1234, 1234, 12e123
+      meta: 'degree|indegree|outdegree', // allowed metadata fields (i.e. allowed functions to use from Collection)
+      separator: '\\s*,\\s*', // queries are separated by commas, e.g. edge[foo = 'bar'], node.someClass
+      descendant: '\\s+',
+      child: '\\s+>\\s+',
+      subject: '\\$'
+    };
+    tokens.variable = '(?:[\\w-]|(?:\\\\'+ tokens.metaChar +'))+'; // a variable name
+    tokens.value = tokens.string + '|' + tokens.number; // a value literal, either a string or number
+    tokens.className = tokens.variable; // a class name (follows variable conventions)
+    tokens.id = tokens.variable; // an element id (follows variable conventions)
+
+    // when a token like a variable has escaped meta characters, we need to clean the backslashes out
+    // so that values get compared properly in Selector.filter()
+    var cleanMetaChars = function(str){
+      return str.replace(new RegExp('\\\\(' + tokens.metaChar + ')', 'g'), function(match, $1, offset, original){
+        return $1;
+      });
+    };
+
+    // add @ variants to comparatorOp
+    var ops = tokens.comparatorOp.split('|');
+    for( var i = 0; i < ops.length; i++ ){
+      var op = ops[i];
+      tokens.comparatorOp += '|@' + op;
+    }
+
+    // add ! variants to comparatorOp
+    var ops = tokens.comparatorOp.split('|');
+    for( var i = 0; i < ops.length; i++ ){
+      var op = ops[i];
+
+      if( op.indexOf('!') >= 0 ){ continue; } // skip ops that explicitly contain !
+      if( op === '=' ){ continue; } // skip = b/c != is explicitly defined
+
+      tokens.comparatorOp += '|\\!' + op;
+    }
+
+    // NOTE: add new expression syntax here to have it recognised by the parser;
+    // - a query contains all adjacent (i.e. no separator in between) expressions;
+    // - the current query is stored in self[i] --- you can use the reference to `this` in the populate function;
+    // - you need to check the query objects in Selector.filter() for it actually filter properly, but that's pretty straight forward
+    // - when you add something here, also add to Selector.toString()
+    var exprs = [
+      {
+        name: 'group',
+        query: true,
+        regex: '(node|edge|\\*)',
+        populate: function( group ){
+          this.group = group == "*" ? group : group + 's';
+        }
+      },
+
+      {
+        name: 'state',
+        query: true,
+        // NB: if one colon selector is a substring of another from its start, place the longer one first
+        // e.g. :foobar|:foo
+        regex: '(:selected|:unselected|:locked|:unlocked|:visible|:hidden|:transparent|:grabbed|:free|:removed|:inside|:grabbable|:ungrabbable|:animated|:unanimated|:selectable|:unselectable|:orphan|:nonorphan|:parent|:child|:loop|:simple|:active|:inactive|:touch|:backgrounding|:nonbackgrounding)',
+        populate: function( state ){
+          this.colonSelectors.push( state );
+        }
+      },
+
+      {
+        name: 'id',
+        query: true,
+        regex: '\\#('+ tokens.id +')',
+        populate: function( id ){
+          this.ids.push( cleanMetaChars(id) );
+        }
+      },
+
+      {
+        name: 'className',
+        query: true,
+        regex: '\\.('+ tokens.className +')',
+        populate: function( className ){
+          this.classes.push( cleanMetaChars(className) );
+        }
+      },
+
+      {
+        name: 'dataExists',
+        query: true,
+        regex: '\\[\\s*('+ tokens.variable +')\\s*\\]',
+        populate: function( variable ){
+          this.data.push({
+            field: cleanMetaChars(variable)
+          });
+        }
+      },
+
+      {
+        name: 'dataCompare',
+        query: true,
+        regex: '\\[\\s*('+ tokens.variable +')\\s*('+ tokens.comparatorOp +')\\s*('+ tokens.value +')\\s*\\]',
+        populate: function( variable, comparatorOp, value ){
+          var valueIsString = new RegExp('^' + tokens.string + '$').exec(value) != null;
+
+          if( valueIsString ){
+            value = value.substring(1, value.length - 1);
+          } else {
+            value = parseFloat(value);
+          }
+
+          this.data.push({
+            field: cleanMetaChars(variable),
+            operator: comparatorOp,
+            value: value
+          });
+        }
+      },
+
+      {
+        name: 'dataBool',
+        query: true,
+        regex: '\\[\\s*('+ tokens.boolOp +')\\s*('+ tokens.variable +')\\s*\\]',
+        populate: function( boolOp, variable ){
+          this.data.push({
+            field: cleanMetaChars(variable),
+            operator: boolOp
+          });
+        }
+      },
+
+      {
+        name: 'metaCompare',
+        query: true,
+        regex: '\\[\\[\\s*('+ tokens.meta +')\\s*('+ tokens.comparatorOp +')\\s*('+ tokens.number +')\\s*\\]\\]',
+        populate: function( meta, comparatorOp, number ){
+          this.meta.push({
+            field: cleanMetaChars(meta),
+            operator: comparatorOp,
+            value: parseFloat(number)
+          });
+        }
+      },
+
+      {
+        name: 'nextQuery',
+        separator: true,
+        regex: tokens.separator,
+        populate: function(){
+          // go on to next query
+          self[++i] = newQuery();
+          currentSubject = null;
+        }
+      },
+
+      {
+        name: 'child',
+        separator: true,
+        regex: tokens.child,
+        populate: function(){
+          // this query is the parent of the following query
+          var childQuery = newQuery();
+          childQuery.parent = this;
+          childQuery.subject = currentSubject;
+
+          // we're now populating the child query with expressions that follow
+          self[i] = childQuery;
+        }
+      },
+
+      {
+        name: 'descendant',
+        separator: true,
+        regex: tokens.descendant,
+        populate: function(){
+          // this query is the ancestor of the following query
+          var descendantQuery = newQuery();
+          descendantQuery.ancestor = this;
+          descendantQuery.subject = currentSubject;
+
+          // we're now populating the descendant query with expressions that follow
+          self[i] = descendantQuery;
+        }
+      },
+
+      {
+        name: 'subject',
+        modifier: true,
+        regex: tokens.subject,
+        populate: function(){
+          if( currentSubject != null && this.subject != this ){
+            util.error('Redefinition of subject in selector `' + selector + '`');
+            return false;
+          }
+
+          currentSubject = this;
+          this.subject = this;
+        }
+
+      }
+    ];
+
+    self._private.selectorText = selector;
+    var remaining = selector;
+    var i = 0;
+
+    // of all the expressions, find the first match in the remaining text
+    var consumeExpr = function( expectation ){
+      var expr;
+      var match;
+      var name;
+
+      for( var j = 0; j < exprs.length; j++ ){
+        var e = exprs[j];
+        var n = e.name;
+
+        // ignore this expression if it doesn't meet the expectation function
+        if( is.fn( expectation ) && !expectation(n, e) ){ continue; }
+
+        var m = remaining.match(new RegExp( '^' + e.regex ));
+
+        if( m != null ){
+          match = m;
+          expr = e;
+          name = n;
+
+          var consumed = m[0];
+          remaining = remaining.substring( consumed.length );
+
+          break; // we've consumed one expr, so we can return now
+        }
+      }
+
+      return {
+        expr: expr,
+        match: match,
+        name: name
+      };
+    };
+
+    // consume all leading whitespace
+    var consumeWhitespace = function(){
+      var match = remaining.match(/^\s+/);
+
+      if( match ){
+        var consumed = match[0];
+        remaining = remaining.substring( consumed.length );
+      }
+    };
+
+    self[0] = newQuery(); // get started
+
+    consumeWhitespace(); // get rid of leading whitespace
+    for(;;){
+      var check = consumeExpr();
+
+      if( check.expr == null ){
+        util.error('The selector `'+ selector +'`is invalid');
+        return;
+      } else {
+        var args = [];
+        for(var j = 1; j < check.match.length; j++){
+          args.push( check.match[j] );
+        }
+
+        // let the token populate the selector object (i.e. in self[i])
+        var ret = check.expr.populate.apply( self[i], args );
+
+        if( ret === false ){ return; } // exit if population failed
+      }
+
+      // we're done when there's nothing left to parse
+      if( remaining.match(/^\s*$/) ){
+        break;
+      }
+    }
+
+    self.length = i + 1;
+
+    // adjust references for subject
+    for(var j = 0; j < self.length; j++){
+      var query = self[j];
+
+      if( query.subject != null ){
+        // go up the tree until we reach the subject
+        for(;;){
+          if( query.subject == query ){ break; } // done if subject is self
+
+          if( query.parent != null ){ // swap parent/child reference
+            var parent = query.parent;
+            var child = query;
+
+            child.parent = null;
+            parent.child = child;
+
+            query = parent; // go up the tree
+          } else if( query.ancestor != null ){ // swap ancestor/descendant
+            var ancestor = query.ancestor;
+            var descendant = query;
+
+            descendant.ancestor = null;
+            ancestor.descendant = descendant;
+
+            query = ancestor; // go up the tree
+          } else {
+            util.error('When adjusting references for the selector `'+ query +'`, neither parent nor ancestor was found');
+            break;
+          }
+        } // for
+
+        self[j] = query.subject; // subject should be the root query
+      } // if
+    } // for
+
+    // make sure for each query that the subject group matches the implicit group if any
+    if( onlyThisGroup != null ){
+      for(var j = 0; j < self.length; j++){
+        if( self[j].group != null && self[j].group != onlyThisGroup ){
+          util.error('Group `'+ self[j].group +'` conflicts with implicit group `'+ onlyThisGroup +'` in selector `'+ selector +'`');
+          return;
+        }
+
+        self[j].group = onlyThisGroup; // set to implicit group
+      }
+    }
+
+  } else {
+    util.error('A selector must be created from a string; found ' + selector);
+    return;
+  }
+
+  self._private.invalid = false;
+
+};
+
+var selfn = Selector.prototype;
+
+selfn.size = function(){
+  return this.length;
+};
+
+selfn.eq = function(i){
+  return this[i];
+};
+
+var queryMatches = function(query, element){
+  // check group
+  if( query.group != null && query.group != '*' && query.group != element._private.group ){
+    return false;
+  }
+
+  var cy = element.cy();
+
+  // check colon selectors
+  var allColonSelectorsMatch = true;
+  for(var k = 0; k < query.colonSelectors.length; k++){
+    var sel = query.colonSelectors[k];
+
+    switch(sel){
+    case ':selected':
+      allColonSelectorsMatch = element.selected();
+      break;
+    case ':unselected':
+      allColonSelectorsMatch = !element.selected();
+      break;
+    case ':selectable':
+      allColonSelectorsMatch = element.selectable();
+      break;
+    case ':unselectable':
+      allColonSelectorsMatch = !element.selectable();
+      break;
+    case ':locked':
+      allColonSelectorsMatch = element.locked();
+      break;
+    case ':unlocked':
+      allColonSelectorsMatch = !element.locked();
+      break;
+    case ':visible':
+      allColonSelectorsMatch = element.visible();
+      break;
+    case ':hidden':
+      allColonSelectorsMatch = !element.visible();
+      break;
+    case ':transparent':
+      allColonSelectorsMatch = element.transparent();
+      break;
+    case ':grabbed':
+      allColonSelectorsMatch = element.grabbed();
+      break;
+    case ':free':
+      allColonSelectorsMatch = !element.grabbed();
+      break;
+    case ':removed':
+      allColonSelectorsMatch = element.removed();
+      break;
+    case ':inside':
+      allColonSelectorsMatch = !element.removed();
+      break;
+    case ':grabbable':
+      allColonSelectorsMatch = element.grabbable();
+      break;
+    case ':ungrabbable':
+      allColonSelectorsMatch = !element.grabbable();
+      break;
+    case ':animated':
+      allColonSelectorsMatch = element.animated();
+      break;
+    case ':unanimated':
+      allColonSelectorsMatch = !element.animated();
+      break;
+    case ':parent':
+      allColonSelectorsMatch = element.isNode() && element.children().nonempty();
+      break;
+    case ':child':
+    case ':nonorphan':
+      allColonSelectorsMatch = element.isNode() && element.parent().nonempty();
+      break;
+    case ':orphan':
+      allColonSelectorsMatch = element.isNode() && element.parent().empty();
+      break;
+    case ':loop':
+      allColonSelectorsMatch = element.isEdge() && element.data('source') === element.data('target');
+      break;
+    case ':simple':
+      allColonSelectorsMatch = element.isEdge() && element.data('source') !== element.data('target');
+      break;
+    case ':active':
+      allColonSelectorsMatch = element.active();
+      break;
+    case ':inactive':
+      allColonSelectorsMatch = !element.active();
+      break;
+    case ':touch':
+      allColonSelectorsMatch = is.touch();
+      break;
+    case ':backgrounding':
+      allColonSelectorsMatch = element.backgrounding();
+      break;
+    case ':nonbackgrounding':
+      allColonSelectorsMatch = !element.backgrounding();
+      break;
+    }
+
+    if( !allColonSelectorsMatch ) break;
+  }
+  if( !allColonSelectorsMatch ) return false;
+
+  // check id
+  var allIdsMatch = true;
+  for(var k = 0; k < query.ids.length; k++){
+    var id = query.ids[k];
+    var actualId = element._private.data.id;
+
+    allIdsMatch = allIdsMatch && (id == actualId);
+
+    if( !allIdsMatch ) break;
+  }
+  if( !allIdsMatch ) return false;
+
+  // check classes
+  var allClassesMatch = true;
+  for(var k = 0; k < query.classes.length; k++){
+    var cls = query.classes[k];
+
+    allClassesMatch = allClassesMatch && element.hasClass(cls);
+
+    if( !allClassesMatch ) break;
+  }
+  if( !allClassesMatch ) return false;
+
+  // generic checking for data/metadata
+  var operandsMatch = function(params){
+    var allDataMatches = true;
+    for(var k = 0; k < query[params.name].length; k++){
+      var data = query[params.name][k];
+      var operator = data.operator;
+      var value = data.value;
+      var field = data.field;
+      var matches;
+
+      if( operator != null && value != null ){
+
+        var fieldVal = params.fieldValue(field);
+        var fieldStr = !is.string(fieldVal) && !is.number(fieldVal) ? '' : '' + fieldVal;
+        var valStr = '' + value;
+
+        var caseInsensitive = false;
+        if( operator.indexOf('@') >= 0 ){
+          fieldStr = fieldStr.toLowerCase();
+          valStr = valStr.toLowerCase();
+
+          operator = operator.replace('@', '');
+          caseInsensitive = true;
+        }
+
+        var notExpr = false;
+        var handledNotExpr = false;
+        if( operator.indexOf('!') >= 0 ){
+          operator = operator.replace('!', '');
+          notExpr = true;
+        }
+
+        // if we're doing a case insensitive comparison, then we're using a STRING comparison
+        // even if we're comparing numbers
+        if( caseInsensitive ){
+          value = valStr.toLowerCase();
+          fieldVal = fieldStr.toLowerCase();
+        }
+
+        switch(operator){
+        case '*=':
+          matches = fieldStr.search(valStr) >= 0;
+          break;
+        case '$=':
+          matches = new RegExp(valStr + '$').exec(fieldStr) != null;
+          break;
+        case '^=':
+          matches = new RegExp('^' + valStr).exec(fieldStr) != null;
+          break;
+        case '=':
+          matches = fieldVal === value;
+          break;
+        case '!=':
+          matches = fieldVal !== value;
+          break;
+        case '>':
+          matches = !notExpr ? fieldVal > value : fieldVal <= value;
+          handledNotExpr = true;
+          break;
+        case '>=':
+          matches = !notExpr ? fieldVal >= value : fieldVal < value;
+          handledNotExpr = true;
+          break;
+        case '<':
+          matches = !notExpr ? fieldVal < value : fieldVal >= value;
+          handledNotExpr = true;
+          break;
+        case '<=':
+          matches = !notExpr ? fieldVal <= value : fieldVal > value;
+          handledNotExpr = true;
+          break;
+        default:
+          matches = false;
+          break;
+
+        }
+      } else if( operator != null ){
+        switch(operator){
+        case '?':
+          matches = params.fieldTruthy(field);
+          break;
+        case '!':
+          matches = !params.fieldTruthy(field);
+          break;
+        case '^':
+          matches = params.fieldUndefined(field);
+          break;
+        }
+      } else {
+        matches = !params.fieldUndefined(field);
+      }
+
+      if( notExpr && !handledNotExpr ){
+        matches = !matches;
+        handledNotExpr = true;
+      }
+
+      if( !matches ){
+        allDataMatches = false;
+        break;
+      }
+    } // for
+
+    return allDataMatches;
+  }; // operandsMatch
+
+  // check data matches
+  var allDataMatches = operandsMatch({
+    name: 'data',
+    fieldValue: function(field){
+      return element._private.data[field];
+    },
+    fieldRef: function(field){
+      return 'element._private.data.' + field;
+    },
+    fieldUndefined: function(field){
+      return element._private.data[field] === undefined;
+    },
+    fieldTruthy: function(field){
+      if( element._private.data[field] ){
+        return true;
+      }
+      return false;
+    }
+  });
+
+  if( !allDataMatches ){
+    return false;
+  }
+
+  // check metadata matches
+  var allMetaMatches = operandsMatch({
+    name: 'meta',
+    fieldValue: function(field){
+      return element[field]();
+    },
+    fieldRef: function(field){
+      return 'element.' + field + '()';
+    },
+    fieldUndefined: function(field){
+      return element[field]() == null;
+    },
+    fieldTruthy: function(field){
+      if( element[field]() ){
+        return true;
+      }
+      return false;
+    }
+  });
+
+  if( !allMetaMatches ){
+    return false;
+  }
+
+  // check collection
+  if( query.collection != null ){
+    var matchesAny = query.collection._private.ids[ element.id() ] != null;
+
+    if( !matchesAny ){
+      return false;
+    }
+  }
+
+  // check filter function
+  if( query.filter != null && element.collection().filter( query.filter ).size() === 0 ){
+    return false;
+  }
+
+
+  // check parent/child relations
+  var confirmRelations = function( query, elements ){
+    if( query != null ){
+      var matches = false;
+
+      if( !cy.hasCompoundNodes() ){
+        return false;
+      }
+
+      elements = elements(); // make elements functional so we save cycles if query == null
+
+      // query must match for at least one element (may be recursive)
+      for(var i = 0; i < elements.length; i++){
+        if( queryMatches( query, elements[i] ) ){
+          matches = true;
+          break;
+        }
+      }
+
+      return matches;
+    } else {
+      return true;
+    }
+  };
+
+  if (! confirmRelations(query.parent, function(){
+    return element.parent();
+  }) ){ return false; }
+
+  if (! confirmRelations(query.ancestor, function(){
+    return element.parents();
+  }) ){ return false; }
+
+  if (! confirmRelations(query.child, function(){
+    return element.children();
+  }) ){ return false; }
+
+  if (! confirmRelations(query.descendant, function(){
+    return element.descendants();
+  }) ){ return false; }
+
+  // we've reached the end, so we've matched everything for this query
+  return true;
+}; // queryMatches
+
+// filter an existing collection
+selfn.filter = function(collection){
+  var self = this;
+  var cy = collection.cy();
+
+  // don't bother trying if it's invalid
+  if( self._private.invalid ){
+    return cy.collection();
+  }
+
+  var selectorFunction = function(i, element){
+    for(var j = 0; j < self.length; j++){
+      var query = self[j];
+
+      if( queryMatches(query, element) ){
+        return true;
+      }
+    }
+
+    return false;
+  };
+
+  if( self._private.selectorText == null ){
+    selectorFunction = function(){ return true; };
+  }
+
+  var filteredCollection = collection.filter( selectorFunction );
+
+  return filteredCollection;
+}; // filter
+
+// does selector match a single element?
+selfn.matches = function(ele){
+  var self = this;
+
+  // don't bother trying if it's invalid
+  if( self._private.invalid ){
+    return false;
+  }
+
+  for(var j = 0; j < self.length; j++){
+    var query = self[j];
+
+    if( queryMatches(query, ele) ){
+      return true;
+    }
+  }
+
+  return false;
+}; // filter
+
+// ith query to string
+selfn.toString = selfn.selector = function(){
+
+  var str = '';
+
+  var clean = function(obj, isValue){
+    if( is.string(obj) ){
+      return isValue ? '"' + obj + '"' : obj;
+    }
+    return '';
+  };
+
+  var queryToString = function(query){
+    var str = '';
+
+    if( query.subject === query ){
+      str += '$';
+    }
+
+    var group = clean(query.group);
+    str += group.substring(0, group.length - 1);
+
+    for(var j = 0; j < query.data.length; j++){
+      var data = query.data[j];
+
+      if( data.value ){
+        str += '[' + data.field + clean(data.operator) + clean(data.value, true) + ']';
+      } else {
+        str += '[' + clean(data.operator) + data.field + ']';
+      }
+    }
+
+    for(var j = 0; j < query.meta.length; j++){
+      var meta = query.meta[j];
+      str += '[[' + meta.field + clean(meta.operator) + clean(meta.value, true) + ']]';
+    }
+
+    for(var j = 0; j < query.colonSelectors.length; j++){
+      var sel = query.colonSelectors[i];
+      str += sel;
+    }
+
+    for(var j = 0; j < query.ids.length; j++){
+      var sel = '#' + query.ids[i];
+      str += sel;
+    }
+
+    for(var j = 0; j < query.classes.length; j++){
+      var sel = '.' + query.classes[j];
+      str += sel;
+    }
+
+    if( query.parent != null ){
+      str = queryToString( query.parent ) + ' > ' + str;
+    }
+
+    if( query.ancestor != null ){
+      str = queryToString( query.ancestor ) + ' ' + str;
+    }
+
+    if( query.child != null ){
+      str += ' > ' + queryToString( query.child );
+    }
+
+    if( query.descendant != null ){
+      str += ' ' + queryToString( query.descendant );
+    }
+
+    return str;
+  };
+
+  for(var i = 0; i < this.length; i++){
+    var query = this[i];
+
+    str += queryToString( query );
+
+    if( this.length > 1 && i < this.length - 1 ){
+      str += ', ';
+    }
+  }
+
+  return str;
+};
+
+module.exports = Selector;
+
+},{"./is":77,"./util":94}],82:[function(_dereq_,module,exports){
+'use strict';
+
+var util = _dereq_('../util');
+var is = _dereq_('../is');
+
+var styfn = {};
+
+// (potentially expensive calculation)
+// apply the style to the element based on
+// - its bypass
+// - what selectors match it
+styfn.apply = function( eles ){
+  var self = this;
+
+  if( self._private.newStyle ){ // clear style caches
+    this._private.contextStyles = {};
+    this._private.propDiffs = {};
+  }
+
+  for( var ie = 0; ie < eles.length; ie++ ){
+    var ele = eles[ie];
+    var cxtMeta = self.getContextMeta( ele );
+    var cxtStyle = self.getContextStyle( cxtMeta );
+    var app = self.applyContextStyle( cxtMeta, cxtStyle, ele );
+
+    self.updateTransitions( ele, app.diffProps );
+    self.updateStyleHints( ele );
+
+  } // for elements
+
+  self._private.newStyle = false;
+};
+
+styfn.getPropertiesDiff = function( oldCxtKey, newCxtKey ){
+  var self = this;
+  var cache = self._private.propDiffs = self._private.propDiffs || {};
+  var dualCxtKey = oldCxtKey + '-' + newCxtKey;
+  var cachedVal = cache[dualCxtKey];
+
+  if( cachedVal ){
+    return cachedVal;
+  }
+
+  var diffProps = [];
+  var addedProp = {};
+
+  for( var i = 0; i < self.length; i++ ){
+    var cxt = self[i];
+    var oldHasCxt = oldCxtKey[i] === 't';
+    var newHasCxt = newCxtKey[i] === 't';
+    var cxtHasDiffed = oldHasCxt !== newHasCxt;
+    var cxtHasMappedProps = cxt.mappedProperties.length > 0;
+
+    if( cxtHasDiffed || cxtHasMappedProps ){
+      var props;
+
+      if( cxtHasDiffed && cxtHasMappedProps ){
+        props = cxt.properties; // suffices b/c mappedProperties is a subset of properties
+      } else if( cxtHasDiffed ){
+        props = cxt.properties; // need to check them all
+      } else if( cxtHasMappedProps ){
+        props = cxt.mappedProperties; // only need to check mapped
+      }
+
+      for( var j = 0; j < props.length; j++ ){
+        var prop = props[j];
+        var name = prop.name;
+
+        // if a later context overrides this property, then the fact that this context has switched/diffed doesn't matter
+        // (semi expensive check since it makes this function O(n^2) on context length, but worth it since overall result
+        // is cached)
+        var laterCxtOverrides = false;
+        for( var k = i + 1; k < self.length; k++ ){
+          var laterCxt = self[k];
+          var hasLaterCxt = newCxtKey[k] === 't';
+
+          if( !hasLaterCxt ){ continue; } // can't override unless the context is active
+
+          laterCxtOverrides = laterCxt.properties[ prop.name ] != null;
+
+          if( laterCxtOverrides ){ break; } // exit early as long as one later context overrides
+        }
+
+        if( !addedProp[name] && !laterCxtOverrides ){
+          addedProp[name] = true;
+          diffProps.push( name );
+        }
+      } // for props
+    } // if
+
+  } // for contexts
+
+  cache[ dualCxtKey ] = diffProps;
+  return diffProps;
+};
+
+styfn.getContextMeta = function( ele ){
+  var self = this;
+  var cxtKey = '';
+  var diffProps;
+  var prevKey = ele._private.styleCxtKey || '';
+
+  if( self._private.newStyle ){
+    prevKey = ''; // since we need to apply all style if a fresh stylesheet
+  }
+
+  // get the cxt key
+  for( var i = 0; i < self.length; i++ ){
+    var context = self[i];
+    var contextSelectorMatches = context.selector && context.selector.matches( ele ); // NB: context.selector may be null for 'core'
+
+    if( contextSelectorMatches ){
+      cxtKey += 't';
+    } else {
+      cxtKey += 'f';
+    }
+  } // for context
+
+  diffProps = self.getPropertiesDiff( prevKey, cxtKey );
+
+  ele._private.styleCxtKey = cxtKey;
+
+  return {
+    key: cxtKey,
+    diffPropNames: diffProps
+  };
+};
+
+// gets a computed ele style object based on matched contexts
+styfn.getContextStyle = function( cxtMeta ){
+  var cxtKey = cxtMeta.key;
+  var self = this;
+  var cxtStyles = this._private.contextStyles = this._private.contextStyles || {};
+
+  // if already computed style, returned cached copy
+  if( cxtStyles[cxtKey] ){ return cxtStyles[cxtKey]; }
+
+  var style = {
+    _private: {
+      key: cxtKey
+    }
+  };
+
+  for( var i = 0; i < self.length; i++ ){
+    var cxt = self[i];
+    var hasCxt = cxtKey[i] === 't';
+
+    if( !hasCxt ){ continue; }
+
+    for( var j = 0; j < cxt.properties.length; j++ ){
+      var prop = cxt.properties[j];
+      var styProp = style[ prop.name ] = prop;
+
+      styProp.context = cxt;
+    }
+  }
+
+  cxtStyles[cxtKey] = style;
+  return style;
+};
+
+styfn.applyContextStyle = function( cxtMeta, cxtStyle, ele ){
+  var self = this;
+  var diffProps = cxtMeta.diffPropNames;
+  var retDiffProps = {};
+
+  for( var i = 0; i < diffProps.length; i++ ){
+    var diffPropName = diffProps[i];
+    var cxtProp = cxtStyle[ diffPropName ];
+    var eleProp = ele._private.style[ diffPropName ];
+
+    // save cycles when the context prop doesn't need to be applied
+    if( !cxtProp || eleProp === cxtProp ){ continue; }
+
+    var retDiffProp = retDiffProps[ diffPropName ] = {
+      prev: eleProp
+    };
+
+    self.applyParsedProperty( ele, cxtProp );
+
+    retDiffProp.next = ele._private.style[ diffPropName ];
+
+    if( retDiffProp.next && retDiffProp.next.bypass ){
+      retDiffProp.next = retDiffProp.next.bypassed;
+    }
+  }
+
+  return {
+    diffProps: retDiffProps
+  };
+};
+
+styfn.updateStyleHints = function(ele){
+  var _p = ele._private;
+  var self = this;
+  var style = _p.style;
+
+  if( ele.removed() ){ return; }
+
+  // set whether has pie or not; for greater efficiency
+  var hasPie = false;
+  if( _p.group === 'nodes' && self._private.hasPie ){
+    for( var i = 1; i <= self.pieBackgroundN; i++ ){ // 1..N
+      var size = _p.style['pie-' + i + '-background-size'].value;
+
+      if( size > 0 ){
+        hasPie = true;
+        break;
+      }
+    }
+  }
+
+  _p.hasPie = hasPie;
+
+  var transform = style['text-transform'].strValue;
+  var content = style['label'].strValue;
+  var fStyle = style['font-style'].strValue;
+  var size = style['font-size'].pfValue + 'px';
+  var family = style['font-family'].strValue;
+  // var variant = style['font-variant'].strValue;
+  var weight = style['font-weight'].strValue;
+  var valign = style['text-valign'].strValue;
+  var halign = style['text-valign'].strValue;
+  var oWidth = style['text-outline-width'].pfValue;
+  var wrap = style['text-wrap'].strValue;
+  var wrapW = style['text-max-width'].pfValue;
+  _p.labelKey = fStyle +'$'+ size +'$'+ family +'$'+ weight +'$'+ content +'$'+ transform +'$'+ valign +'$'+ halign +'$'+ oWidth + '$' + wrap + '$' + wrapW;
+  _p.fontKey = fStyle +'$'+ weight +'$'+ size +'$'+ family;
+
+  var width = style['width'].pfValue;
+  var height = style['height'].pfValue;
+  var borderW = style['border-width'].pfValue;
+  _p.boundingBoxKey = width +'$'+ height +'$'+ borderW;
+
+  if( ele._private.group === 'edges' ){
+    var cpss = style['control-point-step-size'].pfValue;
+    var cpd = style['control-point-distances'] ? style['control-point-distances'].pfValue.join('_') : undefined;
+    var cpw = style['control-point-weights'].value.join('_');
+    var curve = style['curve-style'].strValue;
+    var sd = style['segment-distances'] ? style['segment-distances'].pfValue.join('_') : undefined;
+    var sw = style['segment-weights'].value.join('_');
+
+    _p.boundingBoxKey += '$'+ cpss +'$'+ cpd +'$'+ cpw +'$'+ sd +'$'+ sw +'$'+ curve;
+  }
+
+  _p.styleKey = Date.now();
+};
+
+// apply a property to the style (for internal use)
+// returns whether application was successful
+//
+// now, this function flattens the property, and here's how:
+//
+// for parsedProp:{ bypass: true, deleteBypass: true }
+// no property is generated, instead the bypass property in the
+// element's style is replaced by what's pointed to by the `bypassed`
+// field in the bypass property (i.e. restoring the property the
+// bypass was overriding)
+//
+// for parsedProp:{ mapped: truthy }
+// the generated flattenedProp:{ mapping: prop }
+//
+// for parsedProp:{ bypass: true }
+// the generated flattenedProp:{ bypassed: parsedProp }
+styfn.applyParsedProperty = function( ele, parsedProp ){
+  var self = this;
+  var prop = parsedProp;
+  var style = ele._private.style;
+  var fieldVal, flatProp;
+  var types = self.types;
+  var type = self.properties[ prop.name ].type;
+  var propIsBypass = prop.bypass;
+  var origProp = style[ prop.name ];
+  var origPropIsBypass = origProp && origProp.bypass;
+  var _p = ele._private;
+
+  // can't apply auto to width or height unless it's a parent node
+  if( (parsedProp.name === 'height' || parsedProp.name === 'width') && ele.isNode() ){
+    if( parsedProp.value === 'auto' && !ele.isParent() ){
+      return false;
+    } else if( parsedProp.value !== 'auto' && ele.isParent() ){
+      prop = parsedProp = this.parse( parsedProp.name, 'auto', propIsBypass );
+    }
+  }
+
+  // check if we need to delete the current bypass
+  if( propIsBypass && prop.deleteBypass ){ // then this property is just here to indicate we need to delete
+    var currentProp = style[ prop.name ];
+
+    // can only delete if the current prop is a bypass and it points to the property it was overriding
+    if( !currentProp ){
+      return true; // property is already not defined
+    } else if( currentProp.bypass && currentProp.bypassed ){ // then replace the bypass property with the original
+
+      // because the bypassed property was already applied (and therefore parsed), we can just replace it (no reapplying necessary)
+      style[ prop.name ] = currentProp.bypassed;
+      return true;
+
+    } else {
+      return false; // we're unsuccessful deleting the bypass
+    }
+  }
+
+  var printMappingErr = function(){
+    util.error('Do not assign mappings to elements without corresponding data (e.g. ele `'+ ele.id() +'` for property `'+ prop.name +'` with data field `'+ prop.field +'`); try a `['+ prop.field +']` selector to limit scope to elements with `'+ prop.field +'` defined');
+  };
+
+  // put the property in the style objects
+  switch( prop.mapped ){ // flatten the property if mapped
+  case types.mapData:
+  case types.mapLayoutData:
+  case types.mapScratch:
+
+    var isLayout = prop.mapped === types.mapLayoutData;
+    var isScratch = prop.mapped === types.mapScratch;
+
+    // flatten the field (e.g. data.foo.bar)
+    var fields = prop.field.split(".");
+    var fieldVal;
+
+    if( isScratch || isLayout ){
+      fieldVal = _p.scratch;
+    } else {
+      fieldVal = _p.data;
+    }
+
+    for( var i = 0; i < fields.length && fieldVal; i++ ){
+      var field = fields[i];
+      fieldVal = fieldVal[ field ];
+    }
+
+    var percent;
+    if( !is.number(fieldVal) ){ // then keep the mapping but assume 0% for now
+      percent = 0;
+    } else {
+      percent = (fieldVal - prop.fieldMin) / (prop.fieldMax - prop.fieldMin);
+    }
+
+    // make sure to bound percent value
+    if( percent < 0 ){
+      percent = 0;
+    } else if( percent > 1 ){
+      percent = 1;
+    }
+
+    if( type.color ){
+      var r1 = prop.valueMin[0];
+      var r2 = prop.valueMax[0];
+      var g1 = prop.valueMin[1];
+      var g2 = prop.valueMax[1];
+      var b1 = prop.valueMin[2];
+      var b2 = prop.valueMax[2];
+      var a1 = prop.valueMin[3] == null ? 1 : prop.valueMin[3];
+      var a2 = prop.valueMax[3] == null ? 1 : prop.valueMax[3];
+
+      var clr = [
+        Math.round( r1 + (r2 - r1)*percent ),
+        Math.round( g1 + (g2 - g1)*percent ),
+        Math.round( b1 + (b2 - b1)*percent ),
+        Math.round( a1 + (a2 - a1)*percent )
+      ];
+
+      flatProp = { // colours are simple, so just create the flat property instead of expensive string parsing
+        bypass: prop.bypass, // we're a bypass if the mapping property is a bypass
+        name: prop.name,
+        value: clr,
+        strValue: 'rgb(' + clr[0] + ', ' + clr[1] + ', ' + clr[2] + ')'
+      };
+
+    } else if( type.number ){
+      var calcValue = prop.valueMin + (prop.valueMax - prop.valueMin) * percent;
+      flatProp = this.parse( prop.name, calcValue, prop.bypass, true );
+
+    } else {
+      return false; // can only map to colours and numbers
+    }
+
+    if( !flatProp ){ // if we can't flatten the property, then use the origProp so we still keep the mapping itself
+      flatProp = this.parse( prop.name, origProp.strValue, prop.bypass, true );
+    }
+
+    if( !flatProp ){ printMappingErr(); }
+    flatProp.mapping = prop; // keep a reference to the mapping
+    prop = flatProp; // the flattened (mapped) property is the one we want
+
+    break;
+
+  // direct mapping
+  case types.data:
+  case types.layoutData:
+  case types.scratch:
+    var isLayout = prop.mapped === types.layoutData;
+    var isScratch = prop.mapped === types.scratch;
+
+    // flatten the field (e.g. data.foo.bar)
+    var fields = prop.field.split(".");
+    var fieldVal;
+
+    if( isScratch || isLayout ){
+      fieldVal = _p.scratch;
+    } else {
+      fieldVal = _p.data;
+    }
+
+    if( fieldVal ){ for( var i = 0; i < fields.length; i++ ){
+      var field = fields[i];
+      fieldVal = fieldVal[ field ];
+    } }
+
+    flatProp = this.parse( prop.name, fieldVal, prop.bypass, true );
+
+    if( !flatProp ){ // if we can't flatten the property, then use the origProp so we still keep the mapping itself
+      var flatPropVal = origProp ? origProp.strValue : '';
+
+      flatProp = this.parse( prop.name, flatPropVal, prop.bypass, true );
+    }
+
+    if( !flatProp ){ printMappingErr(); }
+    flatProp.mapping = prop; // keep a reference to the mapping
+    prop = flatProp; // the flattened (mapped) property is the one we want
+
+    break;
+
+  case types.fn:
+    var fn = prop.value;
+    var fnRetVal = fn( ele );
+
+    flatProp = this.parse( prop.name, fnRetVal, prop.bypass, true );
+    flatProp.mapping = prop; // keep a reference to the mapping
+    prop = flatProp; // the flattened (mapped) property is the one we want
+
+    break;
+
+  case undefined:
+    break; // just set the property
+
+  default:
+    return false; // not a valid mapping
+  }
+
+  // if the property is a bypass property, then link the resultant property to the original one
+  if( propIsBypass ){
+    if( origPropIsBypass ){ // then this bypass overrides the existing one
+      prop.bypassed = origProp.bypassed; // steal bypassed prop from old bypass
+    } else { // then link the orig prop to the new bypass
+      prop.bypassed = origProp;
+    }
+
+    style[ prop.name ] = prop; // and set
+
+  } else { // prop is not bypass
+    if( origPropIsBypass ){ // then keep the orig prop (since it's a bypass) and link to the new prop
+      origProp.bypassed = prop;
+    } else { // then just replace the old prop with the new one
+      style[ prop.name ] = prop;
+    }
+  }
+
+  return true;
+};
+
+// updates the visual style for all elements (useful for manual style modification after init)
+styfn.update = function(){
+  var cy = this._private.cy;
+  var eles = cy.elements();
+
+  eles.updateStyle();
+};
+
+// just update the functional properties (i.e. mappings) in the elements'
+// styles (less expensive than recalculation)
+styfn.updateMappers = function( eles ){
+  var self = this;
+
+  for( var i = 0; i < eles.length; i++ ){ // for each ele
+    var ele = eles[i];
+    var style = ele._private.style;
+
+    for( var j = 0; j < self.properties.length; j++ ){ // for each prop
+      var prop = self.properties[j];
+      var propInStyle = style[ prop.name ];
+
+      if( propInStyle && propInStyle.mapping ){
+        var mapping = propInStyle.mapping;
+        this.applyParsedProperty( ele, mapping ); // reapply the mapping property
+      }
+    }
+
+    this.updateStyleHints( ele );
+  }
+};
+
+// diffProps : { name => { prev, next } }
+styfn.updateTransitions = function( ele, diffProps, isBypass ){
+  var self = this;
+  var _p = ele._private;
+  var style = _p.style;
+  var props = style['transition-property'].value;
+  var duration = style['transition-duration'].pfValue;
+  var delay = style['transition-delay'].pfValue;
+  var css = {};
+
+  if( props.length > 0 && duration > 0 ){
+
+    // build up the style to animate towards
+    var anyPrev = false;
+    for( var i = 0; i < props.length; i++ ){
+      var prop = props[i];
+      var styProp = style[ prop ];
+      var diffProp = diffProps[ prop ];
+
+      if( !diffProp ){ continue; }
+
+      var prevProp = diffProp.prev;
+      var fromProp = prevProp;
+      var toProp = diffProp.next != null ? diffProp.next : styProp;
+      var diff = false;
+      var initVal;
+      var initDt = 0.000001; // delta time % value for initVal (allows animating out of init zero opacity)
+
+      if( !fromProp ){ continue; }
+
+      // consider px values
+      if( is.number( fromProp.pfValue ) && is.number( toProp.pfValue ) ){
+        diff = toProp.pfValue - fromProp.pfValue; // nonzero is truthy
+        initVal = fromProp.pfValue + initDt * diff;
+
+      // consider numerical values
+      } else if( is.number( fromProp.value ) && is.number( toProp.value ) ){
+        diff = toProp.value - fromProp.value; // nonzero is truthy
+        initVal = fromProp.value + initDt * diff;
+
+      // consider colour values
+      } else if( is.array( fromProp.value ) && is.array( toProp.value ) ){
+        diff = fromProp.value[0] !== toProp.value[0]
+          || fromProp.value[1] !== toProp.value[1]
+          || fromProp.value[2] !== toProp.value[2]
+        ;
+
+        initVal = fromProp.strValue;
+      }
+
+      // the previous value is good for an animation only if it's different
+      if( diff ){
+        css[ prop ] = toProp.strValue; // to val
+        this.applyBypass( ele, prop, initVal ); // from val
+        anyPrev = true;
+      }
+
+    } // end if props allow ani
+
+    // can't transition if there's nothing previous to transition from
+    if( !anyPrev ){ return; }
+
+    _p.transitioning = true;
+
+    ele.stop();
+
+    if( delay > 0 ){
+      ele.delay( delay );
+    }
+
+    ele.animate({
+      css: css
+    }, {
+      duration: duration,
+      easing: style['transition-timing-function'].value,
+      queue: false,
+      complete: function(){
+        if( !isBypass ){
+          self.removeBypasses( ele, props );
+        }
+
+        _p.transitioning = false;
+      }
+    });
+
+  } else if( _p.transitioning ){
+    ele.stop();
+
+    this.removeBypasses( ele, props );
+
+    _p.transitioning = false;
+  }
+};
+
+module.exports = styfn;
+
+},{"../is":77,"../util":94}],83:[function(_dereq_,module,exports){
+'use strict';
+
+var is = _dereq_('../is');
+var util = _dereq_('../util');
+
+var styfn = {};
+
+// bypasses are applied to an existing style on an element, and just tacked on temporarily
+// returns true iff application was successful for at least 1 specified property
+styfn.applyBypass = function( eles, name, value, updateTransitions ){
+  var self = this;
+  var props = [];
+  var isBypass = true;
+
+  // put all the properties (can specify one or many) in an array after parsing them
+  if( name === "*" || name === "**" ){ // apply to all property names
+
+    if( value !== undefined ){
+      for( var i = 0; i < self.properties.length; i++ ){
+        var prop = self.properties[i];
+        var name = prop.name;
+
+        var parsedProp = this.parse(name, value, true);
+
+        if( parsedProp ){
+          props.push( parsedProp );
+        }
+      }
+    }
+
+  } else if( is.string(name) ){ // then parse the single property
+    var parsedProp = this.parse(name, value, true);
+
+    if( parsedProp ){
+      props.push( parsedProp );
+    }
+  } else if( is.plainObject(name) ){ // then parse each property
+    var specifiedProps = name;
+    updateTransitions = value;
+
+    for( var i = 0; i < self.properties.length; i++ ){
+      var prop = self.properties[i];
+      var name = prop.name;
+      var value = specifiedProps[ name ];
+
+      if( value === undefined ){ // try camel case name too
+        value = specifiedProps[ util.dash2camel(name) ];
+      }
+
+      if( value !== undefined ){
+        var parsedProp = this.parse(name, value, true);
+
+        if( parsedProp ){
+          props.push( parsedProp );
+        }
+      }
+    }
+  } else { // can't do anything without well defined properties
+    return false;
+  }
+
+  // we've failed if there are no valid properties
+  if( props.length === 0 ){ return false; }
+
+  // now, apply the bypass properties on the elements
+  var ret = false; // return true if at least one succesful bypass applied
+  for( var i = 0; i < eles.length; i++ ){ // for each ele
+    var ele = eles[i];
+    var style = ele._private.style;
+    var diffProps = {};
+    var diffProp;
+
+    for( var j = 0; j < props.length; j++ ){ // for each prop
+      var prop = props[j];
+
+      if( updateTransitions ){
+        var prevProp = style[ prop.name ];
+        diffProp = diffProps[ prop.name ] = { prev: prevProp };
+      }
+
+      ret = this.applyParsedProperty( ele, prop ) || ret;
+
+      if( updateTransitions ){
+        diffProp.next = style[ prop.name ];
+      }
+
+    } // for props
+
+    if( ret ){
+      this.updateStyleHints( ele );
+    }
+
+    if( updateTransitions ){
+      this.updateTransitions( ele, diffProps, isBypass );
+    }
+  } // for eles
+
+  return ret;
+};
+
+// only useful in specific cases like animation
+styfn.overrideBypass = function( eles, name, value ){
+  name = util.camel2dash(name);
+
+  for( var i = 0; i < eles.length; i++ ){
+    var ele = eles[i];
+    var prop = ele._private.style[ name ];
+    var type = this.properties[ name ].type;
+    var isColor = type.color;
+    var isMulti = type.mutiple;
+
+    if( !prop.bypass ){ // need a bypass if one doesn't exist
+      this.applyBypass( ele, name, value );
+      continue;
+    }
+
+    prop.value = value;
+
+    if( prop.pfValue != null ){
+      prop.pfValue = value;
+    }
+
+    if( isColor ){
+      prop.strValue = 'rgb(' + value.join(',') + ')';
+    } else if( isMulti ){
+      prop.strValue = value.join(' ');
+    } else {
+      prop.strValue = '' + value;
+    }
+  }
+};
+
+styfn.removeAllBypasses = function( eles, updateTransitions ){
+  return this.removeBypasses( eles, this.propertyNames, updateTransitions );
+};
+
+styfn.removeBypasses = function( eles, props, updateTransitions ){
+  var isBypass = true;
+
+  for( var j = 0; j < eles.length; j++ ){
+    var ele = eles[j];
+    var diffProps = {};
+    var style = ele._private.style;
+
+    for( var i = 0; i < props.length; i++ ){
+      var name = props[i];
+      var prop = this.properties[ name ];
+      var value = ''; // empty => remove bypass
+      var parsedProp = this.parse(name, value, true);
+      var prevProp = style[ prop.name ];
+      var diffProp = diffProps[ prop.name ] = { prev: prevProp };
+
+      this.applyParsedProperty(ele, parsedProp);
+
+      diffProp.next = style[ prop.name ];
+    } // for props
+
+    this.updateStyleHints( ele );
+
+    if( updateTransitions ){
+      this.updateTransitions( ele, diffProps, isBypass );
+    }
+  } // for eles
+};
+
+module.exports = styfn;
+
+},{"../is":77,"../util":94}],84:[function(_dereq_,module,exports){
+'use strict';
+
+var window = _dereq_('../window');
+
+var styfn = {};
+
+// gets what an em size corresponds to in pixels relative to a dom element
+styfn.getEmSizeInPixels = function(){
+  var px = this.containerCss('font-size');
+
+  if( px != null ){
+    return parseFloat( px );
+  } else {
+    return 1; // for headless
+  }
+};
+
+// gets css property from the core container
+styfn.containerCss = function( propName ){
+  var cy = this._private.cy;
+  var domElement = cy.container();
+
+  if( window && domElement && window.getComputedStyle ){
+    return window.getComputedStyle(domElement).getPropertyValue( propName );
+  }
+};
+
+module.exports = styfn;
+
+},{"../window":100}],85:[function(_dereq_,module,exports){
+'use strict';
+
+var util = _dereq_('../util');
+var is = _dereq_('../is');
+
+var styfn = {};
+
+// gets the rendered style for an element
+styfn.getRenderedStyle = function( ele ){
+  return this.getRawStyle( ele, true );
+};
+
+// gets the raw style for an element
+styfn.getRawStyle = function( ele, isRenderedVal ){
+  var self = this;
+  var ele = ele[0]; // insure it's an element
+
+  if( ele ){
+    var rstyle = {};
+
+    for( var i = 0; i < self.properties.length; i++ ){
+      var prop = self.properties[i];
+      var val = self.getStylePropertyValue( ele, prop.name, isRenderedVal );
+
+      if( val ){
+        rstyle[ prop.name ] = val;
+        rstyle[ util.dash2camel(prop.name) ] = val;
+      }
+    }
+
+    return rstyle;
+  }
+};
+
+styfn.getStylePropertyValue = function( ele, propName, isRenderedVal ){
+  var self = this;
+  var ele = ele[0]; // insure it's an element
+
+  if( ele ){
+    var style = ele._private.style;
+    var prop = self.properties[ propName ];
+    var type = prop.type;
+    var styleProp = style[ prop.name ];
+    var zoom = ele.cy().zoom();
+
+    if( styleProp ){
+      var units = styleProp.units ? type.implicitUnits || 'px' : null;
+      var val = units ? [].concat( styleProp.pfValue ).map(function( pfValue ){
+        return ( pfValue * (isRenderedVal ? zoom : 1) ) + units;
+      }).join(' ') : styleProp.strValue;
+
+      return val;
+    }
+  }
+};
+
+// gets the value style for an element (useful for things like animations)
+styfn.getValueStyle = function( ele ){
+  var self = this;
+  var rstyle = {};
+  var style;
+  var isEle = is.element(ele);
+
+  if( isEle ){
+    style = ele._private.style;
+  } else {
+    style = ele; // just passed the style itself
+  }
+
+  if( style ){
+    for( var i = 0; i < self.properties.length; i++ ){
+      var prop = self.properties[i];
+      var styleProp = style[ prop.name ] || style[ util.dash2camel(prop.name) ];
+
+      if( styleProp !== undefined ){ // then make a prop of it
+        if( is.plainObject( styleProp ) ){
+          styleProp = this.parse( prop.name, styleProp.strValue );
+        } else {
+          styleProp = this.parse( prop.name, styleProp );
+        }
+      }
+
+      if( styleProp ){
+        rstyle[ prop.name ] = styleProp;
+        rstyle[ util.dash2camel(prop.name) ] = styleProp;
+      }
+    }
+  }
+
+  return rstyle;
+};
+
+styfn.getPropsList = function( propsObj ){
+  var self = this;
+  var rstyle = [];
+  var style = propsObj;
+  var props = self.properties;
+
+  if( style ){
+    for( var name in style ){
+      var val = style[name];
+      var prop = props[name] || props[ util.camel2dash(name) ];
+      var styleProp = this.parse( prop.name, val );
+
+      rstyle.push( styleProp );
+    }
+  }
+
+  return rstyle;
+};
+
+module.exports = styfn;
+
+},{"../is":77,"../util":94}],86:[function(_dereq_,module,exports){
+'use strict';
+
+var is = _dereq_('../is');
+var util = _dereq_('../util');
+var Selector = _dereq_('../selector');
+
+var Style = function( cy ){
+
+  if( !(this instanceof Style) ){
+    return new Style(cy);
+  }
+
+  if( !is.core(cy) ){
+    util.error('A style must have a core reference');
+    return;
+  }
+
+  this._private = {
+    cy: cy,
+    coreStyle: {},
+    newStyle: true
+  };
+
+  this.length = 0;
+
+  this.addDefaultStylesheet();
+};
+
+var styfn = Style.prototype;
+
+styfn.instanceString = function(){
+  return 'style';
+};
+
+// remove all contexts
+styfn.clear = function(){
+  for( var i = 0; i < this.length; i++ ){
+    this[i] = undefined;
+  }
+  this.length = 0;
+  this._private.newStyle = true;
+
+  return this; // chaining
+};
+
+styfn.resetToDefault = function(){
+  this.clear();
+  this.addDefaultStylesheet();
+
+  return this;
+};
+
+// builds a style object for the 'core' selector
+styfn.core = function(){
+  return this._private.coreStyle;
+};
+
+// create a new context from the specified selector string and switch to that context
+styfn.selector = function( selectorStr ){
+  // 'core' is a special case and does not need a selector
+  var selector = selectorStr === 'core' ? null : new Selector( selectorStr );
+
+  var i = this.length++; // new context means new index
+  this[i] = {
+    selector: selector,
+    properties: [],
+    mappedProperties: [],
+    index: i
+  };
+
+  return this; // chaining
+};
+
+// add one or many css rules to the current context
+styfn.css = function(){
+  var self = this;
+  var args = arguments;
+
+  switch( args.length ){
+  case 1:
+    var map = args[0];
+
+    for( var i = 0; i < self.properties.length; i++ ){
+      var prop = self.properties[i];
+      var mapVal = map[ prop.name ];
+
+      if( mapVal === undefined ){
+        mapVal = map[ util.dash2camel(prop.name) ];
+      }
+
+      if( mapVal !== undefined ){
+        this.cssRule( prop.name, mapVal );
+      }
+    }
+
+    break;
+
+  case 2:
+    this.cssRule( args[0], args[1] );
+    break;
+
+  default:
+    break; // do nothing if args are invalid
+  }
+
+  return this; // chaining
+};
+styfn.style = styfn.css;
+
+// add a single css rule to the current context
+styfn.cssRule = function( name, value ){
+  // name-value pair
+  var property = this.parse( name, value );
+
+  // add property to current context if valid
+  if( property ){
+    var i = this.length - 1;
+    this[i].properties.push( property );
+    this[i].properties[ property.name ] = property; // allow access by name as well
+
+    if( property.name.match(/pie-(\d+)-background-size/) && property.value ){
+      this._private.hasPie = true;
+    }
+
+    if( property.mapped ){
+      this[i].mappedProperties.push( property );
+    }
+
+    // add to core style if necessary
+    var currentSelectorIsCore = !this[i].selector;
+    if( currentSelectorIsCore ){
+      this._private.coreStyle[ property.name ] = property;
+    }
+  }
+
+  return this; // chaining
+};
+
+// static function
+Style.fromJson = function( cy, json ){
+  var style = new Style( cy );
+
+  style.fromJson( json );
+
+  return style;
+};
+
+Style.fromString = function( cy, string ){
+  return new Style( cy ).fromString( string );
+};
+
+[
+  _dereq_('./apply'),
+  _dereq_('./bypass'),
+  _dereq_('./container'),
+  _dereq_('./get-for-ele'),
+  _dereq_('./json'),
+  _dereq_('./string-sheet'),
+  _dereq_('./properties'),
+  _dereq_('./parse')
+].forEach(function( props ){
+  util.extend( styfn, props );
+});
+
+
+Style.types = styfn.types;
+Style.properties = styfn.properties;
+
+module.exports = Style;
+
+},{"../is":77,"../selector":81,"../util":94,"./apply":82,"./bypass":83,"./container":84,"./get-for-ele":85,"./json":87,"./parse":88,"./properties":89,"./string-sheet":90}],87:[function(_dereq_,module,exports){
+'use strict';
+
+var styfn = {};
+
+styfn.applyFromJson = function( json ){
+  var style = this;
+
+  for( var i = 0; i < json.length; i++ ){
+    var context = json[i];
+    var selector = context.selector;
+    var props = context.style || context.css;
+
+    style.selector( selector ); // apply selector
+
+    for( var name in props ){
+      var value = props[name];
+
+      style.css( name, value ); // apply property
+    }
+  }
+
+  return style;
+};
+
+// accessible cy.style() function
+styfn.fromJson = function( json ){
+  var style = this;
+
+  style.resetToDefault();
+  style.applyFromJson( json );
+
+  return style;
+};
+
+// get json from cy.style() api
+styfn.json = function(){
+  var json = [];
+
+  for( var i = this.defaultLength; i < this.length; i++ ){
+    var cxt = this[i];
+    var selector = cxt.selector;
+    var props = cxt.properties;
+    var css = {};
+
+    for( var j = 0; j < props.length; j++ ){
+      var prop = props[j];
+      css[ prop.name ] = prop.strValue;
+    }
+
+    json.push({
+      selector: !selector ? 'core' : selector.toString(),
+      style: css
+    });
+  }
+
+  return json;
+};
+
+module.exports = styfn;
+
+},{}],88:[function(_dereq_,module,exports){
+'use strict';
+
+var util = _dereq_('../util');
+var is = _dereq_('../is');
+
+var styfn = {};
+
+// a caching layer for property parsing
+styfn.parse = function( name, value, propIsBypass, propIsFlat ){
+  var argHash = [ name, value, propIsBypass, propIsFlat ].join('$');
+  var propCache = this.propCache = this.propCache || {};
+  var ret;
+  var impl = parseImpl.bind( this );
+
+  if( !(ret = propCache[argHash]) ){
+    ret = propCache[argHash] = impl( name, value, propIsBypass, propIsFlat );
+  }
+
+  // always need a copy since props are mutated later in their lifecycles
+  ret = util.copy( ret );
+
+  if( ret ){
+    ret.value = util.copy( ret.value ); // because it could be an array, e.g. colour
+  }
+
+  return ret;
+};
+
+// parse a property; return null on invalid; return parsed property otherwise
+// fields :
+// - name : the name of the property
+// - value : the parsed, native-typed value of the property
+// - strValue : a string value that represents the property value in valid css
+// - bypass : true iff the property is a bypass property
+var parseImpl = function( name, value, propIsBypass, propIsFlat ){
+  var self = this;
+
+  name = util.camel2dash( name ); // make sure the property name is in dash form (e.g. 'property-name' not 'propertyName')
+
+  var property = self.properties[ name ];
+  var passedValue = value;
+  var types = self.types;
+
+  if( !property ){ return null; } // return null on property of unknown name
+  if( value === undefined || value === null ){ return null; } // can't assign null
+
+  // the property may be an alias
+  if( property.alias ){
+    property = property.pointsTo;
+    name = property.name;
+  }
+
+  var valueIsString = is.string(value);
+  if( valueIsString ){ // trim the value to make parsing easier
+    value = value.trim();
+  }
+
+  var type = property.type;
+  if( !type ){ return null; } // no type, no luck
+
+  // check if bypass is null or empty string (i.e. indication to delete bypass property)
+  if( propIsBypass && (value === '' || value === null) ){
+    return {
+      name: name,
+      value: value,
+      bypass: true,
+      deleteBypass: true
+    };
+  }
+
+  // check if value is a function used as a mapper
+  if( is.fn(value) ){
+    return {
+      name: name,
+      value: value,
+      strValue: 'fn',
+      mapped: types.fn,
+      bypass: propIsBypass
+    };
+  }
+
+  // check if value is mapped
+  var data, mapData, layoutData, mapLayoutData, scratch, mapScratch;
+  if( !valueIsString || propIsFlat ){
+    // then don't bother to do the expensive regex checks
+
+  } else if(
+    ( data = new RegExp( types.data.regex ).exec( value ) ) ||
+    ( layoutData = new RegExp( types.layoutData.regex ).exec( value ) ) ||
+    ( scratch = new RegExp( types.scratch.regex ).exec( value ) )
+  ){
+    if( propIsBypass ){ return false; } // mappers not allowed in bypass
+
+    var mapped;
+    if( data ){
+      mapped = types.data;
+    } else if( layoutData ){
+      mapped = types.layoutData;
+    } else {
+      mapped = types.scratch;
+    }
+
+    data = data || layoutData || scratch;
+
+    return {
+      name: name,
+      value: data,
+      strValue: '' + value,
+      mapped: mapped,
+      field: data[1],
+      bypass: propIsBypass
+    };
+
+  } else if(
+    ( mapData = new RegExp( types.mapData.regex ).exec( value ) ) ||
+    ( mapLayoutData = new RegExp( types.mapLayoutData.regex ).exec( value ) ) ||
+    ( mapScratch = new RegExp( types.mapScratch.regex ).exec( value ) )
+  ){
+    if( propIsBypass ){ return false; } // mappers not allowed in bypass
+    if( type.multiple ){ return false; } // impossible to map to num
+
+    var mapped;
+    if( mapData ){
+      mapped = types.mapData;
+    } else if( mapLayoutData ){
+      mapped = types.mapLayoutData;
+    } else {
+      mapped = types.mapScratch;
+    }
+
+    mapData = mapData || mapLayoutData || mapScratch;
+
+    // we can map only if the type is a colour or a number
+    if( !(type.color || type.number) ){ return false; }
+
+    var valueMin = this.parse( name, mapData[4] ); // parse to validate
+    if( !valueMin || valueMin.mapped ){ return false; } // can't be invalid or mapped
+
+    var valueMax = this.parse( name, mapData[5] ); // parse to validate
+    if( !valueMax || valueMax.mapped ){ return false; } // can't be invalid or mapped
+
+    // check if valueMin and valueMax are the same
+    if( valueMin.value === valueMax.value ){
+      return false; // can't make much of a mapper without a range
+
+    } else if( type.color ){
+      var c1 = valueMin.value;
+      var c2 = valueMax.value;
+
+      var same = c1[0] === c2[0] // red
+        && c1[1] === c2[1] // green
+        && c1[2] === c2[2] // blue
+        && ( // optional alpha
+          c1[3] === c2[3] // same alpha outright
+          || (
+            (c1[3] == null || c1[3] === 1) // full opacity for colour 1?
+            &&
+            (c2[3] == null || c2[3] === 1) // full opacity for colour 2?
+          )
+        )
+      ;
+
+      if( same ){ return false; } // can't make a mapper without a range
+    }
+
+    return {
+      name: name,
+      value: mapData,
+      strValue: '' + value,
+      mapped: mapped,
+      field: mapData[1],
+      fieldMin: parseFloat( mapData[2] ), // min & max are numeric
+      fieldMax: parseFloat( mapData[3] ),
+      valueMin: valueMin.value,
+      valueMax: valueMax.value,
+      bypass: propIsBypass
+    };
+  }
+
+  if( type.multiple && propIsFlat !== 'multiple' ){
+    var vals;
+
+    if( valueIsString ){
+      vals = value.split(/\s+/);
+    } else if( is.array(value) ){
+      vals = value;
+    } else {
+      vals = [ value ];
+    }
+
+    if( type.evenMultiple && vals.length % 2 !== 0 ){ return null; }
+
+    var valArr = vals.map(function( v ){
+      var p = self.parse( name, v, propIsBypass, 'multiple' );
+
+      if( p.pfValue != null ){
+        return p.pfValue;
+      } else {
+        return p.value;
+      }
+    });
+
+    return {
+      name: name,
+      value: valArr,
+      pfValue: valArr,
+      strValue: valArr.join(' '),
+      bypass: propIsBypass,
+      units: type.number && !type.unitless ? type.implicitUnits || 'px' : undefined
+    };
+  }
+
+  // several types also allow enums
+  var checkEnums = function(){
+    for( var i = 0; i < type.enums.length; i++ ){
+      var en = type.enums[i];
+
+      if( en === value ){
+        return {
+          name: name,
+          value: value,
+          strValue: '' + value,
+          bypass: propIsBypass
+        };
+      }
+    }
+
+    return null;
+  };
+
+  // check the type and return the appropriate object
+  if( type.number ){
+    var units;
+    var implicitUnits = 'px'; // not set => px
+
+    if( type.units ){ // use specified units if set
+      units = type.units;
+    }
+
+    if( type.implicitUnits ){
+      implicitUnits = type.implicitUnits;
+    }
+
+    if( !type.unitless ){
+      if( valueIsString ){
+        var unitsRegex = 'px|em' + (type.allowPercent ? '|\\%' : '');
+        if( units ){ unitsRegex = units; } // only allow explicit units if so set
+        var match = value.match( '^(' + util.regex.number + ')(' + unitsRegex + ')?' + '$' );
+
+        if( match ){
+          value = match[1];
+          units = match[2] || implicitUnits;
+        }
+
+      } else if( !units || type.implicitUnits ) {
+        units = implicitUnits; // implicitly px if unspecified
+      }
+    }
+
+    value = parseFloat( value );
+
+    // if not a number and enums not allowed, then the value is invalid
+    if( isNaN(value) && type.enums === undefined ){
+      return null;
+    }
+
+    // check if this number type also accepts special keywords in place of numbers
+    // (i.e. `left`, `auto`, etc)
+    if( isNaN(value) && type.enums !== undefined ){
+      value = passedValue;
+
+      return checkEnums();
+    }
+
+    // check if value must be an integer
+    if( type.integer && !is.integer(value) ){
+      return null;
+    }
+
+    // check value is within range
+    if( (type.min !== undefined && value < type.min)
+    || (type.max !== undefined && value > type.max)
+    ){
+      return null;
+    }
+
+    var ret = {
+      name: name,
+      value: value,
+      strValue: '' + value + (units ? units : ''),
+      units: units,
+      bypass: propIsBypass
+    };
+
+    // normalise value in pixels
+    if( type.unitless || (units !== 'px' && units !== 'em') ){
+      ret.pfValue = value;
+    } else {
+      ret.pfValue = ( units === 'px' || !units ? (value) : (this.getEmSizeInPixels() * value) );
+    }
+
+    // normalise value in ms
+    if( units === 'ms' || units === 's' ){
+      ret.pfValue = units === 'ms' ? value : 1000 * value;
+    }
+
+    // normalise value in rad
+    if( units === 'deg' || units === 'rad' ){
+      ret.pfValue = units === 'rad' ? value : value * Math.PI/180;
+    }
+
+    return ret;
+
+  } else if( type.propList ) {
+
+    var props = [];
+    var propsStr = '' + value;
+
+    if( propsStr === 'none' ){
+      // leave empty
+
+    } else { // go over each prop
+
+      var propsSplit = propsStr.split(',');
+      for( var i = 0; i < propsSplit.length; i++ ){
+        var propName = propsSplit[i].trim();
+
+        if( self.properties[propName] ){
+          props.push( propName );
+        }
+      }
+
+      if( props.length === 0 ){ return null; }
+    }
+
+    return {
+      name: name,
+      value: props,
+      strValue: props.length === 0 ? 'none' : props.join(', '),
+      bypass: propIsBypass
+    };
+
+  } else if( type.color ){
+    var tuple = util.color2tuple( value );
+
+    if( !tuple ){ return null; }
+
+    return {
+      name: name,
+      value: tuple,
+      strValue: '' + value,
+      bypass: propIsBypass,
+      roundValue: true
+    };
+
+  } else if( type.regex || type.regexes ){
+
+    // first check enums
+    if( type.enums ){
+      var enumProp = checkEnums();
+
+      if( enumProp ){ return enumProp; }
+    }
+
+    var regexes = type.regexes ? type.regexes : [ type.regex ];
+
+    for( var i = 0; i < regexes.length; i++ ){
+      var regex = new RegExp( regexes[i] ); // make a regex from the type string
+      var m = regex.exec( value );
+
+      if( m ){ // regex matches
+        return {
+          name: name,
+          value: m,
+          strValue: '' + value,
+          bypass: propIsBypass
+        };
+
+      }
+    }
+
+    return null; // didn't match any
+
+  } else if( type.string ){
+    // just return
+    return {
+      name: name,
+      value: value,
+      strValue: '' + value,
+      bypass: propIsBypass
+    };
+
+  } else if( type.enums ){ // check enums last because it's a combo type in others
+    return checkEnums();
+
+  } else {
+    return null; // not a type we can handle
+  }
+
+};
+
+module.exports = styfn;
+
+},{"../is":77,"../util":94}],89:[function(_dereq_,module,exports){
+'use strict';
+
+var util = _dereq_('../util');
+
+var styfn = {};
+
+(function(){
+  var number = util.regex.number;
+  var rgba = util.regex.rgbaNoBackRefs;
+  var hsla = util.regex.hslaNoBackRefs;
+  var hex3 = util.regex.hex3;
+  var hex6 = util.regex.hex6;
+  var data = function( prefix ){ return '^' + prefix + '\\s*\\(\\s*([\\w\\.]+)\\s*\\)$'; };
+  var mapData = function( prefix ){
+    var mapArg = number + '|\\w+|' + rgba + '|' + hsla + '|' + hex3 + '|' + hex6;
+    return '^' + prefix + '\\s*\\(([\\w\\.]+)\\s*\\,\\s*(' + number + ')\\s*\\,\\s*(' + number + ')\\s*,\\s*(' + mapArg + ')\\s*\\,\\s*(' + mapArg + ')\\)$';
+  };
+
+  // each visual style property has a type and needs to be validated according to it
+  styfn.types = {
+    time: { number: true, min: 0, units: 's|ms', implicitUnits: 'ms' },
+    percent: { number: true, min: 0, max: 100, units: '%', implicitUnits: '%' },
+    zeroOneNumber: { number: true, min: 0, max: 1, unitless: true },
+    nOneOneNumber: { number: true, min: -1, max: 1, unitless: true },
+    nonNegativeInt: { number: true, min: 0, integer: true, unitless: true },
+    position: { enums: ['parent', 'origin'] },
+    nodeSize: { number: true, min: 0, enums: ['auto', 'label'] },
+    number: { number: true, unitless: true },
+    numbers: { number: true, unitless: true, multiple: true },
+    size: { number: true, min: 0 },
+    bidirectionalSize: { number: true }, // allows negative
+    bidirectionalSizes: { number: true, multiple: true }, // allows negative
+    bgSize: { number: true, min: 0, allowPercent: true },
+    bgWH: { number: true, min: 0, allowPercent: true, enums: ['auto'] },
+    bgPos: { number: true, allowPercent: true },
+    bgRepeat: { enums: ['repeat', 'repeat-x', 'repeat-y', 'no-repeat'] },
+    bgFit: { enums: ['none', 'contain', 'cover'] },
+    bgClip: { enums: ['none', 'node'] },
+    color: { color: true },
+    bool: { enums: ['yes', 'no'] },
+    lineStyle: { enums: ['solid', 'dotted', 'dashed'] },
+    borderStyle: { enums: ['solid', 'dotted', 'dashed', 'double'] },
+    curveStyle: { enums: ['bezier', 'unbundled-bezier', 'haystack', 'segments'] },
+    fontFamily: { regex: '^([\\w- \\"]+(?:\\s*,\\s*[\\w- \\"]+)*)$' },
+    fontVariant: { enums: ['small-caps', 'normal'] },
+    fontStyle: { enums: ['italic', 'normal', 'oblique'] },
+    fontWeight: { enums: ['normal', 'bold', 'bolder', 'lighter', '100', '200', '300', '400', '500', '600', '800', '900', 100, 200, 300, 400, 500, 600, 700, 800, 900] },
+    textDecoration: { enums: ['none', 'underline', 'overline', 'line-through'] },
+    textTransform: { enums: ['none', 'uppercase', 'lowercase'] },
+    textWrap: { enums: ['none', 'wrap'] },
+    textBackgroundShape: { enums: ['rectangle', 'roundrectangle']},
+    nodeShape: { enums: ['rectangle', 'roundrectangle', 'ellipse', 'triangle', 'square', 'pentagon', 'hexagon', 'heptagon', 'octagon', 'star', 'diamond', 'vee', 'rhomboid', 'polygon'] },
+    compoundIncludeLabels: { enums: ['include', 'exclude'] },
+    arrowShape: { enums: ['tee', 'triangle', 'triangle-tee', 'triangle-backcurve', 'half-triangle-overshot', 'vee', 'square', 'circle', 'diamond', 'none'] },
+    arrowFill: { enums: ['filled', 'hollow'] },
+    display: { enums: ['element', 'none'] },
+    visibility: { enums: ['hidden', 'visible'] },
+    valign: { enums: ['top', 'center', 'bottom'] },
+    halign: { enums: ['left', 'center', 'right'] },
+    text: { string: true },
+    data: { mapping: true, regex: data('data') },
+    layoutData: { mapping: true, regex: data('layoutData') },
+    scratch: { mapping: true, regex: data('scratch') },
+    mapData: { mapping: true, regex: mapData('mapData') },
+    mapLayoutData: { mapping: true, regex: mapData('mapLayoutData') },
+    mapScratch: { mapping: true, regex: mapData('mapScratch') },
+    fn: { mapping: true, fn: true },
+    url: { regex: '^url\\s*\\(\\s*([^\\s]+)\\s*\\s*\\)|none|(.+)$' },
+    propList: { propList: true },
+    angle: { number: true, units: 'deg|rad', implicitUnits: 'rad' },
+    textRotation: { enums: ['none', 'autorotate'] },
+    polygonPointList: { number: true, multiple: true, evenMultiple: true, min: -1, max: 1, unitless: true },
+    easing: {
+      regexes: [
+        '^(spring)\\s*\\(\\s*(' + number + ')\\s*,\\s*(' + number + ')\\s*\\)$',
+        '^(cubic-bezier)\\s*\\(\\s*(' + number + ')\\s*,\\s*(' + number + ')\\s*,\\s*(' + number + ')\\s*,\\s*(' + number + ')\\s*\\)$'
+      ],
+      enums: [
+        'linear',
+        'ease', 'ease-in', 'ease-out', 'ease-in-out',
+        'ease-in-sine', 'ease-out-sine', 'ease-in-out-sine',
+        'ease-in-quad', 'ease-out-quad', 'ease-in-out-quad',
+        'ease-in-cubic', 'ease-out-cubic', 'ease-in-out-cubic',
+        'ease-in-quart', 'ease-out-quart', 'ease-in-out-quart',
+        'ease-in-quint', 'ease-out-quint', 'ease-in-out-quint',
+        'ease-in-expo', 'ease-out-expo', 'ease-in-out-expo',
+        'ease-in-circ', 'ease-out-circ', 'ease-in-out-circ'
+      ]
+    }
+  };
+
+  // define visual style properties
+  var t = styfn.types;
+  var props = styfn.properties = [
+    // labels
+    { name: 'text-valign', type: t.valign },
+    { name: 'text-halign', type: t.halign },
+    { name: 'color', type: t.color },
+    { name: 'label', type: t.text },
+    { name: 'text-outline-color', type: t.color },
+    { name: 'text-outline-width', type: t.size },
+    { name: 'text-outline-opacity', type: t.zeroOneNumber },
+    { name: 'text-opacity', type: t.zeroOneNumber },
+    { name: 'text-background-color', type: t.color },
+    { name: 'text-background-opacity', type: t.zeroOneNumber },
+    { name: 'text-border-opacity', type: t.zeroOneNumber },
+    { name: 'text-border-color', type: t.color },
+    { name: 'text-border-width', type: t.size },
+    { name: 'text-border-style', type: t.borderStyle },
+    { name: 'text-background-shape', type: t.textBackgroundShape},
+    // { name: 'text-decoration', type: t.textDecoration }, // not supported in canvas
+    { name: 'text-transform', type: t.textTransform },
+    { name: 'text-wrap', type: t.textWrap },
+    { name: 'text-max-width', type: t.size },
+    { name: 'text-events', type: t.bool },
+
+    // { name: 'text-rotation', type: t.angle }, // TODO disabled b/c rotation breaks bounding boxes
+    { name: 'font-family', type: t.fontFamily },
+    { name: 'font-style', type: t.fontStyle },
+    // { name: 'font-variant', type: t.fontVariant }, // not useful
+    { name: 'font-weight', type: t.fontWeight },
+    { name: 'font-size', type: t.size },
+    { name: 'min-zoomed-font-size', type: t.size },
+    { name: 'edge-text-rotation', type: t.textRotation },
+
+    // behaviour
+    { name: 'events', type: t.bool },
+
+    // visibility
+    { name: 'display', type: t.display },
+    { name: 'visibility', type: t.visibility },
+    { name: 'opacity', type: t.zeroOneNumber },
+    { name: 'z-index', type: t.nonNegativeInt },
+
+    // overlays
+    { name: 'overlay-padding', type: t.size },
+    { name: 'overlay-color', type: t.color },
+    { name: 'overlay-opacity', type: t.zeroOneNumber },
+
+    // shadows
+    { name: 'shadow-blur', type: t.size },
+    { name: 'shadow-color', type: t.color },
+    { name: 'shadow-opacity', type: t.zeroOneNumber },
+    { name: 'shadow-offset-x', type: t.bidirectionalSize },
+    { name: 'shadow-offset-y', type: t.bidirectionalSize },
+
+    // label shadows
+    { name: 'text-shadow-blur', type: t.size },
+    { name: 'text-shadow-color', type: t.color },
+    { name: 'text-shadow-opacity', type: t.zeroOneNumber },
+    { name: 'text-shadow-offset-x', type: t.bidirectionalSize },
+    { name: 'text-shadow-offset-y', type: t.bidirectionalSize },
+
+    // transition anis
+    { name: 'transition-property', type: t.propList },
+    { name: 'transition-duration', type: t.time },
+    { name: 'transition-delay', type: t.time },
+    { name: 'transition-timing-function', type: t.easing },
+
+    // node body
+    { name: 'height', type: t.nodeSize },
+    { name: 'width', type: t.nodeSize },
+    { name: 'shape', type: t.nodeShape },
+    { name: 'shape-polygon-points', type: t.polygonPointList },
+    { name: 'background-color', type: t.color },
+    { name: 'background-opacity', type: t.zeroOneNumber },
+    { name: 'background-blacken', type: t.nOneOneNumber },
+    { name: 'padding-left', type: t.size },
+    { name: 'padding-right', type: t.size },
+    { name: 'padding-top', type: t.size },
+    { name: 'padding-bottom', type: t.size },
+
+    // node border
+    { name: 'border-color', type: t.color },
+    { name: 'border-opacity', type: t.zeroOneNumber },
+    { name: 'border-width', type: t.size },
+    { name: 'border-style', type: t.borderStyle },
+
+    // node background images
+    { name: 'background-image', type: t.url },
+    { name: 'background-image-opacity', type: t.zeroOneNumber },
+    { name: 'background-position-x', type: t.bgPos },
+    { name: 'background-position-y', type: t.bgPos },
+    { name: 'background-repeat', type: t.bgRepeat },
+    { name: 'background-fit', type: t.bgFit },
+    { name: 'background-clip', type: t.bgClip },
+    { name: 'background-width', type: t.bgWH },
+    { name: 'background-height', type: t.bgWH },
+
+    // compound props
+    { name: 'position', type: t.position },
+    { name: 'compound-sizing-wrt-labels', type: t.compoundIncludeLabels },
+
+    // edge line
+    { name: 'line-style', type: t.lineStyle },
+    { name: 'line-color', type: t.color },
+    { name: 'curve-style', type: t.curveStyle },
+    { name: 'haystack-radius', type: t.zeroOneNumber },
+    { name: 'control-point-step-size', type: t.size },
+    { name: 'control-point-distances', type: t.bidirectionalSizes },
+    { name: 'control-point-weights', type: t.numbers },
+    { name: 'segment-distances', type: t.bidirectionalSizes },
+    { name: 'segment-weights', type: t.numbers },
+
+    // these are just for the core
+    { name: 'selection-box-color', type: t.color },
+    { name: 'selection-box-opacity', type: t.zeroOneNumber },
+    { name: 'selection-box-border-color', type: t.color },
+    { name: 'selection-box-border-width', type: t.size },
+    { name: 'active-bg-color', type: t.color },
+    { name: 'active-bg-opacity', type: t.zeroOneNumber },
+    { name: 'active-bg-size', type: t.size },
+    { name: 'outside-texture-bg-color', type: t.color },
+    { name: 'outside-texture-bg-opacity', type: t.zeroOneNumber }
+  ];
+
+  // define aliases
+  var aliases = styfn.aliases = [
+    { name: 'content', pointsTo: 'label' },
+    { name: 'control-point-distance', pointsTo: 'control-point-distances' },
+    { name: 'control-point-weight', pointsTo: 'control-point-weights' }
+  ];
+
+  // pie backgrounds for nodes
+  styfn.pieBackgroundN = 16; // because the pie properties are numbered, give access to a constant N (for renderer use)
+  props.push({ name: 'pie-size', type: t.bgSize });
+  for( var i = 1; i <= styfn.pieBackgroundN; i++ ){
+    props.push({ name: 'pie-'+i+'-background-color', type: t.color });
+    props.push({ name: 'pie-'+i+'-background-size', type: t.percent });
+    props.push({ name: 'pie-'+i+'-background-opacity', type: t.zeroOneNumber });
+  }
+
+  // edge arrows
+  var arrowPrefixes = styfn.arrowPrefixes = ['source', 'mid-source', 'target', 'mid-target'];
+  [
+    { name: 'arrow-shape', type: t.arrowShape },
+    { name: 'arrow-color', type: t.color },
+    { name: 'arrow-fill', type: t.arrowFill }
+  ].forEach(function( prop ){
+    arrowPrefixes.forEach(function( prefix ){
+      var name = prefix + '-' + prop.name;
+      var type = prop.type;
+
+      props.push({ name: name, type: type });
+    });
+  }, {});
+
+  // list of property names
+  styfn.propertyNames = props.map(function(p){ return p.name; });
+
+  // allow access of properties by name ( e.g. style.properties.height )
+  for( var i = 0; i < props.length; i++ ){
+    var prop = props[i];
+
+    props[ prop.name ] = prop; // allow lookup by name
+  }
+
+  // map aliases
+  for( var i = 0; i < aliases.length; i++ ){
+    var alias = aliases[i];
+    var pointsToProp = props[ alias.pointsTo ];
+    var aliasProp = {
+      name: alias.name,
+      alias: true,
+      pointsTo: pointsToProp
+    };
+
+    // add alias prop for parsing
+    props.push( aliasProp );
+
+    props[ alias.name ] = aliasProp; // allow lookup by name
+  }
+})();
+
+// adds the default stylesheet to the current style
+styfn.addDefaultStylesheet = function(){
+  // fill the style with the default stylesheet
+  this
+    .selector('node, edge') // common properties
+      .css( util.extend( {
+        'events': 'yes',
+        'text-events': 'no',
+        'text-valign': 'top',
+        'text-halign': 'center',
+        'color': '#000',
+        'text-outline-color': '#000',
+        'text-outline-width': 0,
+        'text-outline-opacity': 1,
+        'text-opacity': 1,
+        'text-decoration': 'none',
+        'text-transform': 'none',
+        'text-wrap': 'none',
+        'text-max-width': 9999,
+        'text-background-color': '#000',
+        'text-background-opacity': 0,
+        'text-border-opacity': 0,
+        'text-border-width': 0,
+        'text-border-style': 'solid',
+        'text-border-color':'#000',
+        'text-background-shape':'rectangle',
+        'font-family': 'Helvetica Neue, Helvetica, sans-serif',
+        'font-style': 'normal',
+        // 'font-variant': fontVariant,
+        'font-weight': 'normal',
+        'font-size': 16,
+        'min-zoomed-font-size': 0,
+        'edge-text-rotation': 'none',
+        'visibility': 'visible',
+        'display': 'element',
+        'opacity': 1,
+        'z-index': 0,
+        'label': '',
+        'overlay-opacity': 0,
+        'overlay-color': '#000',
+        'overlay-padding': 10,
+        'shadow-opacity': 0,
+        'shadow-color': '#000',
+        'shadow-blur': 10,
+        'shadow-offset-x': 0,
+        'shadow-offset-y': 0,
+        'text-shadow-opacity': 0,
+        'text-shadow-color': '#000',
+        'text-shadow-blur': 5,
+        'text-shadow-offset-x': 0,
+        'text-shadow-offset-y': 0,
+        'transition-property': 'none',
+        'transition-duration': 0,
+        'transition-delay': 0,
+        'transition-timing-function': 'linear',
+
+        // node props
+        'background-blacken': 0,
+        'background-color': '#888',
+        'background-opacity': 1,
+        'background-image': 'none',
+        'background-image-opacity': 1,
+        'background-position-x': '50%',
+        'background-position-y': '50%',
+        'background-repeat': 'no-repeat',
+        'background-fit': 'none',
+        'background-clip': 'node',
+        'background-width': 'auto',
+        'background-height': 'auto',
+        'border-color': '#000',
+        'border-opacity': 1,
+        'border-width': 0,
+        'border-style': 'solid',
+        'height': 30,
+        'width': 30,
+        'shape': 'ellipse',
+        'shape-polygon-points': '-1, -1,   1, -1,   1, 1,   -1, 1',
+
+        // compound props
+        'padding-top': 0,
+        'padding-bottom': 0,
+        'padding-left': 0,
+        'padding-right': 0,
+        'position': 'origin',
+        'compound-sizing-wrt-labels': 'include'
+      }, {
+        // node pie bg
+        'pie-size': '100%'
+      }, [
+        { name: 'pie-{{i}}-background-color', value: 'black' },
+        { name: 'pie-{{i}}-background-size', value: '0%' },
+        { name: 'pie-{{i}}-background-opacity', value: 1 }
+      ].reduce(function( css, prop ){
+        for( var i = 1; i <= styfn.pieBackgroundN; i++ ){
+          var name = prop.name.replace('{{i}}', i);
+          var val = prop.value;
+
+          css[ name ] = val;
+        }
+
+        return css;
+      }, {}), {
+        // edge props
+        'line-style': 'solid',
+        'line-color': '#ddd',
+        'control-point-step-size': 40,
+        'control-point-weights': 0.5,
+        'segment-weights': 0.5,
+        'segment-distances': 20,
+        'curve-style': 'bezier',
+        'haystack-radius': 0.8
+      }, [
+        { name: 'arrow-shape', value: 'none' },
+        { name: 'arrow-color', value: '#ddd' },
+        { name: 'arrow-fill', value: 'filled' }
+      ].reduce(function( css, prop ){
+        styfn.arrowPrefixes.forEach(function( prefix ){
+          var name = prefix + '-' + prop.name;
+          var val = prop.value;
+
+          css[ name ] = val;
+        });
+
+        return css;
+      }, {}) ) )
+    .selector('$node > node') // compound (parent) node properties
+      .css({
+        'width': 'auto',
+        'height': 'auto',
+        'shape': 'rectangle',
+        'padding-top': 10,
+        'padding-right': 10,
+        'padding-left': 10,
+        'padding-bottom': 10
+      })
+    .selector('edge') // just edge properties
+      .css({
+        'width': 1
+      })
+    .selector(':active')
+      .css({
+        'overlay-color': 'black',
+        'overlay-padding': 10,
+        'overlay-opacity': 0.25
+      })
+    .selector('core') // just core properties
+      .css({
+        'selection-box-color': '#ddd',
+        'selection-box-opacity': 0.65,
+        'selection-box-border-color': '#aaa',
+        'selection-box-border-width': 1,
+        'active-bg-color': 'black',
+        'active-bg-opacity': 0.15,
+        'active-bg-size': 30,
+        'outside-texture-bg-color': '#000',
+        'outside-texture-bg-opacity': 0.125
+      })
+  ;
+
+  this.defaultLength = this.length;
+};
+
+module.exports = styfn;
+
+},{"../util":94}],90:[function(_dereq_,module,exports){
+'use strict';
+
+var util = _dereq_('../util');
+var Selector = _dereq_('../selector');
+
+var styfn = {};
+
+styfn.applyFromString = function( string ){
+  var self = this;
+  var style = this;
+  var remaining = '' + string;
+  var selAndBlockStr;
+  var blockRem;
+  var propAndValStr;
+
+  // remove comments from the style string
+  remaining = remaining.replace(/[/][*](\s|.)+?[*][/]/g, '');
+
+  function removeSelAndBlockFromRemaining(){
+    // remove the parsed selector and block from the remaining text to parse
+    if( remaining.length > selAndBlockStr.length ){
+      remaining = remaining.substr( selAndBlockStr.length );
+    } else {
+      remaining = '';
+    }
+  }
+
+  function removePropAndValFromRem(){
+    // remove the parsed property and value from the remaining block text to parse
+    if( blockRem.length > propAndValStr.length ){
+      blockRem = blockRem.substr( propAndValStr.length );
+    } else {
+      blockRem = '';
+    }
+  }
+
+  while(true){
+    var nothingLeftToParse = remaining.match(/^\s*$/);
+    if( nothingLeftToParse ){ break; }
+
+    var selAndBlock = remaining.match(/^\s*((?:.|\s)+?)\s*\{((?:.|\s)+?)\}/);
+
+    if( !selAndBlock ){
+      util.error('Halting stylesheet parsing: String stylesheet contains more to parse but no selector and block found in: ' + remaining);
+      break;
+    }
+
+    selAndBlockStr = selAndBlock[0];
+
+    // parse the selector
+    var selectorStr = selAndBlock[1];
+    if( selectorStr !== 'core' ){
+      var selector = new Selector( selectorStr );
+      if( selector._private.invalid ){
+        util.error('Skipping parsing of block: Invalid selector found in string stylesheet: ' + selectorStr);
+
+        // skip this selector and block
+        removeSelAndBlockFromRemaining();
+        continue;
+      }
+    }
+
+    // parse the block of properties and values
+    var blockStr = selAndBlock[2];
+    var invalidBlock = false;
+    blockRem = blockStr;
+    var props = [];
+
+    while(true){
+      var nothingLeftToParse = blockRem.match(/^\s*$/);
+      if( nothingLeftToParse ){ break; }
+
+      var propAndVal = blockRem.match(/^\s*(.+?)\s*:\s*(.+?)\s*;/);
+
+      if( !propAndVal ){
+        util.error('Skipping parsing of block: Invalid formatting of style property and value definitions found in:' + blockStr);
+        invalidBlock = true;
+        break;
+      }
+
+      propAndValStr = propAndVal[0];
+      var propStr = propAndVal[1];
+      var valStr = propAndVal[2];
+
+      var prop = self.properties[ propStr ];
+      if( !prop ){
+        util.error('Skipping property: Invalid property name in: ' + propAndValStr);
+
+        // skip this property in the block
+        removePropAndValFromRem();
+        continue;
+      }
+
+      var parsedProp = style.parse( propStr, valStr );
+
+      if( !parsedProp ){
+        util.error('Skipping property: Invalid property definition in: ' + propAndValStr);
+
+        // skip this property in the block
+        removePropAndValFromRem();
+        continue;
+      }
+
+      props.push({
+        name: propStr,
+        val: valStr
+      });
+      removePropAndValFromRem();
+    }
+
+    if( invalidBlock ){
+      removeSelAndBlockFromRemaining();
+      break;
+    }
+
+    // put the parsed block in the style
+    style.selector( selectorStr );
+    for( var i = 0; i < props.length; i++ ){
+      var prop = props[i];
+      style.css( prop.name, prop.val );
+    }
+
+    removeSelAndBlockFromRemaining();
+  }
+
+  return style;
+};
+
+styfn.fromString = function( string ){
+  var style = this;
+
+  style.resetToDefault();
+  style.applyFromString( string );
+
+  return style;
+};
+
+module.exports = styfn;
+
+},{"../selector":81,"../util":94}],91:[function(_dereq_,module,exports){
+'use strict';
+
+var is = _dereq_('./is');
+var util = _dereq_('./util');
+var Style = _dereq_('./style');
+
+// a dummy stylesheet object that doesn't need a reference to the core
+// (useful for init)
+var Stylesheet = function(){
+  if( !(this instanceof Stylesheet) ){
+    return new Stylesheet();
+  }
+
+  this.length = 0;
+};
+
+var sheetfn = Stylesheet.prototype;
+
+sheetfn.instanceString = function(){
+  return 'stylesheet';
+};
+
+// just store the selector to be parsed later
+sheetfn.selector = function( selector ){
+  var i = this.length++;
+
+  this[i] = {
+    selector: selector,
+    properties: []
+  };
+
+  return this; // chaining
+};
+
+// just store the property to be parsed later
+sheetfn.css = function( name, value ){
+  var i = this.length - 1;
+
+  if( is.string(name) ){
+    this[i].properties.push({
+      name: name,
+      value: value
+    });
+  } else if( is.plainObject(name) ){
+    var map = name;
+
+    for( var j = 0; j < Style.properties.length; j++ ){
+      var prop = Style.properties[j];
+      var mapVal = map[ prop.name ];
+
+      if( mapVal === undefined ){ // also try camel case name
+        mapVal = map[ util.dash2camel(prop.name) ];
+      }
+
+      if( mapVal !== undefined ){
+        var name = prop.name;
+        var value = mapVal;
+
+        this[i].properties.push({
+          name: name,
+          value: value
+        });
+      }
+    }
+  }
+
+  return this; // chaining
+};
+
+sheetfn.style = sheetfn.css;
+
+// generate a real style object from the dummy stylesheet
+sheetfn.generateStyle = function( cy ){
+  var style = new Style(cy);
+
+  for( var i = 0; i < this.length; i++ ){
+    var context = this[i];
+    var selector = context.selector;
+    var props = context.properties;
+
+    style.selector(selector); // apply selector
+
+    for( var j = 0; j < props.length; j++ ){
+      var prop = props[j];
+
+      style.css( prop.name, prop.value ); // apply property
+    }
+  }
+
+  return style;
+};
+
+module.exports = Stylesheet;
+
+},{"./is":77,"./style":86,"./util":94}],92:[function(_dereq_,module,exports){
+/*! Weaver licensed under MIT (https://tldrlegal.com/license/mit-license), copyright Max Franz */
+
+// cross-env thread/worker
+// NB : uses (heavyweight) processes on nodejs so best not to create too many threads
+
+'use strict';
+
+var window = _dereq_('./window');
+var util = _dereq_('./util');
+var Promise = _dereq_('./promise');
+var Event = _dereq_('./event');
+var define = _dereq_('./define');
+var is = _dereq_('./is');
+
+var Thread = function( opts ){
+  if( !(this instanceof Thread) ){
+    return new Thread( opts );
+  }
+
+  var _p = this._private = {
+    requires: [],
+    files: [],
+    queue: null,
+    pass: [],
+    disabled: false
+  };
+
+  if( is.plainObject(opts) ){
+    if( opts.disabled != null ){
+      _p.disabled = !!opts.disabled;
+    }
+  }
+
+};
+
+var thdfn = Thread.prototype; // short alias
+
+var stringifyFieldVal = function( val ){
+  var valStr = is.fn( val ) ? val.toString() : "JSON.parse('" + JSON.stringify(val) + "')";
+
+  return valStr;
+};
+
+// allows for requires with prototypes and subobjs etc
+var fnAsRequire = function( fn ){
+  var req;
+  var fnName;
+
+  if( is.object(fn) && fn.fn ){ // manual fn
+    req = fnAs( fn.fn, fn.name );
+    fnName = fn.name;
+    fn = fn.fn;
+  } else if( is.fn(fn) ){ // auto fn
+    req = fn.toString();
+    fnName = fn.name;
+  } else if( is.string(fn) ){ // stringified fn
+    req = fn;
+  } else if( is.object(fn) ){ // plain object
+    if( fn.proto ){
+      req = '';
+    } else {
+      req = fn.name + ' = {};';
+    }
+
+    fnName = fn.name;
+    fn = fn.obj;
+  }
+
+  req += '\n';
+
+  var protoreq = function( val, subname ){
+    if( val.prototype ){
+      var protoNonempty = false;
+      for( var prop in val.prototype ){ protoNonempty = true; break; } // jshint ignore:line
+
+      if( protoNonempty ){
+        req += fnAsRequire( {
+          name: subname,
+          obj: val,
+          proto: true
+        }, val );
+      }
+    }
+  };
+
+  // pull in prototype
+  if( fn.prototype && fnName != null ){
+
+    for( var name in fn.prototype ){
+      var protoStr = '';
+
+      var val = fn.prototype[ name ];
+      var valStr = stringifyFieldVal( val );
+      var subname = fnName + '.prototype.' + name;
+
+      protoStr += subname + ' = ' + valStr + ';\n';
+
+      if( protoStr ){
+        req += protoStr;
+      }
+
+      protoreq( val, subname ); // subobject with prototype
+    }
+
+  }
+
+  // pull in properties for obj/fns
+  if( !is.string(fn) ){ for( var name in fn ){
+    var propsStr = '';
+
+    if( fn.hasOwnProperty(name) ){
+      var val = fn[ name ];
+      var valStr = stringifyFieldVal( val );
+      var subname = fnName + '["' + name + '"]';
+
+      propsStr += subname + ' = ' + valStr + ';\n';
+    }
+
+    if( propsStr ){
+      req += propsStr;
+    }
+
+    protoreq( val, subname ); // subobject with prototype
+  } }
+
+  return req;
+};
+
+var isPathStr = function( str ){
+  return is.string(str) && str.match(/\.js$/);
+};
+
+util.extend(thdfn, {
+
+  instanceString: function(){ return 'thread'; },
+
+  require: function( fn, as ){
+    var requires = this._private.requires;
+
+    if( isPathStr(fn) ){
+      this._private.files.push( fn );
+
+      return this;
+    }
+
+    if( as ){
+      if( is.fn(fn) ){
+        fn = { name: as, fn: fn };
+      } else {
+        fn = { name: as, obj: fn };
+      }
+    } else {
+      if( is.fn(fn) ){
+        if( !fn.name ){
+          throw 'The function name could not be automatically determined.  Use thread.require( someFunction, "someFunction" )';
+        }
+
+        fn = { name: fn.name, fn: fn };
+      }
+    }
+
+    requires.push( fn );
+
+    return this; // chaining
+  },
+
+  pass: function( data ){
+    this._private.pass.push( data );
+
+    return this; // chaining
+  },
+
+  run: function( fn, pass ){ // fn used like main()
+    var self = this;
+    var _p = this._private;
+    pass = pass || _p.pass.shift();
+
+    if( _p.stopped ){
+      throw 'Attempted to run a stopped thread!  Start a new thread or do not stop the existing thread and reuse it.';
+    }
+
+    if( _p.running ){
+      return ( _p.queue = _p.queue.then(function(){ // inductive step
+        return self.run( fn, pass );
+      }) );
+    }
+
+    var useWW = window != null && !_p.disabled;
+    var useNode = !window && typeof module !== 'undefined' && !_p.disabled;
+
+    self.trigger('run');
+
+    var runP = new Promise(function( resolve, reject ){
+
+      _p.running = true;
+
+      var threadTechAlreadyExists = _p.ran;
+
+      var fnImplStr = is.string( fn ) ? fn : fn.toString();
+
+      // worker code to exec
+      var fnStr = '\n' + ( _p.requires.map(function( r ){
+        return fnAsRequire( r );
+      }) ).concat( _p.files.map(function( f ){
+        if( useWW ){
+          var wwifyFile = function( file ){
+            if( file.match(/^\.\//) || file.match(/^\.\./) ){
+              return window.location.origin + window.location.pathname + file;
+            } else if( file.match(/^\//) ){
+              return window.location.origin + '/' + file;
+            }
+            return file;
+          };
+
+          return 'importScripts("' + wwifyFile(f) + '");';
+        } else if( useNode ) {
+          return 'eval( require("fs").readFileSync("' + f + '", { encoding: "utf8" }) );';
+        } else {
+          throw 'External file `' + f + '` can not be required without any threading technology.';
+        }
+      }) ).concat([
+        '( function(){',
+          'var ret = (' + fnImplStr + ')(' + JSON.stringify(pass) + ');',
+          'if( ret !== undefined ){ resolve(ret); }', // assume if ran fn returns defined value (incl. null), that we want to resolve to it
+        '} )()\n'
+      ]).join('\n');
+
+      // because we've now consumed the requires, empty the list so we don't dupe on next run()
+      _p.requires = [];
+      _p.files = [];
+
+      if( useWW ){
+        var fnBlob, fnUrl;
+
+        // add normalised thread api functions
+        if( !threadTechAlreadyExists ){
+          var fnPre = fnStr + '';
+
+          fnStr = [
+            'function _ref_(o){ return eval(o); };',
+            'function broadcast(m){ return message(m); };', // alias
+            'function message(m){ postMessage(m); };',
+            'function listen(fn){',
+            '  self.addEventListener("message", function(m){ ',
+            '    if( typeof m === "object" && (m.data.$$eval || m.data === "$$start") ){',
+            '    } else { ',
+            '      fn( m.data );',
+            '    }',
+            '  });',
+            '};',
+            'self.addEventListener("message", function(m){  if( m.data.$$eval ){ eval( m.data.$$eval ); }  });',
+            'function resolve(v){ postMessage({ $$resolve: v }); };',
+            'function reject(v){ postMessage({ $$reject: v }); };'
+          ].join('\n');
+
+          fnStr += fnPre;
+
+          fnBlob = new Blob([ fnStr ], {
+            type: 'application/javascript'
+          });
+          fnUrl = window.URL.createObjectURL( fnBlob );
+        }
+        // create webworker and let it exec the serialised code
+        var ww = _p.webworker = _p.webworker || new Worker( fnUrl );
+
+        if( threadTechAlreadyExists ){ // then just exec new run() code
+          ww.postMessage({
+            $$eval: fnStr
+          });
+        }
+
+        // worker messages => events
+        var cb;
+        ww.addEventListener('message', cb = function( m ){
+          var isObject = is.object(m) && is.object( m.data );
+
+          if( isObject && ('$$resolve' in m.data) ){
+            ww.removeEventListener('message', cb); // done listening b/c resolve()
+
+            resolve( m.data.$$resolve );
+          } else if( isObject && ('$$reject' in m.data) ){
+            ww.removeEventListener('message', cb); // done listening b/c reject()
+
+            reject( m.data.$$reject );
+          } else {
+            self.trigger( new Event(m, { type: 'message', message: m.data }) );
+          }
+        }, false);
+
+        if( !threadTechAlreadyExists ){
+          ww.postMessage('$$start'); // start up the worker
+        }
+
+      } else if( useNode ){
+        // create a new process
+
+        if( !_p.child ){
+          _p.child = ( _dereq_('child_process').fork( _dereq_('path').join(__dirname, 'thread-node-fork') ) );
+        }
+
+        var child = _p.child;
+
+        // child process messages => events
+        var cb;
+        child.on('message', cb = function( m ){
+          if( is.object(m) && ('$$resolve' in m) ){
+            child.removeListener('message', cb); // done listening b/c resolve()
+
+            resolve( m.$$resolve );
+          } else if( is.object(m) && ('$$reject' in m) ){
+            child.removeListener('message', cb); // done listening b/c reject()
+
+            reject( m.$$reject );
+          } else {
+            self.trigger( new Event({}, { type: 'message', message: m }) );
+          }
+        });
+
+        // ask the child process to eval the worker code
+        child.send({
+          $$eval: fnStr
+        });
+
+      } else { // use a fallback mechanism using a timeout
+
+        var promiseResolve = resolve;
+        var promiseReject = reject;
+
+        var timer = _p.timer = _p.timer || {
+
+          listeners: [],
+
+          exec: function(){
+            // as a string so it can't be mangled by minifiers and processors
+            fnStr = [
+              'function _ref_(o){ return eval(o); };',
+              'function broadcast(m){ return message(m); };',
+              'function message(m){ self.trigger( new Event({}, { type: "message", message: m }) ); };',
+              'function listen(fn){ timer.listeners.push( fn ); };',
+              'function resolve(v){ promiseResolve(v); };',
+              'function reject(v){ promiseReject(v); };'
+            ].join('\n') + fnStr;
+
+            // the .run() code
+            eval( fnStr ); // jshint ignore:line
+          },
+
+          message: function( m ){
+            var ls = timer.listeners;
+
+            for( var i = 0; i < ls.length; i++ ){
+              var fn = ls[i];
+
+              fn( m );
+            }
+          }
+
+        };
+
+        timer.exec();
+      }
+
+    }).then(function( v ){
+      _p.running = false;
+      _p.ran = true;
+
+      self.trigger('ran');
+
+      return v;
+    });
+
+    if( _p.queue == null ){
+      _p.queue = runP; // i.e. first step of inductive promise chain (for queue)
+    }
+
+    return runP;
+  },
+
+  // send the thread a message
+  message: function( m ){
+    var _p = this._private;
+
+    if( _p.webworker ){
+      _p.webworker.postMessage( m );
+    }
+
+    if( _p.child ){
+      _p.child.send( m );
+    }
+
+    if( _p.timer ){
+      _p.timer.message( m );
+    }
+
+    return this; // chaining
+  },
+
+  stop: function(){
+    var _p = this._private;
+
+    if( _p.webworker ){
+      _p.webworker.terminate();
+    }
+
+    if( _p.child ){
+      _p.child.kill();
+    }
+
+    if( _p.timer ){
+      // nothing we can do if we've run a timeout
+    }
+
+    _p.stopped = true;
+
+    return this.trigger('stop'); // chaining
+  },
+
+  stopped: function(){
+    return this._private.stopped;
+  }
+
+});
+
+// turns a stringified function into a (re)named function
+var fnAs = function( fn, name ){
+  var fnStr = fn.toString();
+  fnStr = fnStr.replace(/function\s*?\S*?\s*?\(/, 'function ' + name + '(');
+
+  return fnStr;
+};
+
+var defineFnal = function( opts ){
+  opts = opts || {};
+
+  return function fnalImpl( fn, arg1 ){
+    var fnStr = fnAs( fn, '_$_$_' + opts.name );
+
+    this.require( fnStr );
+
+    return this.run( [
+      'function( data ){',
+      '  var origResolve = resolve;',
+      '  var res = [];',
+      '  ',
+      '  resolve = function( val ){',
+      '    res.push( val );',
+      '  };',
+      '  ',
+      '  var ret = data.' + opts.name + '( _$_$_' + opts.name + ( arguments.length > 1 ? ', ' + JSON.stringify(arg1) : '' ) + ' );',
+      '  ',
+      '  resolve = origResolve;',
+      '  resolve( res.length > 0 ? res : ret );',
+      '}'
+    ].join('\n') );
+  };
+};
+
+util.extend(thdfn, {
+  reduce: defineFnal({ name: 'reduce' }),
+
+  reduceRight: defineFnal({ name: 'reduceRight' }),
+
+  map: defineFnal({ name: 'map' })
+});
+
+// aliases
+var fn = thdfn;
+fn.promise = fn.run;
+fn.terminate = fn.halt = fn.stop;
+fn.include = fn.require;
+
+// pull in event apis
+util.extend(thdfn, {
+  on: define.on(),
+  one: define.on({ unbindSelfOnTrigger: true }),
+  off: define.off(),
+  trigger: define.trigger()
+});
+
+define.eventAliasesOn( thdfn );
+
+module.exports = Thread;
+
+},{"./define":41,"./event":42,"./is":77,"./promise":80,"./util":94,"./window":100,"child_process":undefined,"path":undefined}],93:[function(_dereq_,module,exports){
+'use strict';
+
+var is = _dereq_('../is');
+
+module.exports = {
+  // get [r, g, b] from #abc or #aabbcc
+  hex2tuple: function( hex ){
+    if( !(hex.length === 4 || hex.length === 7) || hex[0] !== "#" ){ return; }
+
+    var shortHex = hex.length === 4;
+    var r, g, b;
+    var base = 16;
+
+    if( shortHex ){
+      r = parseInt( hex[1] + hex[1], base );
+      g = parseInt( hex[2] + hex[2], base );
+      b = parseInt( hex[3] + hex[3], base );
+    } else {
+      r = parseInt( hex[1] + hex[2], base );
+      g = parseInt( hex[3] + hex[4], base );
+      b = parseInt( hex[5] + hex[6], base );
+    }
+
+    return [r, g, b];
+  },
+
+  // get [r, g, b, a] from hsl(0, 0, 0) or hsla(0, 0, 0, 0)
+  hsl2tuple: function( hsl ){
+    var ret;
+    var h, s, l, a, r, g, b;
+    function hue2rgb(p, q, t){
+      if(t < 0) t += 1;
+      if(t > 1) t -= 1;
+      if(t < 1/6) return p + (q - p) * 6 * t;
+      if(t < 1/2) return q;
+      if(t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+      return p;
+    }
+
+    var m = new RegExp("^" + this.regex.hsla + "$").exec(hsl);
+    if( m ){
+
+      // get hue
+      h = parseInt( m[1] );
+      if( h < 0 ){
+        h = ( 360 - (-1*h % 360) ) % 360;
+      } else if( h > 360 ){
+        h = h % 360;
+      }
+      h /= 360; // normalise on [0, 1]
+
+      s = parseFloat( m[2] );
+      if( s < 0 || s > 100 ){ return; } // saturation is [0, 100]
+      s = s/100; // normalise on [0, 1]
+
+      l = parseFloat( m[3] );
+      if( l < 0 || l > 100 ){ return; } // lightness is [0, 100]
+      l = l/100; // normalise on [0, 1]
+
+      a = m[4];
+      if( a !== undefined ){
+        a = parseFloat( a );
+
+        if( a < 0 || a > 1 ){ return; } // alpha is [0, 1]
+      }
+
+      // now, convert to rgb
+      // code from http://mjijackson.com/2008/02/rgb-to-hsl-and-rgb-to-hsv-color-model-conversion-algorithms-in-javascript
+      if( s === 0 ){
+        r = g = b = Math.round(l * 255); // achromatic
+      } else {
+        var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        var p = 2 * l - q;
+        r = Math.round( 255 * hue2rgb(p, q, h + 1/3) );
+        g = Math.round( 255 * hue2rgb(p, q, h) );
+        b = Math.round( 255 * hue2rgb(p, q, h - 1/3) );
+      }
+
+      ret = [r, g, b, a];
+    }
+
+    return ret;
+  },
+
+  // get [r, g, b, a] from rgb(0, 0, 0) or rgba(0, 0, 0, 0)
+  rgb2tuple: function( rgb ){
+    var ret;
+
+    var m = new RegExp("^" + this.regex.rgba + "$").exec(rgb);
+    if( m ){
+      ret = [];
+
+      var isPct = [];
+      for( var i = 1; i <= 3; i++ ){
+        var channel = m[i];
+
+        if( channel[ channel.length - 1 ] === "%" ){
+          isPct[i] = true;
+        }
+        channel = parseFloat( channel );
+
+        if( isPct[i] ){
+          channel = channel/100 * 255; // normalise to [0, 255]
+        }
+
+        if( channel < 0 || channel > 255 ){ return; } // invalid channel value
+
+        ret.push( Math.floor(channel) );
+      }
+
+      var atLeastOneIsPct = isPct[1] || isPct[2] || isPct[3];
+      var allArePct = isPct[1] && isPct[2] && isPct[3];
+      if( atLeastOneIsPct && !allArePct ){ return; } // must all be percent values if one is
+
+      var alpha = m[4];
+      if( alpha !== undefined ){
+        alpha = parseFloat( alpha );
+
+        if( alpha < 0 || alpha > 1 ){ return; } // invalid alpha value
+
+        ret.push( alpha );
+      }
+    }
+
+    return ret;
+  },
+
+  colorname2tuple: function( color ){
+    return this.colors[ color.toLowerCase() ];
+  },
+
+  color2tuple: function( color ){
+    return ( is.array(color) ? color : null )
+      || this.colorname2tuple(color)
+      || this.hex2tuple(color)
+      || this.rgb2tuple(color)
+      || this.hsl2tuple(color);
+  },
+
+  colors: {
+    // special colour names
+    transparent: [0, 0, 0, 0], // NB alpha === 0
+
+    // regular colours
+    aliceblue: [240, 248, 255],
+    antiquewhite: [250, 235, 215],
+    aqua: [0, 255, 255],
+    aquamarine: [127, 255, 212],
+    azure: [240, 255, 255],
+    beige: [245, 245, 220],
+    bisque: [255, 228, 196],
+    black: [0, 0, 0],
+    blanchedalmond: [255, 235, 205],
+    blue: [0, 0, 255],
+    blueviolet: [138, 43, 226],
+    brown: [165, 42, 42],
+    burlywood: [222, 184, 135],
+    cadetblue: [95, 158, 160],
+    chartreuse: [127, 255, 0],
+    chocolate: [210, 105, 30],
+    coral: [255, 127, 80],
+    cornflowerblue: [100, 149, 237],
+    cornsilk: [255, 248, 220],
+    crimson: [220, 20, 60],
+    cyan: [0, 255, 255],
+    darkblue: [0, 0, 139],
+    darkcyan: [0, 139, 139],
+    darkgoldenrod: [184, 134, 11],
+    darkgray: [169, 169, 169],
+    darkgreen: [0, 100, 0],
+    darkgrey: [169, 169, 169],
+    darkkhaki: [189, 183, 107],
+    darkmagenta: [139, 0, 139],
+    darkolivegreen: [85, 107, 47],
+    darkorange: [255, 140, 0],
+    darkorchid: [153, 50, 204],
+    darkred: [139, 0, 0],
+    darksalmon: [233, 150, 122],
+    darkseagreen: [143, 188, 143],
+    darkslateblue: [72, 61, 139],
+    darkslategray: [47, 79, 79],
+    darkslategrey: [47, 79, 79],
+    darkturquoise: [0, 206, 209],
+    darkviolet: [148, 0, 211],
+    deeppink: [255, 20, 147],
+    deepskyblue: [0, 191, 255],
+    dimgray: [105, 105, 105],
+    dimgrey: [105, 105, 105],
+    dodgerblue: [30, 144, 255],
+    firebrick: [178, 34, 34],
+    floralwhite: [255, 250, 240],
+    forestgreen: [34, 139, 34],
+    fuchsia: [255, 0, 255],
+    gainsboro: [220, 220, 220],
+    ghostwhite: [248, 248, 255],
+    gold: [255, 215, 0],
+    goldenrod: [218, 165, 32],
+    gray: [128, 128, 128],
+    grey: [128, 128, 128],
+    green: [0, 128, 0],
+    greenyellow: [173, 255, 47],
+    honeydew: [240, 255, 240],
+    hotpink: [255, 105, 180],
+    indianred: [205, 92, 92],
+    indigo: [75, 0, 130],
+    ivory: [255, 255, 240],
+    khaki: [240, 230, 140],
+    lavender: [230, 230, 250],
+    lavenderblush: [255, 240, 245],
+    lawngreen: [124, 252, 0],
+    lemonchiffon: [255, 250, 205],
+    lightblue: [173, 216, 230],
+    lightcoral: [240, 128, 128],
+    lightcyan: [224, 255, 255],
+    lightgoldenrodyellow: [250, 250, 210],
+    lightgray: [211, 211, 211],
+    lightgreen: [144, 238, 144],
+    lightgrey: [211, 211, 211],
+    lightpink: [255, 182, 193],
+    lightsalmon: [255, 160, 122],
+    lightseagreen: [32, 178, 170],
+    lightskyblue: [135, 206, 250],
+    lightslategray: [119, 136, 153],
+    lightslategrey: [119, 136, 153],
+    lightsteelblue: [176, 196, 222],
+    lightyellow: [255, 255, 224],
+    lime: [0, 255, 0],
+    limegreen: [50, 205, 50],
+    linen: [250, 240, 230],
+    magenta: [255, 0, 255],
+    maroon: [128, 0, 0],
+    mediumaquamarine: [102, 205, 170],
+    mediumblue: [0, 0, 205],
+    mediumorchid: [186, 85, 211],
+    mediumpurple: [147, 112, 219],
+    mediumseagreen: [60, 179, 113],
+    mediumslateblue: [123, 104, 238],
+    mediumspringgreen: [0, 250, 154],
+    mediumturquoise: [72, 209, 204],
+    mediumvioletred: [199, 21, 133],
+    midnightblue: [25, 25, 112],
+    mintcream: [245, 255, 250],
+    mistyrose: [255, 228, 225],
+    moccasin: [255, 228, 181],
+    navajowhite: [255, 222, 173],
+    navy: [0, 0, 128],
+    oldlace: [253, 245, 230],
+    olive: [128, 128, 0],
+    olivedrab: [107, 142, 35],
+    orange: [255, 165, 0],
+    orangered: [255, 69, 0],
+    orchid: [218, 112, 214],
+    palegoldenrod: [238, 232, 170],
+    palegreen: [152, 251, 152],
+    paleturquoise: [175, 238, 238],
+    palevioletred: [219, 112, 147],
+    papayawhip: [255, 239, 213],
+    peachpuff: [255, 218, 185],
+    peru: [205, 133, 63],
+    pink: [255, 192, 203],
+    plum: [221, 160, 221],
+    powderblue: [176, 224, 230],
+    purple: [128, 0, 128],
+    red: [255, 0, 0],
+    rosybrown: [188, 143, 143],
+    royalblue: [65, 105, 225],
+    saddlebrown: [139, 69, 19],
+    salmon: [250, 128, 114],
+    sandybrown: [244, 164, 96],
+    seagreen: [46, 139, 87],
+    seashell: [255, 245, 238],
+    sienna: [160, 82, 45],
+    silver: [192, 192, 192],
+    skyblue: [135, 206, 235],
+    slateblue: [106, 90, 205],
+    slategray: [112, 128, 144],
+    slategrey: [112, 128, 144],
+    snow: [255, 250, 250],
+    springgreen: [0, 255, 127],
+    steelblue: [70, 130, 180],
+    tan: [210, 180, 140],
+    teal: [0, 128, 128],
+    thistle: [216, 191, 216],
+    tomato: [255, 99, 71],
+    turquoise: [64, 224, 208],
+    violet: [238, 130, 238],
+    wheat: [245, 222, 179],
+    white: [255, 255, 255],
+    whitesmoke: [245, 245, 245],
+    yellow: [255, 255, 0],
+    yellowgreen: [154, 205, 50]
+  }
+};
+
+},{"../is":77}],94:[function(_dereq_,module,exports){
+'use strict';
+
+var is = _dereq_('../is');
+var math = _dereq_('../math');
+
+var util = {
+
+  falsify: function(){ return false; },
+
+  zeroify: function(){ return 0; },
+
+  noop: function(){},
+
+  /* jshint ignore:start */
+  error: function( msg ){
+    if( console.error ){
+      console.error.apply( console, arguments );
+
+      if( console.trace ){ console.trace(); }
+    } else {
+      console.log.apply( console, arguments );
+
+      if( console.trace ){ console.trace(); }
+    }
+  },
+  /* jshint ignore:end */
+
+  clone: function( obj ){
+    return this.extend( {}, obj );
+  },
+
+  // gets a shallow copy of the argument
+  copy: function( obj ){
+    if( obj == null ){
+      return obj;
+    } if( is.array(obj) ){
+      return obj.slice();
+    } else if( is.plainObject(obj) ){
+      return this.clone( obj );
+    } else {
+      return obj;
+    }
+  }
+
+};
+
+util.makeBoundingBox = math.makeBoundingBox.bind( math );
+
+util._staticEmptyObject = {};
+
+util.staticEmptyObject = function(){
+  return util._staticEmptyObject;
+};
+
+util.extend = Object.assign != null ? Object.assign : function( tgt ){
+  var args = arguments;
+
+  for( var i = 1; i < args.length; i++ ){
+    var obj = args[i];
+
+    for( var k in obj ){
+      tgt[k] = obj[k];
+    }
+  }
+
+  return tgt;
+};
+
+[
+  _dereq_('./colors'),
+  _dereq_('./maps'),
+  { memoize: _dereq_('./memoize') },
+  _dereq_('./regex'),
+  _dereq_('./strings'),
+  _dereq_('./timing')
+].forEach(function( req ){
+  util.extend( util, req );
+});
+
+module.exports = util;
+
+},{"../is":77,"../math":79,"./colors":93,"./maps":95,"./memoize":96,"./regex":97,"./strings":98,"./timing":99}],95:[function(_dereq_,module,exports){
+'use strict';
+
+var is = _dereq_('../is');
+
+module.exports = {
+  // has anything been set in the map
+  mapEmpty: function( map ){
+    var empty = true;
+
+    if( map != null ){
+      for(var i in map){ // jshint ignore:line
+        empty = false;
+        break;
+      }
+    }
+
+    return empty;
+  },
+
+  // pushes to the array at the end of a map (map may not be built)
+  pushMap: function( options ){
+    var array = this.getMap(options);
+
+    if( array == null ){ // if empty, put initial array
+      this.setMap( this.extend({}, options, {
+        value: [ options.value ]
+      }) );
+    } else {
+      array.push( options.value );
+    }
+  },
+
+  // sets the value in a map (map may not be built)
+  setMap: function( options ){
+    var obj = options.map;
+    var key;
+    var keys = options.keys;
+    var l = keys.length;
+
+    for(var i = 0; i < l; i++){
+      var key = keys[i];
+
+      if( is.plainObject( key ) ){
+        this.error('Tried to set map with object key');
+      }
+
+      if( i < keys.length - 1 ){
+
+        // extend the map if necessary
+        if( obj[key] == null ){
+          obj[key] = {};
+        }
+
+        obj = obj[key];
+      } else {
+        // set the value
+        obj[key] = options.value;
+      }
+    }
+  },
+
+  // gets the value in a map even if it's not built in places
+  getMap: function( options ){
+    var obj = options.map;
+    var keys = options.keys;
+    var l = keys.length;
+
+    for(var i = 0; i < l; i++){
+      var key = keys[i];
+
+      if( is.plainObject( key ) ){
+        this.error('Tried to get map with object key');
+      }
+
+      obj = obj[key];
+
+      if( obj == null ){
+        return obj;
+      }
+    }
+
+    return obj;
+  },
+
+  // deletes the entry in the map
+  deleteMap: function( options ){
+    var obj = options.map;
+    var keys = options.keys;
+    var l = keys.length;
+    var keepChildren = options.keepChildren;
+
+    for(var i = 0; i < l; i++){
+      var key = keys[i];
+
+      if( is.plainObject( key ) ){
+        this.error('Tried to delete map with object key');
+      }
+
+      var lastKey = i === options.keys.length - 1;
+      if( lastKey ){
+
+        if( keepChildren ){ // then only delete child fields not in keepChildren
+          for( var child in obj ){
+            if( !keepChildren[child] ){
+              obj[child] = undefined;
+            }
+          }
+        } else {
+          obj[key] = undefined;
+        }
+
+      } else {
+        obj = obj[key];
+      }
+    }
+  }
+};
+
+},{"../is":77}],96:[function(_dereq_,module,exports){
+'use strict';
+
+module.exports = function memoize( fn, keyFn ){
+  var self = this;
+  var cache = {};
+
+  if( !keyFn ){
+    keyFn = function(){
+      if( arguments.length === 1 ){
+        return arguments[0];
+      }
+
+      var args = [];
+
+      for( var i = 0; i < arguments.length; i++ ){
+        args.push( arguments[i] );
+      }
+
+      return args.join('$');
+    };
+  }
+
+  return function memoizedFn(){
+    var args = arguments;
+    var ret;
+    var k = keyFn.apply( self, args );
+
+    if( !(ret = cache[k]) ){
+      ret = cache[k] = fn.apply( self, args );
+    }
+
+    return ret;
+  };
+};
+
+},{}],97:[function(_dereq_,module,exports){
+'use strict';
+
+var number = "(?:[-+]?(?:(?:\\d+|\\d*\\.\\d+)(?:[Ee][+-]?\\d+)?))";
+
+var rgba = "rgb[a]?\\(("+ number +"[%]?)\\s*,\\s*("+ number +"[%]?)\\s*,\\s*("+ number +"[%]?)(?:\\s*,\\s*("+ number +"))?\\)";
+var rgbaNoBackRefs = "rgb[a]?\\((?:"+ number +"[%]?)\\s*,\\s*(?:"+ number +"[%]?)\\s*,\\s*(?:"+ number +"[%]?)(?:\\s*,\\s*(?:"+ number +"))?\\)";
+
+var hsla = "hsl[a]?\\(("+ number +")\\s*,\\s*("+ number +"[%])\\s*,\\s*("+ number +"[%])(?:\\s*,\\s*("+ number +"))?\\)";
+var hslaNoBackRefs = "hsl[a]?\\((?:"+ number +")\\s*,\\s*(?:"+ number +"[%])\\s*,\\s*(?:"+ number +"[%])(?:\\s*,\\s*(?:"+ number +"))?\\)";
+
+var hex3 = "\\#[0-9a-fA-F]{3}";
+var hex6 = "\\#[0-9a-fA-F]{6}";
+
+module.exports = {
+  regex: {
+    number: number,
+    rgba: rgba,
+    rgbaNoBackRefs: rgbaNoBackRefs,
+    hsla: hsla,
+    hslaNoBackRefs: hslaNoBackRefs,
+    hex3: hex3,
+    hex6: hex6
+  }
+};
+
+},{}],98:[function(_dereq_,module,exports){
+'use strict';
+
+var memoize = _dereq_('./memoize');
+var is = _dereq_('../is');
+
+module.exports = {
+
+  camel2dash: memoize( function( str ){
+    return str.replace(/([A-Z])/g, function( v ){
+      return '-' + v.toLowerCase();
+    });
+  } ),
+
+  dash2camel: memoize( function( str ){
+    return str.replace(/(-\w)/g, function( v ){
+      return v[1].toUpperCase();
+    });
+  } ),
+
+  capitalize: function(str){
+    if( is.emptyString(str) ){
+      return str;
+    }
+
+    return str.charAt(0).toUpperCase() + str.substring(1);
+  }
+
+};
+
+},{"../is":77,"./memoize":96}],99:[function(_dereq_,module,exports){
+'use strict';
+
+var window = _dereq_('../window');
+var is = _dereq_('../is');
+var performance = window ? window.performance : null;
+
+var util = {};
+
+var raf = !window ? null : ( window.requestAnimationFrame || window.mozRequestAnimationFrame ||
+      window.webkitRequestAnimationFrame || window.msRequestAnimationFrame );
+
+raf = raf || function( fn ){
+  if( fn ){
+    setTimeout(function(){
+      fn( pnow() );
+    }, 1000/60);
+  }
+};
+
+util.requestAnimationFrame = function(fn){
+  raf( fn );
+};
+
+var pnow = performance && performance.now ? function(){ return performance.now(); } : function(){ return Date.now(); };
+
+util.performanceNow = pnow;
+
+// ported lodash throttle function
+util.throttle = function(func, wait, options) {
+  var leading = true,
+      trailing = true;
+
+  if (options === false) {
+    leading = false;
+  } else if (is.plainObject(options)) {
+    leading = 'leading' in options ? options.leading : leading;
+    trailing = 'trailing' in options ? options.trailing : trailing;
+  }
+  options = options || {};
+  options.leading = leading;
+  options.maxWait = wait;
+  options.trailing = trailing;
+
+  return util.debounce(func, wait, options);
+};
+
+util.now = function(){
+  return Date.now();
+};
+
+util.debounce = function(func, wait, options) { // ported lodash debounce function
+  var util = this;
+  var args,
+      maxTimeoutId,
+      result,
+      stamp,
+      thisArg,
+      timeoutId,
+      trailingCall,
+      lastCalled = 0,
+      maxWait = false,
+      trailing = true;
+
+  if (!is.fn(func)) {
+    return;
+  }
+  wait = Math.max(0, wait) || 0;
+  if (options === true) {
+    var leading = true;
+    trailing = false;
+  } else if (is.plainObject(options)) {
+    leading = options.leading;
+    maxWait = 'maxWait' in options && (Math.max(wait, options.maxWait) || 0);
+    trailing = 'trailing' in options ? options.trailing : trailing;
+  }
+  var delayed = function() {
+    var remaining = wait - (util.now() - stamp);
+    if (remaining <= 0) {
+      if (maxTimeoutId) {
+        clearTimeout(maxTimeoutId);
+      }
+      var isCalled = trailingCall;
+      maxTimeoutId = timeoutId = trailingCall = undefined;
+      if (isCalled) {
+        lastCalled = util.now();
+        result = func.apply(thisArg, args);
+        if (!timeoutId && !maxTimeoutId) {
+          args = thisArg = null;
+        }
+      }
+    } else {
+      timeoutId = setTimeout(delayed, remaining);
+    }
+  };
+
+  var maxDelayed = function() {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+    maxTimeoutId = timeoutId = trailingCall = undefined;
+    if (trailing || (maxWait !== wait)) {
+      lastCalled = util.now();
+      result = func.apply(thisArg, args);
+      if (!timeoutId && !maxTimeoutId) {
+        args = thisArg = null;
+      }
+    }
+  };
+
+  return function() {
+    args = arguments;
+    stamp = util.now();
+    thisArg = this;
+    trailingCall = trailing && (timeoutId || !leading);
+
+    if (maxWait === false) {
+      var leadingCall = leading && !timeoutId;
+    } else {
+      if (!maxTimeoutId && !leading) {
+        lastCalled = stamp;
+      }
+      var remaining = maxWait - (stamp - lastCalled),
+          isCalled = remaining <= 0;
+
+      if (isCalled) {
+        if (maxTimeoutId) {
+          maxTimeoutId = clearTimeout(maxTimeoutId);
+        }
+        lastCalled = stamp;
+        result = func.apply(thisArg, args);
+      }
+      else if (!maxTimeoutId) {
+        maxTimeoutId = setTimeout(maxDelayed, remaining);
+      }
+    }
+    if (isCalled && timeoutId) {
+      timeoutId = clearTimeout(timeoutId);
+    }
+    else if (!timeoutId && wait !== maxWait) {
+      timeoutId = setTimeout(delayed, wait);
+    }
+    if (leadingCall) {
+      isCalled = true;
+      result = func.apply(thisArg, args);
+    }
+    if (isCalled && !timeoutId && !maxTimeoutId) {
+      args = thisArg = null;
+    }
+    return result;
+  };
+};
+
+module.exports = util;
+
+},{"../is":77,"../window":100}],100:[function(_dereq_,module,exports){
+module.exports = ( typeof window === 'undefined' ? null : window );
+
+},{}]},{},[76])(76)
+});
+
+
+//# sourceMappingURL=cytoscape.js.map
