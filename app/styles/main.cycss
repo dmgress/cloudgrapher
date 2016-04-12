@@ -95,3 +95,15 @@ node.aws-sqs-queue {
 node.aws-autoscaling-autoscalinggroup {
   background-image: images/aws-autoscaling-autoscalinggroup.png;
 }
+
+node.aws-logs-metricfilter {
+  background-image: images/aws-cloudwatch.png;
+}
+
+node.aws-sns-topic {
+  background-image: images/aws-sns-topic.png;
+}
+
+node.aws-cloudwatch-alarm {
+  background-image: images/aws-cloudwatch-alarm.png;
+}
