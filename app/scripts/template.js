@@ -14,6 +14,13 @@ exports.template = function(options) {
   var initialData;
   var layoutName = 'grid';
 
+  var layouts = {
+    'grid': {name: 'grid', fit: true, condense: true, cols: 4},
+    'breadthfirst': {name: 'breadthfirst', fit: true, directed: false, avoidOverlap: true, spacingFactor: 0.25},
+    'circle': {name: 'circle', fit: true, padding: 10, radius: 400, avoidOverlap: false, startAngle: Math.PI},
+    'concentric': {name: 'concentric', fit: true, padding: 10, avoidOverlap: false, startAngle: Math.PI}
+  };
+
   if (!editor || !editor.getValue) {
     throw 'editor unavailable or doesn\'t support getValue';
   }
@@ -44,10 +51,7 @@ exports.template = function(options) {
       container: container || defaultContainer,
       elements: data,
       style: style,
-      layout: {
-        name: layoutName,
-        padding: 5
-      }
+      layout: findLayout(layoutName)
     });
     graph.boxSelectionEnabled(true);
     graph.on('style', 'node', function(event){
@@ -137,13 +141,13 @@ exports.template = function(options) {
   var setLayout = function(name) {
     layoutName = name;
     if (graph) {
-      graph.layout({
-        'name': name,
-        'fit': true,
-        'animate': false
-      });
+      graph.layout(findLayout(name));
     }
   };
+
+  var findLayout = function(name) {
+    return layouts[name] || {'name': name, 'fit': true, 'animate': false };
+  }
 
   var fromURL = function(url, success, onError) {
     if (!jsonproxy) {
