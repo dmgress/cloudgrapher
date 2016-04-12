@@ -107,11 +107,14 @@ exports.collectCyData = function(json) {
 
   for (var resourceKey in json.Resources) {
     var resource = json.Resources[resourceKey];
+    var resourceClass = resource.Type.toLowerCase().replace(/::/g, '-');
     var r = {
       data: {
-        id: resourceKey
+        id: resourceKey,
+        CFType: resource.Type,
+        nodeClass: resourceClass,
       },
-      classes: resource.Type.toLowerCase().replace(/::/g, '-'),
+      classes: resourceClass,
       type: resource.Type
     };
     findEdges(resource.Properties).forEach(addEdge, resourceKey);

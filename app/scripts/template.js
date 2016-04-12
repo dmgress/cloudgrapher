@@ -50,6 +50,13 @@ exports.template = function(options) {
       }
     });
     graph.boxSelectionEnabled(true);
+    graph.on('style', 'node', function(event){
+      var cyTarget = event.cyTarget;
+      var nodeClass = cyTarget.data('nodeClass');
+      if (cyTarget.css('background-image').match(/unknown\.png/)) {
+        console.log('WARN using unknown.png, because no image available for ' + cyTarget.data('CFType'));
+      }
+    });
   };
 
   var setData = function(data, onSuccess, onError) {
