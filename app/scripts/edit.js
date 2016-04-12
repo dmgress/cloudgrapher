@@ -1,6 +1,9 @@
 /* jshint devel:true */
 /* global saveAs, require, CodeMirror, alertify, cytoscape */
 
+var template;
+window.getTemplate = function() { return template; };
+
 (function() {
   'use strict';
 
@@ -25,7 +28,7 @@
   });
   myCodeMirror.setSize('100%', '800px');
 
-  var template = require('./template').template({
+  template = require('./template').template({
     'editor': {
       setValue: function(value) { myCodeMirror.getDoc().setValue(value); },
       getValue: function() { return myCodeMirror.getDoc().getValue(); }

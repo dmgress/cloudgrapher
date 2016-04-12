@@ -198,6 +198,7 @@ exports.template = function(options) {
     description: description,
     changeStyle: changeStyle,
     fitGraph: fitGraph,
+    getGraph: function() { return graph; },
     text: text,
     json: json,
     hasChanged: hasChanged,
