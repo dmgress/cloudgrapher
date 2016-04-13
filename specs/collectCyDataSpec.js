@@ -1,3 +1,5 @@
+/* global expect, jasmine */
+
 var lib = require('../app/scripts/collectdata');
 
 var customMatchers = {
