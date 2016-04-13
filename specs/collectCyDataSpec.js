@@ -57,7 +57,7 @@ describe('collectCyData', function() {
         'Properties': {
           'Roles': [ { 'Ref': 'something' } ]
         }
-      },
+      }
     };
     var data = lib.collectCyData({ 'Resources': resources});
     expect(data.edges.length).toBe(0);
@@ -70,7 +70,7 @@ describe('collectCyData', function() {
         'Properties': {
           'Roles': [ { 'Ref': 'something' } ]
         }
-      },
+      }
     };
     var data = lib.collectCyData({ 'Resources': resources});
     expect(data.edges.length).toBe(1);
@@ -82,7 +82,7 @@ describe('collectCyData', function() {
           "Type" : "AWS::EC2::SecurityGroupIngress",
           "Properties": {
             "GroupId": { "Fn::GetAtt": [ "SG", "GroupId" ] },
-            "SourceSecurityGroupId": { "Fn::GetAtt": [ "SG2", "GroupId" ] },
+            "SourceSecurityGroupId": { "Fn::GetAtt": [ "SG2", "GroupId" ] }
           }
         },
         'SG': {'Type': 'AWS::EC2::SecurityGroup' },
@@ -104,7 +104,7 @@ describe('collectCyData', function() {
           "Type" : "AWS::EC2::SecurityGroupEgress",
           "Properties": {
             "GroupId": { "Fn::GetAtt": [ "SG", "GroupId" ] },
-            "DestinationSecurityGroupId": { "Fn::GetAtt": [ "SG2", "GroupId" ] },
+            "DestinationSecurityGroupId": { "Fn::GetAtt": [ "SG2", "GroupId" ] }
           }
         },
         'SG': {'Type': 'AWS::EC2::SecurityGroup' },
@@ -125,7 +125,7 @@ describe('collectCyData', function() {
           'Type': 'AWS::EC2::Instance',
           'Properties': {
             'NetworkInterfaces': [{
-              'GroupSet': [ { 'Ref': 'SG' } ],
+              'GroupSet': [ { 'Ref': 'SG' } ]
             }]
           }
         },
