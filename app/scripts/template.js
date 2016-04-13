@@ -21,6 +21,17 @@ exports.template = function(options) {
     'concentric': {name: 'concentric', fit: true, padding: 10, avoidOverlap: false, startAngle: Math.PI}
   };
 
+  var findLayout = function(name) {
+    return layouts[name] || {'name': name, 'fit': true, 'animate': false };
+  };
+
+  var setLayout = function(name) {
+    layoutName = name;
+    if (graph) {
+      graph.layout(findLayout(name));
+    }
+  };
+
   if (!editor || !editor.getValue) {
     throw 'editor unavailable or doesn\'t support getValue';
   }
@@ -138,16 +149,6 @@ exports.template = function(options) {
     });
   };
 
-  var setLayout = function(name) {
-    layoutName = name;
-    if (graph) {
-      graph.layout(findLayout(name));
-    }
-  };
-
-  var findLayout = function(name) {
-    return layouts[name] || {'name': name, 'fit': true, 'animate': false };
-  }
 
   var fromURL = function(url, success, onError) {
     if (!jsonproxy) {
