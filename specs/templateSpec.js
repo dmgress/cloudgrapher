@@ -11,7 +11,7 @@ describe('template', function() {
     codemirror = jasmine.createSpyObj('codemirror', ['setValue', 'getValue']);
     graphArea = jasmine.createSpyObj('graphArea', ['css']);
     cytoscape = jasmine.createSpy('cytoscape');
-    cytograph = jasmine.createSpyObj('graph', ['boxSelectionEnabled']);
+    cytograph = jasmine.createSpyObj('graph', ['boxSelectionEnabled', 'on']);
     cytoscape.and.returnValue(cytograph);
     jsonproxy = jasmine.createSpy('jsonp');
     template = lib.template({
