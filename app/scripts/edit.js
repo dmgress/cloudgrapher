@@ -1,9 +1,6 @@
 /* jshint devel:true */
 /* global saveAs, require, CodeMirror, alertify, cytoscape */
 
-var template;
-window.getTemplate = function() { return template; };
-
 (function() {
   'use strict';
 
@@ -28,7 +25,7 @@ window.getTemplate = function() { return template; };
   });
   myCodeMirror.setSize('100%', '800px');
 
-  template = require('./template').template({
+  var template = require('./template').template({
     'editor': {
       setValue: function(value) { myCodeMirror.getDoc().setValue(value); },
       getValue: function() { return myCodeMirror.getDoc().getValue(); }
@@ -37,6 +34,8 @@ window.getTemplate = function() { return template; };
     'graphContainer': graphArea[0],
     'jsonproxy': $.jsonp
   });
+
+  window.getTemplate = function() { return template; };
 
   var myConfirmation = function(event) {
     if (!template.hasChanged()) {
