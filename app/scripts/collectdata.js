@@ -34,7 +34,7 @@ exports.collectCyData = function(json) {
     'default': function(edge, source, target) {
       if (target && target.type === 'AWS::EC2::SecurityGroup' && source.type !== 'AWS::EC2::SecurityGroup') {
         knownResources[edge.data.source].data.parent = edge.data.target;
-        return false;
+        return false; // Don't create an edge, security group is parent
       }
       return true;
     },
