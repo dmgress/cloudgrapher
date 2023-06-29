@@ -22,9 +22,11 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: ${{ matrix.node }}
+          cache: 'npm'
       - name: before_script
         run: |
           npm install -g gulp bower codeclimate-test-reporter codacy-coverage
+          npm install
           bower install
       - name: script
         run: gulp
