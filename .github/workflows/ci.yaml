@@ -37,6 +37,6 @@ jobs:
       - name: after_script
         if: ${{ always() }}
         run: |
-          cc-test-reporter format-coverage -t lcov ./.tmp/js/lcov.info
+          cc-test-reporter format-coverage ./.tmp/js/lcov.info -t lcov
           cc-test-reporter after-build
           
