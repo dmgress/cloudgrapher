@@ -3,7 +3,7 @@
 var lib = require('../app/scripts/collectdata');
 
 var customMatchers = {
-  toHaveParent: function(util, customEqualityTesters) {
+  toHaveParent: function(util) {
     return {
       compare: function(actual, expected) {
         var expectedParent = expected ? "'" + expected + "' " : '';
