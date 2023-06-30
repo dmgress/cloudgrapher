@@ -16,8 +16,7 @@ var BUILD_ENVIRONMENT = process.env.BUILD_ENVIRONMENT || 'production';
  * on Cloud9 but fall back to default in any other case.
  */
 var LIVERELOAD_PORT = process.env.IP ? 8082 : 35729;
-
-var gulp = require('gulp');
+const { series , src, dest, parallel, watch } = require('gulp');
 var browserify = require('browserify');
 var transform = require('vinyl-transform');
 var source = require('vinyl-source-stream');
@@ -40,22 +39,23 @@ var AUTOPREFIXER_BROWSERS = [
   'bb >= 10'
 ];
 
-gulp.task('styles', function() {
-  gulp.src(['app/styles/*.cycss']).pipe(gulp.dest('dist/styles'));
-  return gulp.src(['app/styles/*.css'])
+function _styles() {
+  src(['app/styles/*.cycss']).pipe(dest('dist/styles'));
+  return src(['app/styles/*.css'])
     .pipe($.if('*.css', $.autoprefixer(AUTOPREFIXER_BROWSERS)))
-    .pipe(gulp.dest('.tmp/styles'));
-});
+    .pipe(dest('.tmp/styles'));
+};
+
 
 // Lint JavaScript
-gulp.task('jshint', function() {
-  return gulp.src('app/scripts/**/*.js')
+function _jshint() {
+  return src('app/scripts/**/*.js')
     .pipe($.jshint())
     .pipe($.jshint.reporter('jshint-stylish'))
     .pipe($.jshint.reporter('fail'));
-});
+};
 
-gulp.task('javascript', function() {
+function _javascript() {
   return browserify({
       entries: ['app/scripts/edit.js'],
       debug: true
@@ -68,16 +68,17 @@ gulp.task('javascript', function() {
     .pipe($.if(BUILD_ENVIRONMENT === 'production', $.uglify()))
     .pipe($.sourcemaps.write('./'))
     .pipe($.livereload())
-    .pipe(gulp.dest('dist/js'));
-});
+    .pipe(dest('dist/js'));
+};
 
-gulp.task('html', ['styles', 'javascript'], function() {
+
+function _html() {
 
   var productionHtml = function(file) {
     return require('gulp-match')(file, '*.html') && BUILD_ENVIRONMENT === 'production';
   }
 
-  return gulp.src('app/*.html')
+  return src('app/*.html')
     .pipe($.cdnizer({
       relativeRoot: 'app/',
       allowMin: true,
@@ -101,56 +102,53 @@ gulp.task('html', ['styles', 'javascript'], function() {
       conservativeCollapse: true,
       collapseBooleanAttributes: true
     })))
-    .pipe(gulp.dest('dist'));
-});
+    .pipe(dest('dist'));
+};
+
 
 //Optimize images
-gulp.task('images', function() {
-  return gulp.src([
+function _images() {
+  return src([
       'app/images/**/aws*.png',
       'app/images/**/unknown.png',
       'app/images/**/aws*.svg'
     ])
-    .pipe($.cache($.imagemin({
-      progressive: true,
-      interlaced: true
-    })))
-    .pipe(gulp.dest('dist/images')).pipe($.size({
+    // .pipe($.cache($.imagemin({
+    //   progressive: true,
+    //   interlaced: true
+    // })))
+    .pipe(dest('dist/images')).pipe($.size({
       title: 'images'
     }));
-});
+};
 
-gulp.task('fonts', function() {
-  return gulp.src(require('main-bower-files')().concat('app/fonts/**/*'))
+function _fonts() {
+  return src(require('main-bower-files')().concat('app/fonts/**/*'))
     .pipe($.filter('**/*.{eot,svg,ttf,woff}'))
     .pipe($.flatten())
-    .pipe(gulp.dest('dist/fonts'));
-});
+    .pipe(dest('dist/fonts'));
+};
 
-gulp.task('extras', function() {
-  return gulp.src([
+function _extras() {
+  return src([
     'app/*.*',
     '!app/*.html',
     '!app/**/*~',
     '!app/**/*swp',
     'node_modules/apache-server-configs/dist/.htaccess'
   ], {
-    dot: true
-  }).pipe(gulp.dest('dist'));
-});
+    dot: true,
+    allowEmpty: true,
+  }).pipe(dest('dist'));
+};
 
 // clear all caches created by gulp-cache
 // do this if weird stuff happens with for instance images
-gulp.task('clear', function(done) {
+function clear(done) {
   return $.cache.clearAll(done);
-});
+};
 
-gulp.task('clean', ['clear'], function() {
-  var del = require('del')
-  return del(['.tmp', 'dist']);
-});
-
-gulp.task('connect', function() {
+function _connect() {
   var serveStatic = require('serve-static');
   var serveIndex = require('serve-index');
   var app = require('connect')()
@@ -171,38 +169,45 @@ gulp.task('connect', function() {
       console.log('Started connect web server on http://' +
         HTTP_HOST + ':' + HTTP_PORT);
     });
-});
+};
 
-gulp.task('serve', ['connect', 'watch'], function() {
+async function _clean(){
+  const { deleteAsync } = await import('del');
+  return deleteAsync(['.tmp', 'dist']);
+};
+
+function _serve() {
   BUILD_ENVIRONMENT = 'development';
   require('opn')('http://' + HTTP_HOST + ':' + HTTP_PORT);
-});
+};
+
+exports.serve = series(_connect, _watch, _serve)
 
 // serve from build to ensure everything is there
-gulp.task('serve-build', ['clean'], function() {
-  gulp.start('build');
+function _servebuild() {
+  start('build');
   var serveStatic = require('serve-static');
   var serveIndex = require('serve-index');
   var app = require('connect')().use(serveStatic('dist')).use(serveIndex('dist'));
   require('http').createServer(app).listen(HTTP_PORT, HTTP_HOST).on('listening', function() {
     console.log('Serving distribution at http://' + HTTP_HOST + ':' + HTTP_PORT);
   });
-});
+};
 
 // inject bower components
-gulp.task('wiredep', function() {
+function _wiredep() {
   var wiredep = require('wiredep').stream;
 
-  gulp.src('app/*.html')
+  return src('app/*.html')
     .pipe(wiredep())
-    .pipe(gulp.dest('app'));
-});
+    .pipe(dest('app'));
+};
 
-gulp.task('watch', ['connect'], function() {
+function _watch() {
   $.livereload.listen(LIVERELOAD_PORT);
 
   // watch for changes
-  gulp.watch([
+  watch([
     'app/*.html',
     '.tmp/styles/**/*.css',
     '.tmp/styles/**/*.cycss',
@@ -210,21 +215,21 @@ gulp.task('watch', ['connect'], function() {
     'app/images/**/*'
   ]).on('change', $.livereload.changed);
 
-  gulp.watch('app/styles/**/*.css', ['styles']);
-  gulp.watch('app/scripts/**/*.js', ['javascript']);
-  gulp.watch('bower.json', ['wiredep']);
-});
+  watch('app/styles/**/*.css', ['styles']);
+  watch('app/scripts/**/*.js', ['javascript']);
+  watch('bower.json', ['wiredep']);
+};
 
-gulp.task('instrument', function() {
-  return gulp.src('app/scripts/**/*.js')
+function instrument() {
+  return src('app/scripts/**/*.js')
     .pipe($.istanbul({
       includeUntested: true
     }))
     .pipe($.istanbul.hookRequire())
-});
+};
 
-gulp.task('test', ['instrument'], function(done) {
-  return gulp.src('specs/**.js')
+function test(done) {
+  return src('specs/**.js')
     .pipe($.jasmine({includeStackTrace: true}))
     .on('error', function(error) {
       // we have an error
@@ -234,17 +239,10 @@ gulp.task('test', ['instrument'], function(done) {
       dir: './.tmp/js',
       reporters: ['lcov', 'json', 'text-summary']
     }));
-});
+};
 
-gulp.task('test-watch', function() {
-  gulp.watch([
-    'specs/**.js',
-    'app/scripts/**.js'
-  ], ['test']);
-});
-
-gulp.task('build', ['jshint', 'html', 'images', 'fonts', 'extras', 'test'], function() {
-  gulp.src([
+function _build() {
+  src([
       'bower_components/ace-builds/src-min-noconflict/theme-tomorrow_night_eighties.js',
       'bower_components/ace-builds/src-min-noconflict/worker-json.js',
       'bower_components/ace-builds/src-min-noconflict/mode-json.js'
@@ -252,16 +250,16 @@ gulp.task('build', ['jshint', 'html', 'images', 'fonts', 'extras', 'test'], func
     .pipe($.size({
       title: 'copy ace js'
     }))
-    .pipe(gulp.dest('dist/js/ace/'));
-  return gulp.src('dist/**').pipe($.size({
+    .pipe(dest('dist/js/ace/'));
+  return src('dist/**').pipe($.size({
     title: 'build',
     gzip: true
   }));
-});
+};
 
-gulp.task('deploy', function() {
-  return gulp.src('dist/**').pipe($.ghPages());
-});
+function deploy() {
+  return src('dist/**').pipe($.ghPages());
+};
 
 /**
  * Bumping version number and tagging the repository with it.
@@ -279,11 +277,11 @@ gulp.task('deploy', function() {
 
 function inc(importance) {
     // get all the files to bump version in
-    return gulp.src(['./package.json'])
+    return src(['./package.json'])
         // bump the version number in those files
         .pipe($.bump({type: importance}))
         // save it back to filesystem
-        .pipe(gulp.dest('./'))
+        .pipe(dest('./'))
         // commit the changed version number
         .pipe($.git.commit('bumps package version'))
 
@@ -293,10 +291,31 @@ function inc(importance) {
         .pipe($.tag_version());
 }
 
-gulp.task('patch', function() { return inc('patch'); })
-gulp.task('feature', function() { return inc('minor'); })
-gulp.task('release', function() { return inc('major'); })
+function patch() { return inc('patch'); }
+function feature() { return inc('minor'); }
+function major() { return inc('major'); }
 
-gulp.task('default', ['clean'], function() {
-  gulp.start('build');
-});
+exports.patch = patch;
+exports.feature = feature;
+exports.release = major;
+exports.deploy = deploy;
+exports.build = series(_jshint, parallel(_html, _images, _fonts, _extras), test, _build)
+
+exports.default = series(_clean, exports.build);
+exports.styles = _styles;
+exports.javascript = _javascript
+exports.html = series(parallel(_styles, _javascript), _html)
+exports.clean = series(clear, _clean);
+exports.servebuild = series(_clean, _build, _servebuild)
+exports.wiredep = _wiredep;
+exports.watch = series(_connect, _watch)
+exports.test = series(instrument, test)
+
+function _testwatch(cb){
+  watch([
+    'specs/**.js',
+    'app/scripts/**.js'
+  ], test);
+}
+
+exports.testwatch = _testwatch
